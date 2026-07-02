@@ -128,6 +128,34 @@ details[open] summary{border-bottom:1px dashed var(--line);}
 
 .foot{margin-top:44px;font-size:11px;color:var(--ash);line-height:2;border-top:1px solid var(--line);padding-top:16px;}
 .gcheck{color:var(--green);}
+
+/* AI Analyst */
+.ai-panel{border:1px solid var(--gold);background:#1A150E;}
+.ai-keyrow{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:14px;}
+.ai-keyrow input[type=password]{flex:1;min-width:180px;background:transparent;border:none;
+  border-bottom:1px solid var(--line);color:var(--bone);font-family:'IBM Plex Mono',monospace;
+  font-size:13px;padding:4px 0;outline:none;direction:ltr;}
+.ai-keyrow label{font-size:11px;color:var(--ash);display:flex;align-items:center;gap:6px;cursor:pointer;}
+button.ai-go{width:100%;background:var(--gold);border:none;color:#141110;font-family:inherit;
+  font-weight:800;font-size:15px;padding:14px;cursor:pointer;letter-spacing:.03em;}
+button.ai-go:disabled{opacity:.6;cursor:wait;}
+.ai-status{font-size:12px;color:var(--ash);margin-top:10px;text-align:center;min-height:18px;}
+.ai-status.err{color:var(--red);}
+.ai-result{margin-top:18px;border-top:1px solid var(--line);padding-top:18px;}
+.ai-oneliner{font-size:16px;font-weight:800;line-height:1.7;color:var(--bone);}
+.ai-h{font-size:11px;letter-spacing:.12em;color:var(--gold);font-weight:800;margin:18px 0 8px;}
+.ai-trend{font-size:13px;color:var(--ash);line-height:1.9;padding-inline-start:14px;position:relative;margin-bottom:6px;}
+.ai-trend::before{content:"◆";position:absolute;inset-inline-start:0;color:var(--gold);font-size:8px;top:7px;}
+.ai-wgrid{display:flex;gap:8px;margin:10px 0;}
+.ai-w{flex:1;background:var(--panel);border:1px solid var(--line);padding:10px;text-align:center;}
+.ai-w .nm{font-size:10px;color:var(--ash);}
+.ai-w .vals{font-family:'IBM Plex Mono',monospace;font-size:14px;margin-top:4px;direction:ltr;}
+.ai-w .vals .new{color:var(--gold);font-weight:600;}
+button.ai-apply{background:transparent;border:1px solid var(--gold);color:var(--gold);
+  font-family:inherit;font-weight:600;font-size:12px;padding:8px 14px;cursor:pointer;margin-top:6px;}
+.ai-verdict{display:inline-block;padding:4px 12px;font-size:12px;font-weight:800;margin-inline-end:8px;}
+.ai-body{font-size:13px;color:var(--ash);line-height:2;}
+.ai-meta{font-size:10px;color:var(--ash);margin-top:14px;border-top:1px dashed var(--line);padding-top:10px;direction:ltr;text-align:left;font-family:'IBM Plex Mono',monospace;}
 </style>
 </head>
 <body>
@@ -145,6 +173,9 @@ let S = {
   stamp: {cls:"", txt:null},
   diag: "",
   goldSource: "",
+  aiKey: (typeof localStorage!=="undefined" && localStorage.getItem("ghc_key")) || "",
+  aiRemember: (typeof localStorage!=="undefined" && !!localStorage.getItem("ghc_key")),
+  ai: {loading:false, error:null, data:null, at:null, applied:false},
 };
 
 const SCEN_META = [
@@ -220,6 +251,28 @@ ar: {
     <b>Core PCE</b> — بوصلة الفيدرالي.
     <b>البنوك المركزية</b> — الأرضية الهيكلية تحت السعر.
     أخضر = داعم، أصفر = مراقبة، أحمر = خطر على الأطروحة.`,
+  aiT:"المحلل الذكي",
+  aiKeyPh:"Anthropic API key — sk-ant-…",
+  aiRemember:"احفظ المفتاح على الجهاز ده",
+  aiGo:"⚡ حلّل السوق بناءً على إطاري",
+  aiGoing:"بيبحث في السوق ويحلل… (٢٠–٤٠ ثانية)",
+  aiNeedKey:"محتاج API key الأول — نفس مفتاح Post Studio",
+  aiErr:"فشل التحليل — ",
+  aiTrendsH:"اللي حرّك السوق",
+  aiWeightsH:"الأوزان المقترحة",
+  aiApply:"طبّق الأوزان دي على السيناريوهات",
+  aiApplied:"✓ اتطبقت",
+  aiTrancheH:"قرار الدفعة الثانية",
+  aiEgpH:"قراءة الجنيه",
+  aiVerdicts:{deploy:"ادخل دلوقتي", partial:"دخول جزئي", wait:"استنى"},
+  aiDisc:"تحليل آلي مبني على بحث لحظي — راجعه بعقلك قبل أي قرار.",
+  expAiT:"إزاي المحلل ده شغال؟",
+  expAi:`الزرار بيبعت حالة اللوحة كاملة — الأسعار الحية، أوزانك، السعر المرجّح، حالة الدفعات، ألوان المتابعة —
+    لنموذج <span class="term">Claude</span> ومعاه صلاحية بحث في الإنترنت.
+    بيدوّر على آخر تحركات الذهب والفيدرالي والجنيه، وبيرجعلك: الاتجاهات اللي بتحرك السعر،
+    أوزان مقترحة للسيناريوهات (تقدر تطبقها بضغطة)، وقرار صريح للدفعة الثانية.
+    <b>المفتاح بيتبعت من متصفحك لـ Anthropic مباشرة</b> — مش بيتخزن في أي سيرفر تاني.
+    كل تحليل بيكلف سنتات قليلة من رصيد الـ API بتاعك.`,
   foot:`الإطار: جلسة مايو 2026 (تقرير WGC + إجماع البنوك). الأسعار من مصادر مجانية بدون مفاتيح.
     أداة تحليل شخصية — مش نصيحة استثمارية. التخصيص: 15–25% من إجمالي الثروة كحد أقصى.`,
 },
@@ -286,6 +339,28 @@ en: {
     <b>Core PCE</b> — the Fed's compass.
     <b>CB buying</b> — the structural floor under price.
     Green = supportive, amber = watch, red = thesis risk.`,
+  aiT:"AI ANALYST",
+  aiKeyPh:"Anthropic API key — sk-ant-…",
+  aiRemember:"Remember key on this device",
+  aiGo:"⚡ Analyze the market against my framework",
+  aiGoing:"Searching & analyzing… (20–40s)",
+  aiNeedKey:"API key required — same key as Post Studio",
+  aiErr:"Analysis failed — ",
+  aiTrendsH:"WHAT MOVED THE MARKET",
+  aiWeightsH:"SUGGESTED WEIGHTS",
+  aiApply:"Apply these weights to the scenarios",
+  aiApplied:"✓ Applied",
+  aiTrancheH:"TRANCHE 2 CALL",
+  aiEgpH:"EGP READ",
+  aiVerdicts:{deploy:"Deploy now", partial:"Partial entry", wait:"Wait"},
+  aiDisc:"Machine analysis on live search — apply your own judgment before acting.",
+  expAiT:"How does this analyst work?",
+  expAi:`The button sends your full cockpit state — live prices, your weights, the weighted target, tranche status, watchlist colors —
+    to <span class="term">Claude</span> with web-search access.
+    It looks up the latest gold, Fed, and EGP moves and returns: the trends driving price,
+    suggested scenario weights (one tap to apply), and an explicit Tranche 2 call.
+    <b>Your key goes from your browser to Anthropic directly</b> — no middle server.
+    Each analysis costs a few cents of your API credit.`,
   foot:`Framework: May 2026 session (WGC Q1 + bank consensus). Live prices from free keyless feeds.
     Personal analysis tool — not financial advice. Allocation rule: 15–25% of total wealth max.`,
 },
@@ -426,6 +501,20 @@ function renderAll(){
   }).join("")}
   <details><summary>${t.expScT}</summary><div class="exp">${t.expSc}</div></details>
 
+  <div class="sechead"><div class="lbl">${t.aiT}</div></div>
+  <div class="panel ai-panel" style="margin-top:0;">
+    <div class="ai-keyrow">
+      <input type="password" id="aikey" placeholder="${t.aiKeyPh}" value="${S.aiKey.replace(/"/g,'')}">
+      <label><input type="checkbox" id="aikeep" ${S.aiRemember?"checked":""}> ${t.aiRemember}</label>
+    </div>
+    <button class="ai-go" id="aigo" onclick="analyze()" ${S.ai.loading?"disabled":""}>
+      ${S.ai.loading ? t.aiGoing : t.aiGo}
+    </button>
+    <div class="ai-status ${S.ai.error?"err":""}" id="aistatus">${S.ai.error ? t.aiErr + S.ai.error : ""}</div>
+    ${S.ai.data ? renderAIResult(t) : ""}
+  </div>
+  <details><summary>${t.expAiT}</summary><div class="exp">${t.expAi}</div></details>
+
   <div class="sechead">
     <div class="lbl">${t.dcaT}</div>
     <div class="budget">${t.budgetLbl} <input type="number" id="budget" value="${budget}" step="10000"> ${t.cur}</div>
@@ -463,9 +552,165 @@ function renderAll(){
   ["spot","egp","prem","budget","calcamt"].forEach(id=>{
     $(id).addEventListener("input", ()=>{ readInputs(); renderAll(); });
   });
+  const kEl = $("aikey"), kpEl = $("aikeep");
+  if(kEl) kEl.addEventListener("change", syncKey);
+  if(kpEl) kpEl.addEventListener("change", syncKey);
 }
 
-// ═══════════════════════════════ LIVE FEEDS ═══════════════════════════════
+// ═══════════════════════════════ AI ANALYST ═══════════════════════════════
+function renderAIResult(t){
+  const d = S.ai.data;
+  const vColor = {deploy:"var(--green)", partial:"var(--gold)", wait:"var(--red)"};
+  const names = {deesc:t.scen.deesc.name, base:t.scen.base.name, stag:t.scen.stag.name};
+  const sw = d.suggested_weights || {};
+  const hasW = sw.deesc!=null && sw.base!=null && sw.stag!=null;
+  return `
+  <div class="ai-result">
+    <div class="ai-oneliner">${d.one_liner || ""}</div>
+
+    <div class="ai-h">${t.aiTrendsH}</div>
+    ${(d.trends||[]).map(x=>`<div class="ai-trend">${x}</div>`).join("")}
+
+    ${hasW ? `
+    <div class="ai-h">${t.aiWeightsH}</div>
+    <div class="ai-wgrid">
+      ${SCEN_META.map(s=>`
+        <div class="ai-w">
+          <div class="nm">${names[s.key]}</div>
+          <div class="vals">${S.weights[s.key]}% → <span class="new">${sw[s.key]}%</span></div>
+        </div>`).join("")}
+    </div>
+    <div class="ai-body">${d.weights_reasoning || ""}</div>
+    <button class="ai-apply" onclick="applyAI()">${S.ai.applied ? t.aiApplied : t.aiApply}</button>
+    ` : ""}
+
+    ${d.tranche2 ? `
+    <div class="ai-h">${t.aiTrancheH}</div>
+    <div>
+      <span class="ai-verdict" style="border:1px solid ${vColor[d.tranche2.verdict]||"var(--ash)"};color:${vColor[d.tranche2.verdict]||"var(--ash)"}">
+        ${t.aiVerdicts[d.tranche2.verdict] || d.tranche2.verdict}
+      </span>
+    </div>
+    <div class="ai-body" style="margin-top:8px;">${d.tranche2.reasoning || ""}</div>
+    ` : ""}
+
+    ${d.egp_read ? `
+    <div class="ai-h">${t.aiEgpH}</div>
+    <div class="ai-body">${d.egp_read}</div>
+    ` : ""}
+
+    <div class="ai-meta">${S.ai.at || ""} · claude-sonnet-4-6 + web search · ${t.aiDisc}</div>
+  </div>`;
+}
+
+function applyAI(){
+  const sw = S.ai.data?.suggested_weights;
+  if(!sw) return;
+  let a = Math.round(sw.deesc), b = Math.round(sw.base), c = Math.round(sw.stag);
+  const sum = a+b+c;
+  if(sum !== 100 && sum > 0){ c = 100 - a - b; } // normalize drift
+  S.weights = {deesc:Math.max(1,a), base:Math.max(1,b), stag:Math.max(1,c)};
+  S.ai.applied = true;
+  readInputs();
+  renderAll();
+}
+
+function syncKey(){
+  const el = $("aikey"), keep = $("aikeep");
+  if(!el) return;
+  S.aiKey = el.value.trim();
+  S.aiRemember = keep.checked;
+  try{
+    if(S.aiRemember && S.aiKey) localStorage.setItem("ghc_key", S.aiKey);
+    else localStorage.removeItem("ghc_key");
+  }catch(e){}
+}
+
+async function analyze(){
+  syncKey();
+  const t = T[S.lang];
+  if(!S.aiKey){
+    S.ai = {...S.ai, error: t.aiNeedKey.replace(t.aiErr,""), data:S.ai.data};
+    S.ai.error = t.aiNeedKey;
+    renderAll();
+    return;
+  }
+  readInputs();
+  S.ai = {loading:true, error:null, data:S.ai.data, at:S.ai.at, applied:false};
+  renderAll();
+
+  const weighted = SCEN_META.reduce((a,s)=>a + S.weights[s.key]/100*(s.lo+s.hi)/2, 0);
+  const langName = S.lang==="ar" ? "Egyptian colloquial Arabic (مصري)" : "English";
+  const sigTxt = ["supportive","watch","risk"];
+  const monEn = ["Iran deal","Fed signals","EGP/USD","Core PCE","CB buying"];
+  const watch = monEn.map((m,i)=>m+"="+sigTxt[S.signals[i]]).join(", ");
+
+  const prompt = `You are a senior precious-metals strategist advising a Cairo-based CIO on his personal gold hedge (EGP-denominated savings, 6-12 month horizon).
+
+HIS FRAMEWORK (May 2026, from WGC Q1 report + bank consensus):
+- De-escalation: target $5,800-6,300 (Iran deal holds, Fed pivots)
+- Base Case: target $5,000-5,400 (CB buying ~720t/yr vs elevated rates)
+- Stagflation Trap: target $3,600-4,000 (Fed hikes into weakness)
+- DCA plan 40/35/25: Tranche 1 deployed (5 Egyptian gold pounds, June, good entry). Tranche 2 window: Jul-Aug (open now). Tranche 3: Sep-Oct.
+- Max allocation rule: 15-25% of total wealth.
+
+LIVE COCKPIT STATE (today):
+- XAU/USD spot: $${S.spot}
+- USD/EGP: ${S.egp}
+- His current scenario weights: De-escalation ${S.weights.deesc}%, Base ${S.weights.base}%, Stagflation ${S.weights.stag}%
+- His probability-weighted target: $${Math.round(weighted)}
+- His watchlist assessment: ${watch}
+
+TASK: Web-search the latest (last 1-2 weeks) on: gold price drivers, Fed rate expectations, and EGP/USD (official vs offshore if findable). Maximum 4 searches. Then produce your analysis in ${langName}.
+
+Respond with ONLY this JSON (no fences, no preamble). All string values in ${langName}:
+{
+ "one_liner": "single sharp sentence: the state of his hedge right now",
+ "trends": ["3-4 items, each: what happened + direction of impact on gold"],
+ "suggested_weights": {"deesc": int, "base": int, "stag": int},
+ "weights_reasoning": "2-3 sentences: why these weights vs his current ones",
+ "tranche2": {"verdict": "deploy" | "partial" | "wait", "reasoning": "2-3 sentences with an explicit trigger condition"},
+ "egp_read": "2 sentences on the pound layer of his hedge"
+}
+Weights must sum to 100. Be direct and specific — he prefers sharp calls over hedged language.`;
+
+  try{
+    const r = await fetch("https://api.anthropic.com/v1/messages", {
+      method:"POST",
+      headers:{
+        "Content-Type":"application/json",
+        "x-api-key": S.aiKey,
+        "anthropic-version":"2023-06-01",
+        "anthropic-dangerous-direct-browser-access":"true",
+      },
+      body: JSON.stringify({
+        model:"claude-sonnet-4-6",
+        max_tokens: 4000,
+        messages:[{role:"user", content: prompt}],
+        tools:[{type:"web_search_20250305", name:"web_search"}],
+      }),
+    });
+    const data = await r.json();
+    if(!r.ok || data.error) throw new Error(data?.error?.message?.slice(0,120) || "HTTP "+r.status);
+
+    const text = (data.content||[])
+      .filter(b=>b.type==="text").map(b=>b.text).join("\n")
+      .replace(/```json|```/g,"").trim();
+    const start = text.indexOf("{"), end = text.lastIndexOf("}");
+    if(start<0 || end<=start) throw new Error(data.stop_reason==="max_tokens" ? "truncated — retry" : "no JSON returned");
+    const parsed = JSON.parse(text.slice(start, end+1));
+
+    S.ai = {
+      loading:false, error:null, data:parsed, applied:false,
+      at: new Date().toLocaleString("en-GB",{day:"numeric",month:"short",hour:"2-digit",minute:"2-digit"}),
+    };
+  }catch(e){
+    S.ai = {...S.ai, loading:false, error:(e.message||"unknown").slice(0,120)};
+  }
+  renderAll();
+}
+
+
 let diagArr = [];
 const withTimeout = (p, ms=6000) => Promise.race([
   p, new Promise((_, rej) => setTimeout(() => rej(new Error("timeout")), ms)),
