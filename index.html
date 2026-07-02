@@ -1,0 +1,554 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Gold Hedge Cockpit · غرفة عمليات الذهب</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,300;9..144,600&family=IBM+Plex+Mono:wght@400;500&family=Cairo:wght@400;600;800&display=swap');
+
+:root{
+  --bg:#141110; --panel:#1D1916; --line:#2E2822;
+  --bone:#EAE2D4; --ash:#8B8272; --gold:#C9A227; --goldsoft:#E3C566;
+  --green:#4E8F7B; --red:#B4482E;
+}
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+html[lang=ar] body{font-family:'Cairo',sans-serif;}
+html[lang=en] body{font-family:'IBM Plex Mono',ui-monospace,monospace;}
+body{background:var(--bg);color:var(--bone);display:flex;justify-content:center;min-height:100vh;}
+.wrap{width:100%;max-width:520px;padding:36px 22px 70px;}
+.num{font-family:'IBM Plex Mono',monospace;direction:ltr;unicode-bidi:embed;}
+.serif{font-family:'Fraunces',Georgia,serif;}
+
+.eyebrow{font-size:11px;letter-spacing:.15em;color:var(--ash);font-weight:600;}
+h1{font-weight:800;font-size:27px;margin-top:6px;}
+html[lang=en] h1{font-family:'Fraunces',Georgia,serif;font-weight:600;font-size:29px;}
+.header{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;}
+.langbtn{background:var(--panel);border:1px solid var(--gold);color:var(--gold);
+  font-family:'Cairo',sans-serif;font-weight:600;font-size:13px;padding:8px 16px;cursor:pointer;flex-shrink:0;}
+
+.panel{background:var(--panel);border:1px solid var(--line);padding:18px 20px;margin-top:26px;}
+.grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px;}
+.lbl{font-size:11px;color:var(--ash);margin-bottom:6px;font-weight:600;letter-spacing:.05em;}
+input[type=number]{width:100%;background:transparent;border:none;border-bottom:1px solid var(--line);
+  color:var(--bone);font-family:'IBM Plex Mono',monospace;font-size:15px;padding:2px 0;outline:none;
+  text-align:left;direction:ltr;-moz-appearance:textfield;}
+input::-webkit-outer-spin-button,input::-webkit-inner-spin-button{-webkit-appearance:none;}
+
+.board{display:grid;grid-template-columns:1fr 1fr;gap:1px;background:var(--line);
+  border-top:1px solid var(--line);margin-top:14px;}
+.cell{background:var(--panel);padding:12px 14px;}
+.cell .k{font-size:11px;color:var(--ash);font-weight:600;}
+.cell .v{font-family:'IBM Plex Mono',monospace;font-size:16px;color:var(--goldsoft);direction:ltr;margin-top:3px;}
+.cell .u{font-size:10px;color:var(--ash);}
+.cell.hero{grid-column:1/-1;background:#211B12;}
+.cell.hero .v{font-size:21px;color:var(--gold);}
+
+.pullrow{display:flex;justify-content:space-between;align-items:center;border-top:1px solid var(--line);
+  padding-top:12px;margin-top:12px;gap:12px;}
+button.pull{background:#211B12;border:1px solid var(--gold);color:var(--gold);font-family:inherit;
+  font-weight:600;font-size:13px;padding:9px 16px;cursor:pointer;}
+button.pull:disabled{opacity:.5;cursor:wait;}
+#stamp{font-size:11px;color:var(--ash);text-align:left;max-width:52%;line-height:1.5;direction:ltr;}
+#stamp.err{color:var(--red);}
+#stamp.ok{color:var(--green);}
+#diag{display:none;direction:ltr;text-align:left;font-family:'IBM Plex Mono',monospace;
+  font-size:10px;color:var(--red);line-height:1.9;border-top:1px dashed var(--line);
+  padding-top:10px;margin-top:12px;white-space:pre-wrap;}
+
+.calcrow{display:flex;align-items:center;gap:10px;font-size:13px;color:var(--ash);margin-bottom:14px;flex-wrap:wrap;}
+.calcrow input{width:120px;}
+table.karat{width:100%;border-collapse:collapse;}
+table.karat th{font-size:11px;color:var(--ash);font-weight:600;text-align:start;
+  padding:8px 6px;border-bottom:1px solid var(--line);}
+table.karat th.n, table.karat td.n{text-align:end;}
+table.karat td{padding:11px 6px;border-bottom:1px solid var(--line);font-size:14px;}
+table.karat td.n{font-family:'IBM Plex Mono',monospace;direction:ltr;color:var(--bone);font-size:13px;}
+table.karat tr.hl td{color:var(--gold);}
+table.karat td .badge{font-size:10px;color:var(--ash);}
+
+.target{text-align:center;margin-top:40px;}
+.bignum{font-family:'Fraunces',Georgia,serif;font-weight:300;font-size:68px;line-height:1.05;margin-top:8px;direction:ltr;}
+#delta{font-size:14px;margin-top:6px;}
+#bandnote{font-size:13px;color:var(--ash);margin-top:10px;line-height:1.8;}
+
+.scen{border-inline-start:3px solid;margin-top:22px;}
+.scen .top{display:flex;justify-content:space-between;align-items:baseline;}
+.scen .name{font-weight:800;font-size:17px;}
+html[lang=en] .scen .name{font-family:'Fraunces',Georgia,serif;font-weight:600;font-size:18px;}
+.scen .name .sub{font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--ash);
+  margin-inline-start:10px;direction:ltr;unicode-bidi:embed;}
+html[lang=ar] .scen .name .sub{font-family:'IBM Plex Mono',monospace;}
+html[lang=en] .scen .name .sub{font-family:'Cairo',sans-serif;font-size:12px;}
+.scen .w{font-family:'IBM Plex Mono',monospace;font-size:22px;direction:ltr;}
+.scen .thesis{font-size:12px;color:var(--ash);margin:6px 0 12px;line-height:1.7;}
+input[type=range]{-webkit-appearance:none;appearance:none;width:100%;height:2px;background:var(--line);
+  outline:none;border:none;padding:0;direction:ltr;}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:24px;height:24px;border-radius:50%;
+  background:var(--bg);border:2px solid var(--gold);cursor:pointer;}
+input[type=range]::-moz-range-thumb{width:22px;height:22px;border-radius:50%;
+  background:var(--bg);border:2px solid var(--gold);cursor:pointer;}
+
+.sechead{display:flex;justify-content:space-between;align-items:baseline;margin:44px 0 14px;flex-wrap:wrap;gap:8px;}
+.sechead .lbl{margin:0;font-size:13px;font-weight:800;color:var(--bone);letter-spacing:.08em;}
+.budget{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--ash);}
+.budget input{width:96px;}
+
+.tranche{display:flex;align-items:center;gap:16px;padding:16px 18px;margin-bottom:10px;
+  background:var(--panel);border:1px solid var(--line);}
+.tranche.active{background:#211B12;border-color:var(--gold);}
+.tranche.done{opacity:.65;}
+.tpct{font-family:'Fraunces',Georgia,serif;font-weight:600;font-size:26px;width:58px;direction:ltr;text-align:center;}
+.tranche.active .tpct{color:var(--gold);}
+.tmid{flex:1;}
+.tmid .row1{font-size:14px;font-weight:600;}
+.tmid .row2{font-size:12px;color:var(--ash);margin-top:3px;}
+.tright{text-align:end;font-size:12px;color:var(--ash);direction:ltr;font-family:'IBM Plex Mono',monospace;}
+.tright .amt{color:var(--goldsoft);}
+.posline{font-size:13px;color:var(--ash);padding:10px 18px;border-top:1px solid var(--line);}
+.posline b{color:var(--goldsoft);font-weight:600;}
+
+.chips{display:flex;flex-wrap:wrap;gap:10px;}
+.chip{background:var(--panel);border:1px solid var(--line);padding:10px 14px;cursor:pointer;
+  display:flex;align-items:center;gap:9px;font-family:inherit;color:var(--bone);font-size:13px;font-weight:600;}
+.dot{width:9px;height:9px;border-radius:50%;flex-shrink:0;}
+.chip .st{font-size:11px;color:var(--ash);font-weight:400;}
+
+details{margin-top:12px;border:1px dashed var(--line);}
+summary{cursor:pointer;list-style:none;padding:10px 14px;font-size:12px;color:var(--gold);
+  display:flex;align-items:center;gap:8px;user-select:none;font-weight:600;}
+summary::-webkit-details-marker{display:none;}
+summary::before{content:"؟";display:inline-flex;align-items:center;justify-content:center;
+  width:18px;height:18px;border:1px solid var(--gold);border-radius:50%;font-size:11px;flex-shrink:0;}
+html[lang=en] summary::before{content:"?";}
+details[open] summary{border-bottom:1px dashed var(--line);}
+.exp{padding:12px 16px;font-size:13px;color:var(--ash);line-height:2;}
+.exp b{color:var(--bone);font-weight:600;}
+.exp .term{font-family:'IBM Plex Mono',monospace;color:var(--goldsoft);direction:ltr;unicode-bidi:embed;font-size:12px;}
+
+.foot{margin-top:44px;font-size:11px;color:var(--ash);line-height:2;border-top:1px solid var(--line);padding-top:16px;}
+.gcheck{color:var(--green);}
+</style>
+</head>
+<body>
+<div class="wrap" id="app"></div>
+
+<script>
+// ═══════════════════════════════ STATE ═══════════════════════════════
+const OZ = 31.1035;
+let S = {
+  lang: "ar",
+  spot: 4060, egp: 49.2, prem: 3,
+  budget: 300000, calcamt: 50000,
+  weights: {deesc:35, base:45, stag:20},
+  signals: [1,2,1,1,0],
+  stamp: {cls:"", txt:null},
+  diag: "",
+  goldSource: "",
+};
+
+const SCEN_META = [
+  {key:"deesc", lo:5800, hi:6300, color:"#4E8F7B"},
+  {key:"base",  lo:5000, hi:5400, color:"#C9A227"},
+  {key:"stag",  lo:3600, hi:4000, color:"#B4482E"},
+];
+const SIGCOL = ["#4E8F7B","#C9A227","#B4482E"];
+
+// ═══════════════════════════════ TEXT ═══════════════════════════════
+const T = {
+ar: {
+  dir:"rtl", langBtn:"EN",
+  eyebrow:"خاص · مباشر", title:"غرفة عمليات الذهب",
+  inSpot:"أونصة الذهب $", inEgp:"دولار / جنيه", inPrem:"مصنعية %",
+  ounce:"الأونصة", ounceU:"التحويل المباشر بدون مصنعية",
+  g24:"جرام 24", g21:"جرام 21", g18:"جرام 18", gp:"الجنيه الذهب",
+  inclU:"جنيه · شامل المصنعية", gpU:"جنيه · 8 جرام عيار 21",
+  pull:"⟳ تحديث الأسعار مباشرة", pulling:"جاري التحديث…",
+  stampInit:"بيتحدّث تلقائيًا مع الفتح",
+  unreachable:"Feeds unreachable — عدّل يدويًا",
+  expGramT:"إزاي بنحسب سعر الجرام؟",
+  expGram:`سعر الذهب عالميًا بيتسعّر بالدولار للأونصة <span class="term">(31.1 جرام عيار 24)</span>.
+    بناخد سعر الأونصة ÷ 31.1 × سعر الدولار بالجنيه = <b>جرام 24 بالجنيه</b>.
+    عيار 21 = جرام 24 × 0.875، والجنيه الذهب = 8 جرام عيار 21.
+    خانة <b>المصنعية</b> بتضيف فرق السوق المحلي — عدّلها حسب أسعار الصاغة الفعلية.
+    استثمارك بالجنيه محكوم بعاملين: <b>سعر الذهب العالمي</b> و<b>سعر صرف الجنيه</b> — وده جوهر التحوّط.`,
+  calcT:"حاسبة الشراء بالأعيرة",
+  calcAmt:"المبلغ", calcCur:"جنيه — يجيبلك:",
+  thK:"العيار", thP:"سعر الجرام", thQ:"الكمية",
+  k24:"عيار 24 (سبائك)", k22:"عيار 22", k21:"عيار 21", k18:"عيار 18 (مشغولات)",
+  gpRow:"جنيهات ذهب", change:"فكة",
+  expKaratT:"إيه الفرق بين الأعيرة؟",
+  expKarat:`العيار = نسبة الذهب الخالص. <b>24</b> = 99.9% (سبائك)، <b>22</b> = 91.7%، <b>21</b> = 87.5% (الأشهر في مصر)،
+    <b>18</b> = 75% (مشغولات). سعر أي عيار = سعر جرام 24 × نسبته.
+    للتحوّط: <b>سبائك 24</b> أو <b>جنيهات ذهب</b> — مصنعية أقل وبيع أسهل.
+    عيار 18 مشغولات — مصنعيته بتتخسر عند البيع، مش أداة تحوّط.`,
+  targetLbl:"السعر المستهدف المرجّح بالاحتمالات",
+  deltaVs:"عن السعر الحالي",
+  bandNote:"السعر الحالي خارج نطاقات السيناريوهات التلاتة.<br>السوق مختلف مع أوزانك — راجعها بالسحب تحت.",
+  expWT:"يعني إيه \"مرجّح بالاحتمالات\"؟",
+  expW:`بدل الرهان على سيناريو واحد، بنحسب متوسط أهداف السيناريوهات التلاتة، كل واحد <b>موزون باحتماله</b>.
+    الرقم ده مش تنبؤ، ده <b>بوصلة</b>: لو السعر الحالي أقل منه بكتير، السوق شايف احتمالات مختلفة عنك —
+    يا إما أنت شايف حاجة السوق مش شايفها، يا إما محتاج تعدّل أوزانك.`,
+  scen:{
+    deesc:{name:"التهدئة", sub:"De-escalation", thesis:"صمود اتفاق إيران + تحوّل الفيدرالي + عودة تدفقات الصناديق"},
+    base:{name:"السيناريو الأساسي", sub:"Base Case", thesis:"شراء البنوك المركزية (~720 طن/سنة) في مواجهة الفايدة المرتفعة"},
+    stag:{name:"فخ الركود التضخمي", sub:"Stagflation", thesis:"رفع فايدة وسط ضعف اقتصادي + ضغط دولاري + بيع اضطراري"},
+  },
+  expScT:"إزاي أستخدم السيناريوهات؟",
+  expSc:`دي أوزان جلسة مايو 2026 (تقرير مجلس الذهب العالمي + إجماع البنوك).
+    اسحب أي شريط والباقيين بيتعدّلوا تلقائيًا عشان المجموع يفضل 100%.
+    لما السعر يقع خارج النطاقات التلاتة، دي إشارة إن الإطار محتاج مراجعة صريحة، مش تجاهل.`,
+  dcaT:"خطة الدخول التدريجي · 40 / 35 / 25", budgetLbl:"الميزانية", cur:"جنيه",
+  tranches:[
+    {label:"الدفعة الأولى", window:"مايو–يونيو", note:"تم شراء 5 جنيهات ذهب — دخول موفق"},
+    {label:"الدفعة الثانية", window:"يوليو–أغسطس", note:"النافذة مفتوحة دلوقتي"},
+    {label:"الدفعة الثالثة", window:"سبتمبر–أكتوبر", note:"استنى اجتماع الفيدرالي في سبتمبر"},
+  ],
+  nowMark:"← دلوقتي",
+  posLine:(v)=>`المركز الحالي: 5 جنيهات ذهب ≈ <b class="num">${v}</b> جنيه بأسعار النهارده`,
+  expDcaT:"ليه الشراء على 3 دفعات مش مرة واحدة؟",
+  expDca:`دي استراتيجية <span class="term">DCA — Dollar Cost Averaging</span>: توزيع الشراء بدل توقيت السوق.
+    التقسيم <b>40 / 35 / 25</b>: أكبر دفعة بدري (التحوّط يبدأ يشتغل)، والباقي على نوافذ مربوطة باجتماعات الفيدرالي.
+    القاعدة: الذهب <b>15–25% كحد أقصى</b> من إجمالي الثروة — تحوّط مش مقامرة.`,
+  watchT:"لوحة المتابعة — اضغط للتبديل",
+  monitors:["اتفاق إيران","الفيدرالي","الجنيه/الدولار","التضخم الأساسي","البنوك المركزية"],
+  siglbl:["داعم","مراقبة","خطر"],
+  expMonT:"إيه المتغيرات دي وليه؟",
+  expMon:`<b>اتفاق إيران</b> — انهياره يرفع الذهب فورًا.
+    <b>الفيدرالي</b> — رفع الفايدة يضغط، التيسير يدعم.
+    <b>الجنيه</b> — ضعفه يكسّب ذهبك بالجنيه حتى لو العالمي ثابت.
+    <b>Core PCE</b> — بوصلة الفيدرالي.
+    <b>البنوك المركزية</b> — الأرضية الهيكلية تحت السعر.
+    أخضر = داعم، أصفر = مراقبة، أحمر = خطر على الأطروحة.`,
+  foot:`الإطار: جلسة مايو 2026 (تقرير WGC + إجماع البنوك). الأسعار من مصادر مجانية بدون مفاتيح.
+    أداة تحليل شخصية — مش نصيحة استثمارية. التخصيص: 15–25% من إجمالي الثروة كحد أقصى.`,
+},
+en: {
+  dir:"ltr", langBtn:"عربي",
+  eyebrow:"PRIVATE · LIVE", title:"Gold Hedge Cockpit",
+  inSpot:"XAU/USD", inEgp:"USD/EGP", inPrem:"PREMIUM %",
+  ounce:"Ounce", ounceU:"direct conversion, no premium",
+  g24:"24k gram", g21:"21k gram", g18:"18k gram", gp:"Gold pound",
+  inclU:"EGP · incl. premium", gpU:"EGP · 8g of 21k",
+  pull:"⟳ PULL LIVE MARKET", pulling:"PULLING…",
+  stampInit:"Auto-pulls on open",
+  unreachable:"Feeds unreachable — edit manually",
+  expGramT:"How is the gram price computed?",
+  expGram:`Gold is priced globally in USD per troy ounce <span class="term">(31.1g of 24k)</span>.
+    Ounce ÷ 31.1 × USD/EGP = <b>24k gram in EGP</b>. 21k = 24k × 0.875; a gold pound = 8g of 21k.
+    The <b>premium</b> field adds the local market spread — tune it to actual dealer quotes.
+    Your EGP position is driven by two factors: <b>global gold</b> and <b>the pound</b> — that's the whole hedge.`,
+  calcT:"KARAT PURCHASE CALCULATOR",
+  calcAmt:"Amount", calcCur:"EGP buys you:",
+  thK:"Karat", thP:"Per gram", thQ:"Quantity",
+  k24:"24k (bullion)", k22:"22k", k21:"21k", k18:"18k (jewelry)",
+  gpRow:"Gold pounds", change:"change",
+  expKaratT:"What's the difference between karats?",
+  expKarat:`Karat = purity. <b>24</b> = 99.9% (bullion), <b>22</b> = 91.7%, <b>21</b> = 87.5% (Egypt's standard),
+    <b>18</b> = 75% (jewelry). Any karat's price = 24k gram × its ratio.
+    For hedging: <b>24k bullion</b> or <b>gold pounds</b> — lower premium, easier resale.
+    18k jewelry loses its premium on resale — not a hedging instrument.`,
+  targetLbl:"PROBABILITY-WEIGHTED TARGET",
+  deltaVs:"vs. spot",
+  bandNote:"Spot sits outside all three bands.<br>The market disagrees with your weights — drag below.",
+  expWT:"What does \"probability-weighted\" mean?",
+  expW:`Instead of betting on one scenario, we average the three targets, each <b>weighted by its probability</b>.
+    The number is a <b>compass</b>, not a forecast: if spot sits far below it, the market prices different odds than you do —
+    either you see something it doesn't, or your weights need revising.`,
+  scen:{
+    deesc:{name:"De-escalation", sub:"التهدئة", thesis:"Iran deal holds, Fed pivots, ETF inflows return"},
+    base:{name:"Base Case", sub:"الأساسي", thesis:"CB buying ~720t/yr vs. elevated rates — grind higher"},
+    stag:{name:"Stagflation Trap", sub:"فخ الركود", thesis:"Fed hikes into weakness, dollar squeeze, forced selling"},
+  },
+  expScT:"How do I use the scenarios?",
+  expSc:`These are the May 2026 session weights (WGC Q1 report + bank consensus).
+    Drag any slider and the other two rebalance so the total stays 100%.
+    When spot falls outside all three bands, the framework needs honest revision — not denial.`,
+  dcaT:"DCA PLAN · 40 / 35 / 25", budgetLbl:"Budget", cur:"EGP",
+  tranches:[
+    {label:"Tranche 1", window:"May–Jun", note:"5 gold pounds bought — good entry"},
+    {label:"Tranche 2", window:"Jul–Aug", note:"Window open now"},
+    {label:"Tranche 3", window:"Sep–Oct", note:"Hold for Fed September meeting"},
+  ],
+  nowMark:"← now",
+  posLine:(v)=>`Current position: 5 gold pounds ≈ <b class="num">${v}</b> EGP at today's rates`,
+  expDcaT:"Why three tranches instead of one buy?",
+  expDca:`This is <span class="term">DCA — Dollar Cost Averaging</span>: staged entry instead of timing the market.
+    The <b>40 / 35 / 25</b> split puts the largest tranche early (the hedge starts working), with the rest tied to Fed-meeting windows.
+    Rule: gold at <b>15–25% max</b> of total wealth — a hedge, not a gamble.`,
+  watchT:"WATCHLIST — TAP TO CYCLE",
+  monitors:["Iran deal","Fed signals","EGP / USD","Core PCE","CB buying"],
+  siglbl:["OK","Watch","Risk"],
+  expMonT:"What are these variables?",
+  expMon:`<b>Iran deal</b> — collapse spikes gold instantly.
+    <b>Fed</b> — hikes pressure gold, easing supports it.
+    <b>EGP</b> — pound weakness lifts your EGP position even if global gold is flat.
+    <b>Core PCE</b> — the Fed's compass.
+    <b>CB buying</b> — the structural floor under price.
+    Green = supportive, amber = watch, red = thesis risk.`,
+  foot:`Framework: May 2026 session (WGC Q1 + bank consensus). Live prices from free keyless feeds.
+    Personal analysis tool — not financial advice. Allocation rule: 15–25% of total wealth max.`,
+},
+};
+
+// ═══════════════════════════════ HELPERS ═══════════════════════════════
+const $ = id => document.getElementById(id);
+const fmt = (n,d=0) => n.toLocaleString("en-US",{minimumFractionDigits:d,maximumFractionDigits:d});
+const readInputs = () => {
+  ["spot","egp","prem","budget","calcamt"].forEach(k=>{
+    const el = $(k); if(el) S[k] = parseFloat(el.value)||0;
+  });
+};
+
+function setWeight(key, val){
+  val = Math.min(96, Math.max(2, val));
+  const others = SCEN_META.map(s=>s.key).filter(k=>k!==key);
+  const rest = 100 - val;
+  const sum = others.reduce((a,k)=>a+S.weights[k],0) || 1;
+  const next = {[key]:val};
+  let acc = 0;
+  others.forEach((k,i)=>{
+    const v = i===others.length-1 ? rest-acc : Math.round(S.weights[k]/sum*rest);
+    next[k] = Math.max(1,v); acc += next[k];
+  });
+  S.weights = next;
+  readInputs();
+  renderAll();
+}
+
+function cycleSignal(i){
+  S.signals[i] = (S.signals[i]+1)%3;
+  readInputs();
+  renderAll();
+}
+
+function toggleLang(){
+  readInputs();
+  S.lang = S.lang==="ar" ? "en" : "ar";
+  renderAll();
+}
+
+// ═══════════════════════════════ RENDER ═══════════════════════════════
+function renderAll(){
+  const t = T[S.lang];
+  document.documentElement.lang = S.lang;
+  document.documentElement.dir = t.dir;
+
+  const {spot, egp, prem, budget, calcamt} = S;
+  const weighted = SCEN_META.reduce((a,s)=>a + S.weights[s.key]/100*(s.lo+s.hi)/2, 0);
+  const delta = (weighted - spot)/spot*100;
+  const g24 = spot/OZ*egp*(1+prem/100);
+  const g21 = g24*0.875, g18 = g24*0.75, pound = g21*8;
+  const ozEgp = spot*egp;
+  const inBand = SCEN_META.some(s=>spot>=s.lo && spot<=s.hi);
+
+  const KARATS = [
+    {k:t.k24, f:1, hl:true}, {k:t.k22, f:22/24, hl:false},
+    {k:t.k21, f:0.875, hl:true}, {k:t.k18, f:0.75, hl:false},
+  ];
+
+  const trancheStatus = ["done","active","pending"];
+  const tranchePct = [40,35,25];
+
+  $("app").innerHTML = `
+  <div class="header">
+    <div>
+      <div class="eyebrow">${t.eyebrow}</div>
+      <h1>${t.title}</h1>
+    </div>
+    <button class="langbtn" onclick="toggleLang()">${t.langBtn}</button>
+  </div>
+
+  <div class="panel">
+    <div class="grid3">
+      <div><div class="lbl">${t.inSpot}</div><input type="number" id="spot" value="${spot}" step="5"></div>
+      <div><div class="lbl">${t.inEgp}</div><input type="number" id="egp" value="${egp}" step="0.1"></div>
+      <div><div class="lbl">${t.inPrem}</div><input type="number" id="prem" value="${prem}" step="0.5"></div>
+    </div>
+    <div class="board">
+      <div class="cell hero">
+        <div class="k">${t.ounce}</div>
+        <div class="v">$${fmt(spot)} · ${fmt(ozEgp)} EGP</div>
+        <div class="u">${t.ounceU}</div>
+      </div>
+      <div class="cell"><div class="k">${t.g24}</div><div class="v">${fmt(g24)}</div><div class="u">${t.inclU}</div></div>
+      <div class="cell"><div class="k">${t.g21}</div><div class="v">${fmt(g21)}</div><div class="u">${t.inclU}</div></div>
+      <div class="cell"><div class="k">${t.g18}</div><div class="v">${fmt(g18)}</div><div class="u">${t.inclU}</div></div>
+      <div class="cell"><div class="k">${t.gp}</div><div class="v">${fmt(pound)}</div><div class="u">${t.gpU}</div></div>
+    </div>
+    <div class="pullrow">
+      <button class="pull" id="pullbtn" onclick="pullLive()">${t.pull}</button>
+      <div id="stamp" class="${S.stamp.cls}">${S.stamp.txt || t.stampInit}</div>
+    </div>
+    <pre id="diag" style="${S.diag?'display:block':''}">${S.diag}</pre>
+  </div>
+  <details><summary>${t.expGramT}</summary><div class="exp">${t.expGram}</div></details>
+
+  <div class="sechead"><div class="lbl">${t.calcT}</div></div>
+  <div class="panel" style="margin-top:0;">
+    <div class="calcrow">${t.calcAmt} <input type="number" id="calcamt" value="${calcamt}" step="5000"> ${t.calcCur}</div>
+    <table class="karat">
+      <thead><tr><th>${t.thK}</th><th class="n">${t.thP}</th><th class="n">${t.thQ}</th></tr></thead>
+      <tbody>
+        ${KARATS.map(x=>{
+          const pg = g24*x.f;
+          return `<tr class="${x.hl?"hl":""}">
+            <td>${x.k}</td><td class="n">${fmt(pg)} EGP</td><td class="n">${fmt(calcamt/pg,1)}g</td></tr>`;
+        }).join("")}
+        <tr><td>${t.gpRow}</td><td class="n">${fmt(pound)} EGP</td>
+          <td class="n">${Math.floor(calcamt/pound)} <span class="badge">+ ${fmt(calcamt-Math.floor(calcamt/pound)*pound)} ${t.change}</span></td></tr>
+      </tbody>
+    </table>
+  </div>
+  <details><summary>${t.expKaratT}</summary><div class="exp">${t.expKarat}</div></details>
+
+  <div class="target">
+    <div class="eyebrow">${t.targetLbl}</div>
+    <div class="bignum">$${fmt(weighted)}</div>
+    <div id="delta" style="color:${delta>=0?"var(--green)":"var(--red)"}">
+      <span class="num">${delta>=0?"▲":"▼"} ${fmt(Math.abs(delta),1)}%</span> ${t.deltaVs} <span class="num">$${fmt(spot)}</span>
+    </div>
+    <div id="bandnote">${inBand ? "" : t.bandNote}</div>
+  </div>
+  <details><summary>${t.expWT}</summary><div class="exp">${t.expW}</div></details>
+
+  ${SCEN_META.map(s=>{
+    const sc = t.scen[s.key];
+    return `<div class="panel scen" style="border-inline-start-color:${s.color}">
+      <div class="top">
+        <div class="name">${sc.name}<span class="sub">${sc.sub}</span></div>
+        <div class="w" style="color:${s.color}">${S.weights[s.key]}%</div>
+      </div>
+      <div class="thesis"><span class="num">$${fmt(s.lo)}–$${fmt(s.hi)}</span> · ${sc.thesis}</div>
+      <input type="range" min="2" max="96" value="${S.weights[s.key]}"
+        oninput="setWeight('${s.key}', parseInt(this.value))">
+    </div>`;
+  }).join("")}
+  <details><summary>${t.expScT}</summary><div class="exp">${t.expSc}</div></details>
+
+  <div class="sechead">
+    <div class="lbl">${t.dcaT}</div>
+    <div class="budget">${t.budgetLbl} <input type="number" id="budget" value="${budget}" step="10000"> ${t.cur}</div>
+  </div>
+  ${t.tranches.map((tr,i)=>{
+    const st = trancheStatus[i], pct = tranchePct[i];
+    const amt = budget*pct/100, grams = amt/g21;
+    return `<div class="tranche ${st}">
+      <div class="tpct">${pct}%</div>
+      <div class="tmid">
+        <div class="row1">${tr.label} · ${tr.window}
+          ${st==="done"?'<span class="gcheck"> ✓</span>':""}
+          ${st==="active"?`<span style="color:var(--gold)"> ${t.nowMark}</span>`:""}
+        </div>
+        <div class="row2">${tr.note}</div>
+      </div>
+      <div class="tright"><div class="amt">${fmt(amt)} EGP</div><div>≈ ${fmt(grams,1)}g 21k</div></div>
+    </div>`;
+  }).join("")}
+  <div class="posline">${t.posLine(fmt(pound*5))}</div>
+  <details><summary>${t.expDcaT}</summary><div class="exp">${t.expDca}</div></details>
+
+  <div class="sechead"><div class="lbl">${t.watchT}</div></div>
+  <div class="chips">
+    ${t.monitors.map((m,i)=>`
+      <button class="chip" onclick="cycleSignal(${i})">
+        <span class="dot" style="background:${SIGCOL[S.signals[i]]}"></span>
+        ${m}<span class="st">${t.siglbl[S.signals[i]]}</span>
+      </button>`).join("")}
+  </div>
+  <details><summary>${t.expMonT}</summary><div class="exp">${t.expMon}</div></details>
+
+  <div class="foot">${t.foot}</div>`;
+
+  ["spot","egp","prem","budget","calcamt"].forEach(id=>{
+    $(id).addEventListener("input", ()=>{ readInputs(); renderAll(); });
+  });
+}
+
+// ═══════════════════════════════ LIVE FEEDS ═══════════════════════════════
+let diagArr = [];
+const withTimeout = (p, ms=6000) => Promise.race([
+  p, new Promise((_, rej) => setTimeout(() => rej(new Error("timeout")), ms)),
+]);
+
+const GOLD_FEEDS = [
+  { name:"gold-api", fn: async () => {
+      const r = await fetch("https://api.gold-api.com/price/XAU");
+      const j = await r.json(); return Number(j.price); } },
+  { name:"goldprice.org", fn: async () => {
+      const r = await fetch("https://data-asg.goldprice.org/dbXRates/USD");
+      const j = await r.json(); return Number(j?.items?.[0]?.xauPrice); } },
+  { name:"binance-paxg", fn: async () => {
+      const r = await fetch("https://api.binance.com/api/v3/ticker/price?symbol=PAXGUSDT");
+      const j = await r.json(); return Number(j.price); } },
+  { name:"jsdelivr-daily", fn: async () => {
+      const r = await fetch("https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@latest/v1/currencies/usd.json");
+      const j = await r.json();
+      const perUsd = Number(j?.usd?.xau);
+      return perUsd ? 1/perUsd : 0; } },
+];
+
+async function fetchGold(){
+  for (const feed of GOLD_FEEDS){
+    try {
+      const p = await withTimeout(feed.fn());
+      if (p && p > 1000 && p < 20000){
+        S.goldSource = feed.name;
+        diagArr.push(feed.name+": OK ($"+Math.round(p)+")");
+        return p;
+      }
+      diagArr.push(feed.name+": bad value");
+    } catch(e){ diagArr.push(feed.name+": "+(e.message||"error")); }
+  }
+  throw new Error("all feeds failed");
+}
+
+async function fetchEGP(){
+  try{
+    const r = await withTimeout(fetch("https://open.er-api.com/v6/latest/USD"));
+    const j = await r.json();
+    const v = Number(j?.rates?.EGP);
+    if(v && v>20 && v<200){ diagArr.push("er-api FX: OK ("+v.toFixed(2)+")"); return v; }
+    throw new Error("bad value");
+  }catch(e){
+    diagArr.push("er-api FX: "+(e.message||"error"));
+    const r2 = await withTimeout(fetch("https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@latest/v1/currencies/usd.json"));
+    const j2 = await r2.json();
+    const v2 = Number(j2?.usd?.egp);
+    if(v2 && v2>20 && v2<200){ diagArr.push("jsdelivr FX: OK ("+v2.toFixed(2)+")"); return v2; }
+    diagArr.push("jsdelivr FX: bad value");
+    throw new Error("FX feeds failed");
+  }
+}
+
+async function pullLive(){
+  const t = T[S.lang];
+  diagArr = [];
+  readInputs();
+  S.stamp = {cls:"", txt:"Contacting feeds…"};
+  S.diag = "";
+  renderAll();
+  $("pullbtn").disabled = true;
+  $("pullbtn").textContent = t.pulling;
+
+  const [gRes, fxRes] = await Promise.allSettled([fetchGold(), fetchEGP()]);
+  let fails = [];
+  if(gRes.status==="fulfilled") S.spot = Math.round(gRes.value); else fails.push("gold");
+  if(fxRes.status==="fulfilled") S.egp = Math.round(fxRes.value*100)/100; else fails.push("FX");
+
+  if(fails.length===0){
+    S.stamp = {cls:"ok", txt:"Live via "+S.goldSource+" · "+new Date().toLocaleString("en-GB",
+      {day:"numeric",month:"short",hour:"2-digit",minute:"2-digit"})};
+    S.diag = "";
+  } else {
+    S.stamp = {cls:"err", txt: fails.length===1 ? "Partial — "+fails[0]+" failed" : T[S.lang].unreachable};
+    S.diag = diagArr.join("\n");
+  }
+  renderAll();
+}
+
+renderAll();
+pullLive();
+</script>
+</body>
+</html>
