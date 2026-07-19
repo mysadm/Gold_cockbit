@@ -135,3 +135,10 @@ button.ai-apply{background:#ffffff;border:1px solid #00B240;color:#00B240;font-f
 .settings-field select{width:100%;background:transparent;border:none;border-bottom:1px solid #c4c4c4;color:#1a1a1a;font-family:inherit;font-size:14px;padding:6px 0;outline:none;}
 .settings-error{font-size:12px;color:#CC0000;margin-bottom:12px;}
 .settings-success{font-size:12px;color:#00B240;margin-top:10px;}
+
+.watch-implied{margin-top:20px;}
+.watch-implied-counts{font-size:12px;color:#555555;margin-top:8px;}
+.watch-implied-counts .ok{color:#4E8F7B;font-weight:700;}
+.watch-implied-counts .watch{color:#C9A227;font-weight:700;}
+.watch-implied-counts .risk{color:#B4482E;font-weight:700;}
+.watch-implied-values{font-size:20px;font-weight:800;color:#1a1a1a;margin-top:8px;font-family:'IBM Plex Mono',monospace;}
