@@ -8,6 +8,7 @@
     "build": "tsc -b && vite build",
     "preview": "vite preview",
     "migrate": "node db/migrate.mjs",
+    "server": "node server/index.mjs",
     "test": "vitest run"
   },
   "dependencies": {
