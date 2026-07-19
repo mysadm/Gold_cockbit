@@ -15,7 +15,7 @@ async function callAnthropic({ apiKey, model, messages, withTools }) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
   try {
-    const body = { model, max_tokens: 4000, messages };
+    const body = { model, max_tokens: 8000, messages };
     if (withTools) body.tools = [{ type: 'web_search_20250305', name: 'web_search' }];
 
     const response = await fetch(ANTHROPIC_ENDPOINT, {

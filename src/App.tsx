@@ -517,13 +517,18 @@ function App() {
     setState((prev) => ({ ...prev, ai: { ...prev.ai, loading: true, error: null, data: prev.ai.data, at: prev.ai.at, applied: false } }));
     const weightedTarget = SCEN_META.reduce((sum, scenario) => sum + (state.weights[scenario.key] / 100) * ((scenario.lo + scenario.hi) / 2), 0);
     const watch = state.monitors.map((monitor) => `${state.lang === 'ar' ? monitor.ar : monitor.en}=${['supportive', 'watch', 'risk'][monitor.sig]}`).join(', ');
+    const scenarioContext = SCEN_META.map((scenario) => `${t.scen[scenario.key].name} (currently weighted ${state.weights[scenario.key]}%, price band $${fmt(scenario.lo)}-$${fmt(scenario.hi)}): ${t.scen[scenario.key].thesis}`).join(' | ');
     const langName = state.lang === 'ar' ? 'Egyptian colloquial Arabic (مصري)' : 'English';
-    const prompt = `You are a senior precious-metals strategist advising a Cairo-based CIO. LIVE COCKPIT STATE - XAU/USD: ${state.spot}; USD/EGP: ${state.egp}; weights: ${state.weights.deesc}/${state.weights.base}/${state.weights.stag}; weighted target: ${Math.round(weightedTarget)}; watchlist: ${watch}. ${state.aiLevel === 'beginner' ? 'Use simple everyday language.' : 'Be direct and specific.'} Write every string VALUE in ${langName} — the whole analysis, every sentence, must be in ${langName}, no English mixed in unless it's a ticker/number. Respond with ONLY a single JSON object, no markdown code fences, matching EXACTLY this schema and these key names in English (the KEYS stay in English exactly as shown, only the VALUES are translated, no other keys, no nested wrapper object):
+    const prompt = `You are a senior precious-metals strategist advising a Cairo-based CIO. LIVE COCKPIT STATE - XAU/USD: ${state.spot}; USD/EGP: ${state.egp}; weighted target: ${Math.round(weightedTarget)}.
+CURRENT SCENARIO FRAMEWORK (the user's existing weights and theses — these may be stale): ${scenarioContext}.
+Use your live web search to check whether real current events (e.g. shifts in the Iran situation including any resumption of conflict, Fed policy moves, central-bank gold buying, EGP moves) still support these theses as weighted, or whether the balance between the three scenarios has genuinely shifted. Your suggested_weights must reflect this reassessment, not just restate the current weights.
+WATCHLIST — treat this as a primary input alongside your own research, not background color. Weigh supportive items toward the scenario they favor and risk items away from it; let them materially move both suggested_weights and the tranche2 verdict: ${watch}.
+${state.aiLevel === 'beginner' ? 'Use simple everyday language.' : 'Be direct and specific.'} Write every string VALUE in ${langName} — the whole analysis, every sentence, must be in ${langName}, no English mixed in unless it's a ticker/number. Respond with ONLY a single JSON object, no markdown code fences, matching EXACTLY this schema and these key names in English (the KEYS stay in English exactly as shown, only the VALUES are translated, no other keys, no nested wrapper object):
 {
   "one_liner": "<one-sentence summary of the current read, in ${langName}>",
-  "trends": ["<what's moving the market, 2-3 short items, in ${langName}>"],
+  "trends": ["<what's moving the market right now, 2-3 short items grounded in your search and the watchlist, in ${langName}>"],
   "suggested_weights": { "deesc": <number 0-100>, "base": <number 0-100>, "stag": <number 0-100> },
-  "weights_reasoning": "<why these weights, in ${langName}>",
+  "weights_reasoning": "<why these weights, referencing specifically what changed vs. the current framework, in ${langName}>",
   "tranche2": { "verdict": "<deploy|partial|wait>", "reasoning": "<why, in ${langName}>" },
   "egp_read": "<how the EGP side of the hedge is doing, in ${langName}>"
 }
