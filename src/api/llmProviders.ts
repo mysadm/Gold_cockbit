@@ -5,7 +5,6 @@ export type LlmProvider = {
   provider_type: ProviderType;
   label: string;
   base_url: string | null;
-  api_key: string | null;
   model: string;
   is_active: boolean;
   created_at: string;

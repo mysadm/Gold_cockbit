@@ -98,9 +98,6 @@ summary::-webkit-details-marker{display:none;}
 .exp b{color:#1a1a1a;font-weight:700;}
 .foot{margin-top:44px;font-size:11px;color:#888888;line-height:2;border-top:1px solid #e3ebdf;padding-top:16px;}
 .ai-panel{border:1px solid #00B240;background:#f7fdf8;}
-.ai-keyrow{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:14px;}
-.ai-keyrow input[type=password]{flex:1;min-width:180px;background:transparent;border:none;border-bottom:1px solid #dfe8dc;color:#1a1a1a;font-family:'IBM Plex Mono',monospace;font-size:13px;padding:4px 0;outline:none;direction:ltr;}
-.ai-keyrow label{font-size:11px;color:#555555;display:flex;align-items:center;gap:6px;cursor:pointer;}
 .lvlrow{display:flex;align-items:center;gap:8px;margin-bottom:12px;}
 .lvlbl{font-size:11px;color:#555555;}
 button.lvl{background:#ffffff;border:1px solid #dfe8dc;color:#555555;font-family:inherit;font-weight:700;font-size:12px;padding:6px 14px;cursor:pointer;border-radius:999px;}
@@ -136,3 +133,4 @@ button.ai-apply{background:#ffffff;border:1px solid #00B240;color:#00B240;font-f
 .settings-form{margin-top:20px;}
 .settings-field{margin-bottom:14px;}
 .settings-field select{width:100%;background:transparent;border:none;border-bottom:1px solid #c4c4c4;color:#1a1a1a;font-family:inherit;font-size:14px;padding:6px 0;outline:none;}
+.settings-error{font-size:12px;color:#CC0000;margin-bottom:12px;}

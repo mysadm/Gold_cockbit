@@ -182,6 +182,7 @@ function App() {
   const [state, setState] = useState<AppState>(loadState);
   const [activeTab, setActiveTab] = useState<TabKey>('home');
   const [providers, setProviders] = useState<LlmProvider[]>([]);
+  const [providerError, setProviderError] = useState<string | null>(null);
   const [providerForm, setProviderForm] = useState<LlmProviderInput & { id: number | null }>({
     id: null,
     provider_type: 'ollama',
@@ -209,36 +210,53 @@ function App() {
       provider_type: provider.provider_type,
       label: provider.label,
       base_url: provider.base_url ?? '',
-      api_key: provider.api_key ?? '',
+      api_key: '',
       model: provider.model,
     });
   };
 
   const saveProvider = async () => {
+    setProviderError(null);
     const input: LlmProviderInput = {
       provider_type: providerForm.provider_type,
       label: providerForm.label,
-      base_url: providerForm.base_url || null,
-      api_key: providerForm.api_key || null,
+      base_url: (providerForm.provider_type === 'ollama' || providerForm.provider_type === 'custom')
+        ? (providerForm.base_url || null)
+        : null,
+      api_key: providerForm.provider_type === 'ollama' ? null : (providerForm.api_key || null),
       model: providerForm.model,
     };
-    if (providerForm.id === null) {
-      await createProvider(input);
-    } else {
-      await updateProvider(providerForm.id, input);
+    try {
+      if (providerForm.id === null) {
+        await createProvider(input);
+      } else {
+        await updateProvider(providerForm.id, input);
+      }
+      resetProviderForm();
+      refreshProviders();
+    } catch (err) {
+      setProviderError(err instanceof Error ? err.message : String(err));
     }
-    resetProviderForm();
-    refreshProviders();
   };
 
   const removeProvider = async (id: number) => {
-    await deleteProvider(id);
-    refreshProviders();
+    setProviderError(null);
+    try {
+      await deleteProvider(id);
+      refreshProviders();
+    } catch (err) {
+      setProviderError(err instanceof Error ? err.message : String(err));
+    }
   };
 
   const activate = async (id: number) => {
-    await activateProvider(id);
-    refreshProviders();
+    setProviderError(null);
+    try {
+      await activateProvider(id);
+      refreshProviders();
+    } catch (err) {
+      setProviderError(err instanceof Error ? err.message : String(err));
+    }
   };
 
   const activeProvider = providers.find((p) => p.is_active) || null;
@@ -816,6 +834,7 @@ function App() {
             </div>
 
             <div className="panel settings-form">
+              {providerError ? <div className="settings-error">{providerError}</div> : null}
               <div className="sechead"><div className="lbl">{t.settingsAddHeading}</div></div>
 
               <div className="settings-field">
@@ -846,7 +865,7 @@ function App() {
               {providerForm.provider_type !== 'ollama' ? (
                 <div className="settings-field">
                   <div className="lbl">{t.settingsApiKeyLabel}</div>
-                  <input type="password" value={providerForm.api_key ?? ''} onInput={(event) => setProviderForm((prev) => ({ ...prev, api_key: (event.target as HTMLInputElement).value }))} />
+                  <input type="password" value={providerForm.api_key ?? ''} placeholder={providerForm.id !== null ? t.settingsApiKeyUnchangedPh : ''} onInput={(event) => setProviderForm((prev) => ({ ...prev, api_key: (event.target as HTMLInputElement).value }))} />
                 </div>
               ) : null}
 
@@ -876,8 +895,8 @@ const T = {
     g24: 'جرام 24', g21: 'جرام 21', g18: 'جرام 18', gp: 'الجنيه الذهب', inclU: 'جنيه · شامل المصنعية', gpU: 'جنيه · 8 جرام عيار 21',
     pull: '⟳ تحديث الأسعار مباشرة', stampInit: 'بيتحدّث تلقائيًا مع الفتح', expGramT: 'إزاي بنحسب سعر الجرام؟', expGram: 'سعر الذهب عالميًا بيتسعّر بالدولار للأونصة. بناخد سعر الأونصة ÷ 31.1 × سعر الدولار بالجنيه = جرام 24 بالجنيه. عيار 21 = جرام 24 × 0.875، والجنيه الذهب = 8 جرام عيار 21.',
     calcT: 'حاسبة الشراء بالأعيرة', calcAmt: 'المبلغ', calcCur: 'جنيه — يجيبلك:', thK: 'العيار', thP: 'سعر الجرام', thQ: 'الكمية', k24: 'عيار 24 (سبائك)', k22: 'عيار 22', k21: 'عيار 21', k18: 'عيار 18 (مشغولات)', gpRow: 'جنيهات ذهب', change: 'فكة', expKaratT: 'إيه الفرق بين الأعيرة؟', expKarat: 'العيار = نسبة الذهب الخالص. 24 = 99.9% (سبائك)، 22 = 91.7%، 21 = 87.5% (الأشهر في مصر)، 18 = 75% (مشغولات).',
-    targetLbl: 'السعر المستهدف المرجّح بالاحتمالات', deltaVs: 'عن السعر الحالي', bandNote: 'السعر الحالي خارج نطاقات السيناريوهات التلاتة. السوق مختلف مع أوزانك — راجعها بالسحب تحت.', expWT: 'يعني إيه "مرجّح بالاحتمالات"؟', expW: 'بدل الرهان على سيناريو واحد، بنحسب متوسط أهداف السيناريوهات التلاتة، كل واحد موزون باحتماله.', scen: { deesc: { name: 'التهدئة', sub: 'De-escalation', thesis: 'صمود اتفاق إيران + تحوّل الفيدرالي + عودة تدفقات الصناديق' }, base: { name: 'السيناريو الأساسي', sub: 'Base Case', thesis: 'شراء البنوك المركزية (~720 طن/سنة) في مواجهة الفايدة المرتفعة' }, stag: { name: 'فخ الركود التضخمي', sub: 'Stagflation', thesis: 'رفع فايدة وسط ضعف اقتصادي + ضغط دولاري + بيع اضطراري' } }, expScT: 'إزاي أستخدم السيناريوهات؟', expSc: 'اسحب أي شريط والباقيين بيتعدّلوا تلقائيًا عشان المجموع يفضل 100%.', aiT: 'المحلل الذكي', aiKeyPh: 'Anthropic API key — sk-ant-…', aiRemember: 'احفظ المفتاح على الجهاز ده', aiGo: '⚡ حلّل السوق بناءً على إطاري', aiLvl: 'مستوى الشرح', aiLvlBeg: 'مبتدئ', aiLvlExp: 'خبير', aiGoing: 'بيبحث في السوق ويحلل…', aiErr: 'فشل التحليل — ', aiTrendsH: 'اللي حرّك السوق', aiWeightsH: 'الأوزان المقترحة', aiApply: 'طبّق الأوزان دي على السيناريوهات', aiApplied: '✓ اتطبقت', aiTrancheH: 'قرار الدفعة الثانية', aiEgpH: 'قراءة الجنيه', aiDisc: 'تحليل آلي مبني على بحث لحظي — راجعه بعقلك قبل أي قرار.', expAiT: 'إزاي المحلل ده شغال؟', expAi: 'الزرار بيبعت حالة اللوحة كاملة — الأسعار الحية، أوزانك، السعر المرجّح، حالة الدفعات، ألوان المتابعة — لنموذج Claude ومعاه صلاحية بحث في الإنترنت.', dcaT: 'خطة الدخول التدريجي · 40 / 35 / 25', budgetLbl: 'الميزانية', cur: 'جنيه', tranches: [{ label: 'الدفعة الأولى', window: 'مايو–يونيو', note: 'تم شراء 5 جنيهات ذهب — دخول موفق' }, { label: 'الدفعة الثانية', window: 'يوليو–أغسطس', note: 'النافذة مفتوحة دلوقتي' }, { label: 'الدفعة الثالثة', window: 'سبتمبر–أكتوبر', note: 'استنى اجتماع الفيدرالي في سبتمبر' }], nowMark: '← دلوقتي', posLine: (value: string) => `المركز الحالي: 5 جنيهات ذهب ≈ <b class="num">${value}</b> جنيه بأسعار النهارده`, expDcaT: 'ليه الشراء على 3 دفعات مش مرة واحدة؟', expDca: 'دي استراتيجية DCA: توزيع الشراء بدل توقيت السوق. التقسيم 40 / 35 / 25: أكبر دفعة بدري، والباقي على نوافذ مربوطة باجتماعات الفيدرالي.', watchT: 'لوحة المتابعة — اضغط للتبديل · × للحذف', addMonPh: 'متغير جديد (مثلًا: أسعار النفط)…', addMonBtn: 'أضف', delMon: 'احذف المتغير', siglbl: ['داعم', 'مراقبة', 'خطر'] as const, expMonT: 'إيه المتغيرات دي وليه؟', expMon: 'الزر الأخضر = داعم، الأصفر = مراقبة، الأحمر = خطر على الأطروحة.',
-    aiUsingProvider: 'المزوّد المستخدم', aiNoProvider: 'مفيش مزوّد مُفعّل — روح الإعدادات', settingsHeading: 'إعدادات نموذج الذكاء الاصطناعي', settingsAddHeading: 'إضافة / تعديل مزوّد', settingsEmpty: 'لسه مفيش مزوّدين متضافين.', settingsTypeLabel: 'النوع', settingsLabelLabel: 'الاسم', settingsBaseUrlLabel: 'رابط الخادم', settingsApiKeyLabel: 'مفتاح API', settingsModelLabel: 'الموديل', settingsSaveBtn: 'حفظ', settingsCancelBtn: 'إلغاء', settingsActivateBtn: 'تفعيل', settingsActiveBadge: 'مُفعّل', settingsEditBtn: 'تعديل', settingsDeleteBtn: 'حذف', settingsTypeOllama: 'Ollama (محلي)', settingsTypeOpenAI: 'OpenAI', settingsTypeClaude: 'Claude', settingsTypeCustom: 'مخصص',
+    targetLbl: 'السعر المستهدف المرجّح بالاحتمالات', deltaVs: 'عن السعر الحالي', bandNote: 'السعر الحالي خارج نطاقات السيناريوهات التلاتة. السوق مختلف مع أوزانك — راجعها بالسحب تحت.', expWT: 'يعني إيه "مرجّح بالاحتمالات"؟', expW: 'بدل الرهان على سيناريو واحد، بنحسب متوسط أهداف السيناريوهات التلاتة، كل واحد موزون باحتماله.', scen: { deesc: { name: 'التهدئة', sub: 'De-escalation', thesis: 'صمود اتفاق إيران + تحوّل الفيدرالي + عودة تدفقات الصناديق' }, base: { name: 'السيناريو الأساسي', sub: 'Base Case', thesis: 'شراء البنوك المركزية (~720 طن/سنة) في مواجهة الفايدة المرتفعة' }, stag: { name: 'فخ الركود التضخمي', sub: 'Stagflation', thesis: 'رفع فايدة وسط ضعف اقتصادي + ضغط دولاري + بيع اضطراري' } }, expScT: 'إزاي أستخدم السيناريوهات؟', expSc: 'اسحب أي شريط والباقيين بيتعدّلوا تلقائيًا عشان المجموع يفضل 100%.', aiT: 'المحلل الذكي', aiGo: '⚡ حلّل السوق بناءً على إطاري', aiLvl: 'مستوى الشرح', aiLvlBeg: 'مبتدئ', aiLvlExp: 'خبير', aiGoing: 'بيبحث في السوق ويحلل…', aiErr: 'فشل التحليل — ', aiTrendsH: 'اللي حرّك السوق', aiWeightsH: 'الأوزان المقترحة', aiApply: 'طبّق الأوزان دي على السيناريوهات', aiApplied: '✓ اتطبقت', aiTrancheH: 'قرار الدفعة الثانية', aiEgpH: 'قراءة الجنيه', aiDisc: 'تحليل آلي مبني على بحث لحظي — راجعه بعقلك قبل أي قرار.', expAiT: 'إزاي المحلل ده شغال؟', expAi: 'الزرار بيبعت حالة اللوحة كاملة — الأسعار الحية، أوزانك، السعر المرجّح، حالة الدفعات، ألوان المتابعة — لنموذج Claude ومعاه صلاحية بحث في الإنترنت.', dcaT: 'خطة الدخول التدريجي · 40 / 35 / 25', budgetLbl: 'الميزانية', cur: 'جنيه', tranches: [{ label: 'الدفعة الأولى', window: 'مايو–يونيو', note: 'تم شراء 5 جنيهات ذهب — دخول موفق' }, { label: 'الدفعة الثانية', window: 'يوليو–أغسطس', note: 'النافذة مفتوحة دلوقتي' }, { label: 'الدفعة الثالثة', window: 'سبتمبر–أكتوبر', note: 'استنى اجتماع الفيدرالي في سبتمبر' }], nowMark: '← دلوقتي', posLine: (value: string) => `المركز الحالي: 5 جنيهات ذهب ≈ <b class="num">${value}</b> جنيه بأسعار النهارده`, expDcaT: 'ليه الشراء على 3 دفعات مش مرة واحدة؟', expDca: 'دي استراتيجية DCA: توزيع الشراء بدل توقيت السوق. التقسيم 40 / 35 / 25: أكبر دفعة بدري، والباقي على نوافذ مربوطة باجتماعات الفيدرالي.', watchT: 'لوحة المتابعة — اضغط للتبديل · × للحذف', addMonPh: 'متغير جديد (مثلًا: أسعار النفط)…', addMonBtn: 'أضف', delMon: 'احذف المتغير', siglbl: ['داعم', 'مراقبة', 'خطر'] as const, expMonT: 'إيه المتغيرات دي وليه؟', expMon: 'الزر الأخضر = داعم، الأصفر = مراقبة، الأحمر = خطر على الأطروحة.',
+    aiUsingProvider: 'المزوّد المستخدم', aiNoProvider: 'مفيش مزوّد مُفعّل — روح الإعدادات', settingsHeading: 'إعدادات نموذج الذكاء الاصطناعي', settingsAddHeading: 'إضافة / تعديل مزوّد', settingsEmpty: 'لسه مفيش مزوّدين متضافين.', settingsTypeLabel: 'النوع', settingsLabelLabel: 'الاسم', settingsBaseUrlLabel: 'رابط الخادم', settingsApiKeyLabel: 'مفتاح API', settingsApiKeyUnchangedPh: 'اتركه فاضي عشان يفضل زي ما هو', settingsModelLabel: 'الموديل', settingsSaveBtn: 'حفظ', settingsCancelBtn: 'إلغاء', settingsActivateBtn: 'تفعيل', settingsActiveBadge: 'مُفعّل', settingsEditBtn: 'تعديل', settingsDeleteBtn: 'حذف', settingsTypeOllama: 'Ollama (محلي)', settingsTypeOpenAI: 'OpenAI', settingsTypeClaude: 'Claude', settingsTypeCustom: 'مخصص',
     foot: 'الإطار: جلسة مايو 2026. الأسعار من مصادر مجانية بدون مفاتيح. أداة تحليل شخصية — مش نصيحة استثمارية.' },
   en: {
     dir: 'ltr', langBtn: 'عربي', eyebrow: 'PRIVATE · LIVE', title: 'Gold Hedge Cockpit', homeTab: 'Operations Room', marketTab: 'Live Market', calcTab: 'Karat Purchase Calculator', targetTab: 'Probability-Weighted Target', scenTab: 'Scenario Weights', aiTab: 'AI Analyst', dcaTab: 'DCA Plan', watchTab: 'Watchlist', settingsTab: 'Settings',
@@ -885,8 +904,8 @@ const T = {
     g24: '24k gram', g21: '21k gram', g18: '18k gram', gp: 'Gold pound', inclU: 'EGP · incl. premium', gpU: 'EGP · 8g of 21k',
     pull: '⟳ PULL LIVE MARKET', stampInit: 'Auto-pulls on open', expGramT: 'How is the gram price computed?', expGram: 'Gold is priced globally in USD per troy ounce. Ounce ÷ 31.1 × USD/EGP = 24k gram in EGP. 21k = 24k × 0.875; a gold pound = 8g of 21k.',
     calcT: 'KARAT PURCHASE CALCULATOR', calcAmt: 'Amount', calcCur: 'EGP buys you:', thK: 'Karat', thP: 'Per gram', thQ: 'Quantity', k24: '24k (bullion)', k22: '22k', k21: '21k', k18: '18k (jewelry)', gpRow: 'Gold pounds', change: 'change', expKaratT: "What's the difference between karats?", expKarat: 'Karat = purity. 24 = 99.9% (bullion), 22 = 91.7%, 21 = 87.5% (Egypt\'s standard), 18 = 75% (jewelry).',
-    targetLbl: 'PROBABILITY-WEIGHTED TARGET', deltaVs: 'vs. spot', bandNote: 'Spot sits outside all three bands. The market disagrees with your weights — drag below.', expWT: 'What does "probability-weighted" mean?', expW: 'Instead of betting on one scenario, we average the three targets, each weighted by its probability.', scen: { deesc: { name: 'De-escalation', sub: 'التهدئة', thesis: 'Iran deal holds, Fed pivots, ETF inflows return' }, base: { name: 'Base Case', sub: 'الأساسي', thesis: 'CB buying ~720t/yr vs. elevated rates — grind higher' }, stag: { name: 'Stagflation Trap', sub: 'فخ الركود', thesis: 'Fed hikes into weakness, dollar squeeze, forced selling' } }, expScT: 'How do I use the scenarios?', expSc: 'Drag any slider and the other two rebalance so the total stays 100%.', aiT: 'AI ANALYST', aiKeyPh: 'Anthropic API key — sk-ant-…', aiRemember: 'Remember key on this device', aiGo: '⚡ Analyze the market against my framework', aiLvl: 'Explanation level', aiLvlBeg: 'Beginner', aiLvlExp: 'Expert', aiGoing: 'Searching & analyzing…', aiErr: 'Analysis failed — ', aiTrendsH: 'WHAT MOVED THE MARKET', aiWeightsH: 'SUGGESTED WEIGHTS', aiApply: 'Apply these weights to the scenarios', aiApplied: '✓ Applied', aiTrancheH: 'TRANCHE 2 CALL', aiEgpH: 'EGP READ', aiDisc: 'Machine analysis on live search — apply your own judgment before acting.', expAiT: 'How does this analyst work?', expAi: 'The button sends your full cockpit state — live prices, your weights, the weighted target, tranche status, watchlist colors — to Claude with web-search access.', dcaT: 'DCA PLAN · 40 / 35 / 25', budgetLbl: 'Budget', cur: 'EGP', tranches: [{ label: 'Tranche 1', window: 'May–Jun', note: '5 gold pounds bought — good entry' }, { label: 'Tranche 2', window: 'Jul–Aug', note: 'Window open now' }, { label: 'Tranche 3', window: 'Sep–Oct', note: 'Hold for Fed September meeting' }], nowMark: '← now', posLine: (value: string) => `Current position: 5 gold pounds ≈ <b class="num">${value}</b> EGP at today\'s rates`, expDcaT: 'Why three tranches instead of one buy?', expDca: 'This is DCA: staged entry instead of timing the market. The 40 / 35 / 25 split puts the largest tranche early, with the rest tied to Fed-meeting windows.', watchT: 'WATCHLIST — TAP TO CYCLE · × TO DELETE', addMonPh: 'New variable (e.g. oil prices)…', addMonBtn: 'Add', delMon: 'Delete variable', siglbl: ['OK', 'Watch', 'Risk'] as const, expMonT: 'What are these variables?', expMon: 'Green = supportive, amber = watch, red = thesis risk.',
-    aiUsingProvider: 'Using provider', aiNoProvider: 'No active provider — go to Settings', settingsHeading: 'AI Model Settings', settingsAddHeading: 'Add / Edit Provider', settingsEmpty: 'No providers configured yet.', settingsTypeLabel: 'Type', settingsLabelLabel: 'Label', settingsBaseUrlLabel: 'Base URL', settingsApiKeyLabel: 'API key', settingsModelLabel: 'Model', settingsSaveBtn: 'Save', settingsCancelBtn: 'Cancel', settingsActivateBtn: 'Set active', settingsActiveBadge: 'Active', settingsEditBtn: 'Edit', settingsDeleteBtn: 'Delete', settingsTypeOllama: 'Ollama (local)', settingsTypeOpenAI: 'OpenAI', settingsTypeClaude: 'Claude', settingsTypeCustom: 'Custom',
+    targetLbl: 'PROBABILITY-WEIGHTED TARGET', deltaVs: 'vs. spot', bandNote: 'Spot sits outside all three bands. The market disagrees with your weights — drag below.', expWT: 'What does "probability-weighted" mean?', expW: 'Instead of betting on one scenario, we average the three targets, each weighted by its probability.', scen: { deesc: { name: 'De-escalation', sub: 'التهدئة', thesis: 'Iran deal holds, Fed pivots, ETF inflows return' }, base: { name: 'Base Case', sub: 'الأساسي', thesis: 'CB buying ~720t/yr vs. elevated rates — grind higher' }, stag: { name: 'Stagflation Trap', sub: 'فخ الركود', thesis: 'Fed hikes into weakness, dollar squeeze, forced selling' } }, expScT: 'How do I use the scenarios?', expSc: 'Drag any slider and the other two rebalance so the total stays 100%.', aiT: 'AI ANALYST', aiGo: '⚡ Analyze the market against my framework', aiLvl: 'Explanation level', aiLvlBeg: 'Beginner', aiLvlExp: 'Expert', aiGoing: 'Searching & analyzing…', aiErr: 'Analysis failed — ', aiTrendsH: 'WHAT MOVED THE MARKET', aiWeightsH: 'SUGGESTED WEIGHTS', aiApply: 'Apply these weights to the scenarios', aiApplied: '✓ Applied', aiTrancheH: 'TRANCHE 2 CALL', aiEgpH: 'EGP READ', aiDisc: 'Machine analysis on live search — apply your own judgment before acting.', expAiT: 'How does this analyst work?', expAi: 'The button sends your full cockpit state — live prices, your weights, the weighted target, tranche status, watchlist colors — to Claude with web-search access.', dcaT: 'DCA PLAN · 40 / 35 / 25', budgetLbl: 'Budget', cur: 'EGP', tranches: [{ label: 'Tranche 1', window: 'May–Jun', note: '5 gold pounds bought — good entry' }, { label: 'Tranche 2', window: 'Jul–Aug', note: 'Window open now' }, { label: 'Tranche 3', window: 'Sep–Oct', note: 'Hold for Fed September meeting' }], nowMark: '← now', posLine: (value: string) => `Current position: 5 gold pounds ≈ <b class="num">${value}</b> EGP at today\'s rates`, expDcaT: 'Why three tranches instead of one buy?', expDca: 'This is DCA: staged entry instead of timing the market. The 40 / 35 / 25 split puts the largest tranche early, with the rest tied to Fed-meeting windows.', watchT: 'WATCHLIST — TAP TO CYCLE · × TO DELETE', addMonPh: 'New variable (e.g. oil prices)…', addMonBtn: 'Add', delMon: 'Delete variable', siglbl: ['OK', 'Watch', 'Risk'] as const, expMonT: 'What are these variables?', expMon: 'Green = supportive, amber = watch, red = thesis risk.',
+    aiUsingProvider: 'Using provider', aiNoProvider: 'No active provider — go to Settings', settingsHeading: 'AI Model Settings', settingsAddHeading: 'Add / Edit Provider', settingsEmpty: 'No providers configured yet.', settingsTypeLabel: 'Type', settingsLabelLabel: 'Label', settingsBaseUrlLabel: 'Base URL', settingsApiKeyLabel: 'API key', settingsApiKeyUnchangedPh: 'Leave blank to keep unchanged', settingsModelLabel: 'Model', settingsSaveBtn: 'Save', settingsCancelBtn: 'Cancel', settingsActivateBtn: 'Set active', settingsActiveBadge: 'Active', settingsEditBtn: 'Edit', settingsDeleteBtn: 'Delete', settingsTypeOllama: 'Ollama (local)', settingsTypeOpenAI: 'OpenAI', settingsTypeClaude: 'Claude', settingsTypeCustom: 'Custom',
     foot: 'Framework: May 2026. Live prices from free keyless feeds. Personal analysis tool — not financial advice.' },
 };
 
