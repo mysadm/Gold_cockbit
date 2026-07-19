@@ -1,0 +1,1 @@
+ALTER TABLE scratch ADD COLUMN note TEXT;
