@@ -51,7 +51,7 @@ export async function updateProvider(id: number, input: LlmProviderInput): Promi
 
 export async function deleteProvider(id: number): Promise<void> {
   const response = await fetch(`/api/llm-providers/${id}`, { method: 'DELETE' });
-  if (!response.ok) throw new Error(`HTTP ${response.status}`);
+  await parseJsonOrThrow(response);
 }
 
 export async function activateProvider(id: number): Promise<LlmProvider> {
