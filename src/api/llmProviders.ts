@@ -58,6 +58,22 @@ export async function activateProvider(id: number): Promise<LlmProvider> {
   return parseJsonOrThrow(response);
 }
 
+export type TestProviderInput = {
+  provider_type: ProviderType;
+  base_url?: string | null;
+  api_key?: string | null;
+  model: string;
+};
+
+export async function testProvider(input: TestProviderInput): Promise<{ text: string }> {
+  const response = await fetch('/api/llm-providers/test', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(input),
+  });
+  return parseJsonOrThrow(response);
+}
+
 export async function analyzeViaBackend(prompt: string): Promise<{ text: string; usedWebSearch: boolean }> {
   const response = await fetch('/api/analyze', {
     method: 'POST',

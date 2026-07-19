@@ -134,3 +134,4 @@ button.ai-apply{background:#ffffff;border:1px solid #00B240;color:#00B240;font-f
 .settings-field{margin-bottom:14px;}
 .settings-field select{width:100%;background:transparent;border:none;border-bottom:1px solid #c4c4c4;color:#1a1a1a;font-family:inherit;font-size:14px;padding:6px 0;outline:none;}
 .settings-error{font-size:12px;color:#CC0000;margin-bottom:12px;}
+.settings-success{font-size:12px;color:#00B240;margin-top:10px;}
