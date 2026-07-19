@@ -1,6 +1,8 @@
 import { Router } from 'express';
+import { runProviderAnalysis } from '../providers/dispatch.mjs';
 
 const PUBLIC_COLUMNS = 'id, user_id, provider_type, label, base_url, model, is_active, created_at, updated_at';
+const TEST_PROMPT = 'Reply with only the single word: OK';
 
 export function createLlmProvidersRouter(db, userId) {
   const router = Router();
@@ -21,6 +23,16 @@ export function createLlmProvidersRouter(db, userId) {
       [userId, provider_type, label, base_url ?? null, api_key ?? null, model]
     );
     res.status(201).json(rows[0]);
+  });
+
+  router.post('/test', async (req, res) => {
+    const { provider_type, base_url, api_key, model } = req.body;
+    try {
+      const result = await runProviderAnalysis({ provider_type, base_url, api_key, model }, TEST_PROMPT);
+      res.json({ text: result.text });
+    } catch (err) {
+      res.status(502).json({ error: err.message });
+    }
   });
 
   router.put('/:id', async (req, res) => {
