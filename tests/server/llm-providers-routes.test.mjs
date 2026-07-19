@@ -81,6 +81,37 @@ describe('llm-providers routes', () => {
     expect(res.status).toBe(404);
   });
 
+  it('rejects creating a provider with an empty label', async () => {
+    const res = await request(app)
+      .post('/api/llm-providers')
+      .send({ provider_type: 'ollama', label: '', base_url: 'http://localhost:11434/v1', model: 'llama3.1' });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/label/i);
+  });
+
+  it('rejects creating a provider with an empty model', async () => {
+    const res = await request(app)
+      .post('/api/llm-providers')
+      .send({ provider_type: 'ollama', label: 'Home Ollama', base_url: 'http://localhost:11434/v1', model: '' });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/model/i);
+  });
+
+  it('rejects updating a provider to have an empty label or model', async () => {
+    const created = await request(app)
+      .post('/api/llm-providers')
+      .send({ provider_type: 'ollama', label: 'Home Ollama', base_url: 'http://localhost:11434/v1', model: 'llama3.1' });
+
+    const res = await request(app)
+      .put(`/api/llm-providers/${created.body.id}`)
+      .send({ provider_type: 'ollama', label: '  ', base_url: 'http://localhost:11434/v1', model: 'llama3.1' });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/label/i);
+  });
+
   it('deletes a provider', async () => {
     const created = await request(app)
       .post('/api/llm-providers')

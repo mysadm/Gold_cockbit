@@ -4,6 +4,12 @@ import { runProviderAnalysis } from '../providers/dispatch.mjs';
 const PUBLIC_COLUMNS = 'id, user_id, provider_type, label, base_url, model, is_active, created_at, updated_at';
 const TEST_PROMPT = 'Reply with only the single word: OK';
 
+function validationError(label, model) {
+  if (!label || !label.trim()) return 'label is required';
+  if (!model || !model.trim()) return 'model is required';
+  return null;
+}
+
 export function createLlmProvidersRouter(db, userId) {
   const router = Router();
 
@@ -17,6 +23,8 @@ export function createLlmProvidersRouter(db, userId) {
 
   router.post('/', async (req, res) => {
     const { provider_type, label, base_url, api_key, model } = req.body;
+    const error = validationError(label, model);
+    if (error) return res.status(400).json({ error });
     const { rows } = await db.query(
       `INSERT INTO llm_providers (user_id, provider_type, label, base_url, api_key, model)
        VALUES ($1, $2, $3, $4, $5, $6) RETURNING ${PUBLIC_COLUMNS}`,
@@ -37,6 +45,8 @@ export function createLlmProvidersRouter(db, userId) {
 
   router.put('/:id', async (req, res) => {
     const { provider_type, label, base_url, api_key, model } = req.body;
+    const error = validationError(label, model);
+    if (error) return res.status(400).json({ error });
     const { rows } = await db.query(
       `UPDATE llm_providers
        SET provider_type = $1, label = $2, base_url = $3,
