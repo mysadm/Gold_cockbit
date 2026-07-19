@@ -5,5 +5,6 @@ export default defineConfig({
     environment: 'node',
     setupFiles: ['dotenv/config'],
     testTimeout: 15000,
+    fileParallelism: false,
   },
 });
