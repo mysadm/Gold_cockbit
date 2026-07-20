@@ -14,6 +14,7 @@ export async function callOpenAICompatible({ baseUrl, apiKey, model, prompt }) {
       body: JSON.stringify({
         model,
         messages: [{ role: 'user', content: prompt }],
+        max_tokens: 4000,
       }),
     });
 

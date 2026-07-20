@@ -56,6 +56,26 @@ describe('POST /api/analyze', () => {
     );
   });
 
+  it('repairs malformed-but-recoverable JSON before returning it', async () => {
+    await client.query(
+      `INSERT INTO llm_providers (user_id, provider_type, label, model, is_active)
+       VALUES ($1, 'ollama', 'Local', 'gemma4', true)`,
+      [userId]
+    );
+    // Missing the closing ']' for trends before suggested_weights starts —
+    // the exact failure mode weaker local models produce.
+    const broken = '{"one_liner": "x", "trends": ["a", "suggested_weights": {"deesc": 33, "base": 34, "stag": 33}, "weights_reasoning": "y", "tranche2": {"verdict": "wait", "reasoning": "z"}, "egp_read": "w"}';
+    runProviderAnalysis.mockResolvedValue({ text: broken, usedWebSearch: false });
+
+    const res = await request(app).post('/api/analyze').send({ prompt: 'x' });
+
+    expect(res.status).toBe(200);
+    const parsed = JSON.parse(res.body.text);
+    expect(parsed.one_liner).toBe('x');
+    expect(parsed.suggested_weights).toEqual({ deesc: 33, base: 34, stag: 33 });
+    expect(parsed.tranche2).toEqual({ verdict: 'wait', reasoning: 'z' });
+  });
+
   it('returns 502 when the provider call fails', async () => {
     await client.query(
       `INSERT INTO llm_providers (user_id, provider_type, label, model, is_active)
