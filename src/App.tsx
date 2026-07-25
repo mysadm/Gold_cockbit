@@ -11,6 +11,7 @@ import {
   type LlmProviderInput,
   type ProviderType,
 } from './api/llmProviders';
+import { fetchEgyptPrices, type EgyptGoldSnapshot } from './api/egyptPrices';
 
 type Theme = 'light' | 'vault';
 type Language = 'en' | 'ar';
@@ -31,7 +32,7 @@ type AIResult = {
   egp_read?: string;
 };
 
-type TabKey = 'home' | 'market' | 'calc' | 'target' | 'scenarios' | 'ai' | 'dca' | 'watch' | 'settings';
+type TabKey = 'home' | 'market' | 'calc' | 'target' | 'scenarios' | 'egypt' | 'ai' | 'dca' | 'watch' | 'settings';
 
 type AppState = {
   spot: number;
@@ -66,6 +67,14 @@ const SCEN_META = [
 ];
 const SIGCOL = ['#4E8F7B', '#C9A227', '#B4482E'];
 const OZ = 31.1035;
+
+const EGYPT_KARAT_LABEL: Record<EgyptGoldSnapshot['rows'][number]['karat'], (t: (typeof T)['ar'] | (typeof T)['en']) => string> = {
+  '24k': (t) => t.k24,
+  '22k': (t) => t.k22,
+  '21k': (t) => t.k21,
+  '18k': (t) => t.k18,
+  gold_pound: (t) => t.gp,
+};
 
 const defaultState: AppState = {
   spot: 4060,
@@ -183,6 +192,24 @@ function App() {
   const [state, setState] = useState<AppState>(loadState);
   const [activeTab, setActiveTab] = useState<TabKey>('home');
   const [watchApplied, setWatchApplied] = useState(false);
+  const [egypt, setEgypt] = useState<{ loading: boolean; error: string | null; data: EgyptGoldSnapshot | null }>({
+    loading: false,
+    error: null,
+    data: null,
+  });
+
+  const loadEgyptPrices = () => {
+    setEgypt((prev) => ({ ...prev, loading: true, error: null }));
+    fetchEgyptPrices()
+      .then((data) => setEgypt({ loading: false, error: null, data }))
+      .catch((error) => setEgypt({ loading: false, error: error instanceof Error ? error.message : 'failed', data: null }));
+  };
+
+  useEffect(() => {
+    if (activeTab === 'egypt' && !egypt.data && !egypt.loading && !egypt.error) {
+      loadEgyptPrices();
+    }
+  }, [activeTab]);
   const [providers, setProviders] = useState<LlmProvider[]>([]);
   const [providerError, setProviderError] = useState<string | null>(null);
   const [testStatus, setTestStatus] = useState<{ loading: boolean; ok: boolean | null; message: string }>({
@@ -519,10 +546,19 @@ function App() {
     const watch = state.monitors.map((monitor) => `${state.lang === 'ar' ? monitor.ar : monitor.en}=${['supportive', 'watch', 'risk'][monitor.sig]}`).join(', ');
     const scenarioContext = SCEN_META.map((scenario) => `${t.scen[scenario.key].name} (currently weighted ${state.weights[scenario.key]}%, price band $${fmt(scenario.lo)}-$${fmt(scenario.hi)}): ${t.scen[scenario.key].thesis}`).join(' | ');
     const langName = state.lang === 'ar' ? 'Egyptian colloquial Arabic (مصري)' : 'English';
+    let egyptSnapshot = egypt.data;
+    if (!egyptSnapshot) {
+      egyptSnapshot = await fetchEgyptPrices().catch(() => null);
+      if (egyptSnapshot) setEgypt({ loading: false, error: null, data: egyptSnapshot });
+    }
+    const egyptContext = egyptSnapshot
+      ? egyptSnapshot.rows.map((row) => `${EGYPT_KARAT_LABEL[row.karat](t)}: sell ${row.sell} EGP / buy ${row.buy} EGP`).join(', ')
+      : null;
     const prompt = `You are a senior precious-metals strategist advising a Cairo-based CIO. LIVE COCKPIT STATE - XAU/USD: ${state.spot}; USD/EGP: ${state.egp}; weighted target: ${Math.round(weightedTarget)}.
 CURRENT SCENARIO FRAMEWORK (the user's existing weights and theses — these may be stale): ${scenarioContext}.
 Use your live web search to check whether real current events (e.g. shifts in the Iran situation including any resumption of conflict, Fed policy moves, central-bank gold buying, EGP moves) still support these theses as weighted, or whether the balance between the three scenarios has genuinely shifted. Your suggested_weights must reflect this reassessment, not just restate the current weights.
 WATCHLIST — treat this as a primary input alongside your own research, not background color. Weigh supportive items toward the scenario they favor and risk items away from it; let them materially move both suggested_weights and the tranche2 verdict: ${watch}.
+${egyptContext ? `LOCAL EGYPTIAN MARKET (live retail prices from iSagha.com, EGP per gram): ${egyptContext}. Use this to ground your egp_read specifically in what a buyer/seller sees in the Egyptian market right now, not just the theoretical USD/EGP conversion.` : ''}
 ${state.aiLevel === 'beginner' ? 'Use simple everyday language.' : 'Be direct and specific.'} Write every string VALUE in ${langName} — the whole analysis, every sentence, must be in ${langName}, no English mixed in unless it's a ticker/number. Respond with ONLY a single JSON object, no markdown code fences, matching EXACTLY this schema and these key names in English (the KEYS stay in English exactly as shown, only the VALUES are translated, no other keys, no nested wrapper object):
 {
   "one_liner": "<one-sentence summary of the current read, in ${langName}>",
@@ -613,6 +649,7 @@ The three suggested_weights values must sum to 100.`;
               { key: 'calc' as const, label: t.calcTab },
               { key: 'target' as const, label: t.targetTab },
               { key: 'scenarios' as const, label: t.scenTab },
+              { key: 'egypt' as const, label: t.egyptTab },
               { key: 'ai' as const, label: t.aiTab },
               { key: 'dca' as const, label: t.dcaTab },
               { key: 'watch' as const, label: t.watchTab },
@@ -766,6 +803,40 @@ The three suggested_weights values must sum to 100.`;
               <summary>{t.expScT}</summary>
               <div className="exp">{t.expSc}</div>
             </details>
+          </div>
+
+          <div className={`section-wrap ${activeTab === 'egypt' ? 'active' : ''}`}>
+            <div className="sechead">
+              <div className="lbl">{t.egyptHeading}</div>
+              <button className="pull" onClick={loadEgyptPrices} disabled={egypt.loading}>{egypt.loading ? t.egyptLoading : t.pull}</button>
+            </div>
+            <div className="panel" style={{ marginTop: 0 }}>
+              {egypt.error ? <div className="ai-status err">{t.egyptErr}{egypt.error}</div> : null}
+              {egypt.data ? (
+                <>
+                  <table className="karat">
+                    <thead>
+                      <tr>
+                        <th>{t.thK}</th>
+                        <th className="n">{t.egyptSell}</th>
+                        <th className="n">{t.egyptBuy}</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {egypt.data.rows.map((row) => (
+                        <tr>
+                          <td>{EGYPT_KARAT_LABEL[row.karat](t)}</td>
+                          <td className="n">{fmt(row.sell)} EGP</td>
+                          <td className="n">{fmt(row.buy)} EGP</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  <div className="ai-meta">{t.egyptSourceNote} · {new Date(egypt.data.fetchedAt).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</div>
+                </>
+              ) : null}
+              {!egypt.data && !egypt.error && egypt.loading ? <div>{t.egyptLoading}</div> : null}
+            </div>
           </div>
 
           <div className={`section-wrap ${activeTab === 'ai' ? 'active' : ''}`}>
@@ -969,7 +1040,8 @@ The three suggested_weights values must sum to 100.`;
 
 const T = {
   ar: {
-    dir: 'rtl', langBtn: 'EN', eyebrow: 'خاص · مباشر', title: 'غرفة عمليات الذهب', homeTab: 'غرفة العمليات', marketTab: 'الأسعار المباشرة', calcTab: 'حاسبة الشراء بالأعيرة', targetTab: 'السعر المستهدف المرجّح', scenTab: 'سيناريوهات الأوزان', aiTab: 'المحلل الذكي', dcaTab: 'خطة الدخول التدريجي', watchTab: 'قائمة المراقبة', settingsTab: 'الإعدادات',
+    dir: 'rtl', langBtn: 'EN', eyebrow: 'خاص · مباشر', title: 'غرفة عمليات الذهب', homeTab: 'غرفة العمليات', marketTab: 'الأسعار المباشرة', calcTab: 'حاسبة الشراء بالأعيرة', targetTab: 'السعر المستهدف المرجّح', scenTab: 'سيناريوهات الأوزان', egyptTab: 'السوق المصري', aiTab: 'المحلل الذكي', dcaTab: 'خطة الدخول التدريجي', watchTab: 'قائمة المراقبة', settingsTab: 'الإعدادات',
+    egyptHeading: 'أسعار السوق المصري المحلي', egyptSell: 'سعر البيع', egyptBuy: 'سعر الشراء', egyptLoading: 'بيجيب الأسعار من آي صاغة…', egyptErr: 'تعذر جلب أسعار آي صاغة — ', egyptSourceNote: 'المصدر: iSagha.com (آخر تحديث)',
     inSpot: 'أونصة الذهب $', inEgp: 'دولار / جنيه', inPrem: 'مصنعية %', ounce: 'الأونصة', ounceU: 'التحويل المباشر بدون مصنعية',
     g24: 'جرام 24', g21: 'جرام 21', g18: 'جرام 18', gp: 'الجنيه الذهب', inclU: 'جنيه · شامل المصنعية', gpU: 'جنيه · 8 جرام عيار 21',
     pull: '⟳ تحديث الأسعار مباشرة', stampInit: 'بيتحدّث تلقائيًا مع الفتح', expGramT: 'إزاي بنحسب سعر الجرام؟', expGram: 'سعر الذهب عالميًا بيتسعّر بالدولار للأونصة. بناخد سعر الأونصة ÷ 31.1 × سعر الدولار بالجنيه = جرام 24 بالجنيه. عيار 21 = جرام 24 × 0.875، والجنيه الذهب = 8 جرام عيار 21.',
@@ -978,7 +1050,8 @@ const T = {
     aiUsingProvider: 'المزوّد المستخدم', aiNoProvider: 'مفيش مزوّد مُفعّل — روح الإعدادات', settingsHeading: 'إعدادات نموذج الذكاء الاصطناعي', settingsAddHeading: 'إضافة / تعديل مزوّد', settingsEmpty: 'لسه مفيش مزوّدين متضافين.', settingsTypeLabel: 'النوع', settingsLabelLabel: 'الاسم', settingsBaseUrlLabel: 'رابط الخادم', settingsApiKeyLabel: 'مفتاح API', settingsApiKeyUnchangedPh: 'اتركه فاضي عشان يفضل زي ما هو', settingsModelLabel: 'الموديل', settingsSaveBtn: 'حفظ', settingsCancelBtn: 'إلغاء', settingsActivateBtn: 'تفعيل', settingsActiveBadge: 'مُفعّل', settingsEditBtn: 'تعديل', settingsDeleteBtn: 'حذف', settingsTypeOllama: 'Ollama (محلي)', settingsTypeOpenAI: 'OpenAI', settingsTypeClaude: 'Claude', settingsTypeCustom: 'مخصص', settingsTestBtn: 'اختبار الاتصال', settingsTesting: 'بيتم الاختبار…', settingsTestSuccess: '✓ نجح الاتصال —', settingsTestError: '✗ فشل الاتصال —', settingsValidationError: 'الاسم والموديل مطلوبين',
     foot: 'الإطار: جلسة مايو 2026. الأسعار من مصادر مجانية بدون مفاتيح. أداة تحليل شخصية — مش نصيحة استثمارية.' },
   en: {
-    dir: 'ltr', langBtn: 'عربي', eyebrow: 'PRIVATE · LIVE', title: 'Gold Hedge Cockpit', homeTab: 'Operations Room', marketTab: 'Live Market', calcTab: 'Karat Purchase Calculator', targetTab: 'Probability-Weighted Target', scenTab: 'Scenario Weights', aiTab: 'AI Analyst', dcaTab: 'DCA Plan', watchTab: 'Watchlist', settingsTab: 'Settings',
+    dir: 'ltr', langBtn: 'عربي', eyebrow: 'PRIVATE · LIVE', title: 'Gold Hedge Cockpit', homeTab: 'Operations Room', marketTab: 'Live Market', calcTab: 'Karat Purchase Calculator', targetTab: 'Probability-Weighted Target', scenTab: 'Scenario Weights', egyptTab: 'Egypt Market', aiTab: 'AI Analyst', dcaTab: 'DCA Plan', watchTab: 'Watchlist', settingsTab: 'Settings',
+    egyptHeading: 'LOCAL EGYPTIAN MARKET PRICES', egyptSell: 'Sell', egyptBuy: 'Buy', egyptLoading: 'Fetching prices from iSagha…', egyptErr: 'Could not reach iSagha — ', egyptSourceNote: 'Source: iSagha.com (last updated)',
     inSpot: 'XAU/USD', inEgp: 'USD/EGP', inPrem: 'PREMIUM %', ounce: 'Ounce', ounceU: 'direct conversion, no premium',
     g24: '24k gram', g21: '21k gram', g18: '18k gram', gp: 'Gold pound', inclU: 'EGP · incl. premium', gpU: 'EGP · 8g of 21k',
     pull: '⟳ PULL LIVE MARKET', stampInit: 'Auto-pulls on open', expGramT: 'How is the gram price computed?', expGram: 'Gold is priced globally in USD per troy ounce. Ounce ÷ 31.1 × USD/EGP = 24k gram in EGP. 21k = 24k × 0.875; a gold pound = 8g of 21k.',
