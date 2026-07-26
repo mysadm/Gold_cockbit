@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../../scenarios/application/scenarios_providers.dart' show apiClientProvider;
+import '../../../core/api_client.dart' show apiClientProvider;
 import '../application/watchlist_providers.dart';
 import '../data/watchlist_repository.dart';
 
@@ -44,9 +44,17 @@ class _WatchlistScreenState extends ConsumerState<WatchlistScreen> {
                 icon: const Icon(Icons.add),
                 onPressed: () async {
                   if (_newItemController.text.trim().isEmpty) return;
-                  await repository.create(dio, label: _newItemController.text.trim(), status: 'watch');
-                  _newItemController.clear();
-                  ref.invalidate(watchlistListProvider);
+                  try {
+                    await repository.create(dio, label: _newItemController.text.trim(), status: 'watch');
+                    if (!context.mounted) return;
+                    _newItemController.clear();
+                    ref.invalidate(watchlistListProvider);
+                  } catch (e) {
+                    if (!context.mounted) return;
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text('Error adding item: $e')),
+                    );
+                  }
                 },
               ),
             ],
@@ -61,14 +69,30 @@ class _WatchlistScreenState extends ConsumerState<WatchlistScreen> {
                     title: Text(item.label),
                     subtitle: Text(item.status),
                     onTap: () async {
-                      await repository.updateStatus(dio, item.id, nextStatus(item.status));
-                      ref.invalidate(watchlistListProvider);
+                      try {
+                        await repository.updateStatus(dio, item.id, nextStatus(item.status));
+                        if (!context.mounted) return;
+                        ref.invalidate(watchlistListProvider);
+                      } catch (e) {
+                        if (!context.mounted) return;
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(content: Text('Error updating item: $e')),
+                        );
+                      }
                     },
                     trailing: IconButton(
                       icon: const Icon(Icons.close),
                       onPressed: () async {
-                        await repository.delete(dio, item.id);
-                        ref.invalidate(watchlistListProvider);
+                        try {
+                          await repository.delete(dio, item.id);
+                          if (!context.mounted) return;
+                          ref.invalidate(watchlistListProvider);
+                        } catch (e) {
+                          if (!context.mounted) return;
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(content: Text('Error deleting item: $e')),
+                          );
+                        }
                       },
                     ),
                   ),
