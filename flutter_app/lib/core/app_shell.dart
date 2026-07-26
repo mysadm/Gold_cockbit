@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'language_preference.dart';
 import '../l10n/strings.dart';
 import '../features/market/presentation/market_screen.dart';
+import '../features/market/application/market_providers.dart';
 import '../features/calculator/presentation/calculator_screen.dart';
 import '../features/scenarios/presentation/scenarios_screen.dart';
 import '../features/tranches/presentation/tranches_screen.dart';
@@ -26,14 +27,26 @@ class _AppShellState extends ConsumerState<AppShell> {
     final language = ref.watch(languageProvider);
     final strings = Strings(language);
 
+    final marketAsync = ref.watch(marketSnapshotProvider(0));
+    final spot = marketAsync.value?.spotUsd ?? 0;
+    final usdEgp = marketAsync.value?.usdEgp ?? 0;
+    final gramPrices = marketAsync.value?.gramPrices;
+
     final destinations = <_ShellDestination>[
       _ShellDestination(strings.marketTab, const MarketScreen()),
-      _ShellDestination(strings.scenariosTab, const ScenariosScreen()),
+      _ShellDestination(strings.scenariosTab, ScenariosScreen(spot: spot)),
       _ShellDestination(strings.dcaTab, const TranchesScreen()),
       _ShellDestination(strings.watchTab, const WatchlistScreen()),
-      _ShellDestination(strings.calcTab, const CalculatorScreen(gram24k: 0, gram21k: 0, gram18k: 0)),
+      _ShellDestination(
+        strings.calcTab,
+        CalculatorScreen(
+          gram24k: gramPrices?.g24 ?? 0,
+          gram21k: gramPrices?.g21 ?? 0,
+          gram18k: gramPrices?.g18 ?? 0,
+        ),
+      ),
       _ShellDestination(strings.egyptTab, const EgyptPricesScreen()),
-      _ShellDestination(strings.aiTab, const AiAnalystScreen()),
+      _ShellDestination(strings.aiTab, AiAnalystScreen(spot: spot, usdEgp: usdEgp)),
       _ShellDestination(strings.settingsTab, const LlmProvidersScreen()),
     ];
 
