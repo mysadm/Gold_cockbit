@@ -4,11 +4,14 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:gold_cockpit_mobile/main.dart';
+import 'package:gold_cockpit_mobile/core/domain.dart';
 import 'package:gold_cockpit_mobile/core/language_preference.dart';
 import 'package:gold_cockpit_mobile/core/app_shell.dart';
 import 'package:gold_cockpit_mobile/core/app_config.dart';
 import 'package:gold_cockpit_mobile/core/setup_screen.dart';
 import 'package:gold_cockpit_mobile/core/secure_store.dart';
+import 'package:gold_cockpit_mobile/features/market/application/market_providers.dart';
+import 'package:gold_cockpit_mobile/features/market/data/market_repository.dart';
 
 class FakeSecureStore implements SecureStore {
   final Map<String, String> _values = {};
@@ -28,11 +31,25 @@ void main() {
     final config = AppConfig(store);
     await config.setBaseUrl('http://localhost:8787');
 
+    // Create a mock market snapshot with test data
+    const mockSnapshot = MarketSnapshot(
+      spotUsd: 2500.0,
+      usdEgp: 50.0,
+      spotSource: 'test',
+      gramPrices: GramPrices(
+        g24: 4018.7,
+        g21: 3516.4,
+        g18: 3015.0,
+        goldPound: 28131.2,
+      ),
+    );
+
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
           sharedPreferencesProvider.overrideWithValue(prefs),
           appConfigProvider.overrideWithValue(config),
+          marketSnapshotProvider(0).overrideWith((ref) async => mockSnapshot),
         ],
         child: const MyApp(),
       ),
