@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'core/app_config.dart' show appConfigProvider;
 import 'core/language_preference.dart';
-import 'core/setup_screen.dart' show SetupScreen, appConfigProvider;
+import 'core/setup_screen.dart' show SetupScreen;
 import 'core/app_shell.dart';
 import 'l10n/strings.dart';
 

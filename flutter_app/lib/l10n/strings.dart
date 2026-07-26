@@ -57,4 +57,7 @@ class Strings {
   String get baseUrlFieldLabel => isAr ? 'عنوان الخادم' : 'Server base URL';
   String get apiKeyFieldLabel => isAr ? 'مفتاح API (اختياري)' : 'API key (optional)';
   String get saveButton => isAr ? 'حفظ' : 'Save';
+  String get invalidUrlError =>
+      isAr ? 'من فضلك أدخل رابطًا صحيحًا (http:// أو https://)' : 'Enter a valid http:// or https:// URL';
+  String get connectionSettingsMenuItem => isAr ? 'إعدادات الاتصال' : 'Connection settings';
 }

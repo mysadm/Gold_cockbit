@@ -1,4 +1,7 @@
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'secure_store.dart';
+
+final appConfigProvider = Provider<AppConfig>((ref) => AppConfig(const FlutterSecureStore()));
 
 class AppConfig {
   AppConfig(this._store);

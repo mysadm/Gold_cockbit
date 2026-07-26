@@ -8,6 +8,7 @@ import 'package:gold_cockpit_mobile/core/language_preference.dart';
 import 'package:gold_cockpit_mobile/core/secure_store.dart';
 import 'package:gold_cockpit_mobile/core/setup_screen.dart';
 import 'package:gold_cockpit_mobile/core/app_shell.dart';
+import 'package:gold_cockpit_mobile/l10n/strings.dart';
 import 'package:gold_cockpit_mobile/features/market/application/market_providers.dart';
 import 'package:gold_cockpit_mobile/features/market/data/market_repository.dart';
 
@@ -97,5 +98,55 @@ void main() {
     expect(find.byType(SetupScreen), findsNothing);
     // The app shell should now be visible
     expect(find.byType(AppShell), findsOneWidget);
+  });
+
+  testWidgets('rejects an invalid base URL and stays on the setup screen', (tester) async {
+    SharedPreferences.setMockInitialValues({});
+    final prefs = await SharedPreferences.getInstance();
+    final store = FakeSecureStore();
+    final config = AppConfig(store);
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          appConfigProvider.overrideWithValue(config),
+          sharedPreferencesProvider.overrideWithValue(prefs),
+        ],
+        child: const MaterialApp(home: SetupScreen()),
+      ),
+    );
+
+    await tester.enterText(find.byKey(const Key('baseUrlField')), 'not-a-url');
+    await tester.tap(find.byKey(const Key('saveButton')));
+    await tester.pumpAndSettle();
+
+    // Nothing should have been persisted, and we should still be on setup.
+    expect(await store.read('gold_cockpit_base_url'), isNull);
+    expect(find.byType(SetupScreen), findsOneWidget);
+    expect(find.text(const Strings(AppLanguage.en).invalidUrlError), findsOneWidget);
+  });
+
+  testWidgets('rejects an empty base URL', (tester) async {
+    SharedPreferences.setMockInitialValues({});
+    final prefs = await SharedPreferences.getInstance();
+    final store = FakeSecureStore();
+    final config = AppConfig(store);
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          appConfigProvider.overrideWithValue(config),
+          sharedPreferencesProvider.overrideWithValue(prefs),
+        ],
+        child: const MaterialApp(home: SetupScreen()),
+      ),
+    );
+
+    await tester.enterText(find.byKey(const Key('baseUrlField')), '   ');
+    await tester.tap(find.byKey(const Key('saveButton')));
+    await tester.pumpAndSettle();
+
+    expect(await store.read('gold_cockpit_base_url'), isNull);
+    expect(find.byType(SetupScreen), findsOneWidget);
   });
 }

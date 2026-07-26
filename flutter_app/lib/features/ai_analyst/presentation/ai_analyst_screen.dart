@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../core/api_client.dart';
 import '../../scenarios/application/scenarios_providers.dart';
 import '../../watchlist/application/watchlist_providers.dart';
 import '../application/ai_analyst_providers.dart';

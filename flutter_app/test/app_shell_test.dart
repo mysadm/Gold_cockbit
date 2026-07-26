@@ -6,10 +6,10 @@ import 'package:gold_cockpit_mobile/core/language_preference.dart';
 import 'package:gold_cockpit_mobile/core/domain.dart';
 import 'package:gold_cockpit_mobile/core/app_config.dart';
 import 'package:gold_cockpit_mobile/core/secure_store.dart';
-import 'package:gold_cockpit_mobile/core/setup_screen.dart' show appConfigProvider;
 import 'package:gold_cockpit_mobile/features/market/application/market_providers.dart';
 import 'package:gold_cockpit_mobile/features/market/data/market_repository.dart';
 import 'package:gold_cockpit_mobile/main.dart';
+import 'package:gold_cockpit_mobile/core/setup_screen.dart';
 
 class FakeSecureStore implements SecureStore {
   final Map<String, String> _values = {};
@@ -61,5 +61,56 @@ void main() {
     expect(find.text('Market'), findsWidgets);
     expect(find.text('Scenarios'), findsOneWidget);
     expect(find.text('Settings'), findsOneWidget);
+  });
+
+  testWidgets('drawer has a way back into the setup screen', (tester) async {
+    SharedPreferences.setMockInitialValues({});
+    final store = FakeSecureStore();
+    final config = AppConfig(store);
+    await config.setBaseUrl('http://test.local');
+    final prefs = await SharedPreferences.getInstance();
+
+    const mockSnapshot = MarketSnapshot(
+      spotUsd: 2500.0,
+      usdEgp: 50.0,
+      spotSource: 'test',
+      gramPrices: GramPrices(
+        g24: 4018.7,
+        g21: 3516.4,
+        g18: 3015.0,
+        goldPound: 28131.2,
+      ),
+    );
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          appConfigProvider.overrideWithValue(config),
+          sharedPreferencesProvider.overrideWithValue(prefs),
+          marketSnapshotProvider(0).overrideWith((ref) async => mockSnapshot),
+        ],
+        child: const MyApp(),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final scaffoldState = tester.state<ScaffoldState>(find.byType(Scaffold).first);
+    scaffoldState.openDrawer();
+    await tester.pumpAndSettle();
+
+    // The drawer's ListView only materializes on-screen items, so scroll
+    // down until the connection-settings entry (after all the destination
+    // tiles) is built and visible.
+    await tester.scrollUntilVisible(
+      find.byKey(const Key('connectionSettingsTile')),
+      500,
+      scrollable: find.descendant(of: find.byType(Drawer), matching: find.byType(Scrollable)).first,
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const Key('connectionSettingsTile')));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(SetupScreen), findsOneWidget);
   });
 }

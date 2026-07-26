@@ -8,7 +8,6 @@ import 'package:gold_cockpit_mobile/core/domain.dart';
 import 'package:gold_cockpit_mobile/core/language_preference.dart';
 import 'package:gold_cockpit_mobile/core/app_shell.dart';
 import 'package:gold_cockpit_mobile/core/app_config.dart';
-import 'package:gold_cockpit_mobile/core/setup_screen.dart';
 import 'package:gold_cockpit_mobile/core/secure_store.dart';
 import 'package:gold_cockpit_mobile/features/market/application/market_providers.dart';
 import 'package:gold_cockpit_mobile/features/market/data/market_repository.dart';

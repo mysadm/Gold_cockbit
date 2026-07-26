@@ -11,6 +11,7 @@ import '../features/watchlist/presentation/watchlist_screen.dart';
 import '../features/egypt_prices/presentation/egypt_prices_screen.dart';
 import '../features/ai_analyst/presentation/ai_analyst_screen.dart';
 import '../features/llm_providers/presentation/llm_providers_screen.dart';
+import 'setup_screen.dart';
 
 class AppShell extends ConsumerStatefulWidget {
   const AppShell({super.key});
@@ -77,6 +78,18 @@ class _AppShellState extends ConsumerState<AppShell> {
                   Navigator.pop(context);
                 },
               ),
+            const Divider(),
+            ListTile(
+              key: const Key('connectionSettingsTile'),
+              leading: const Icon(Icons.settings_ethernet),
+              title: Text(strings.connectionSettingsMenuItem),
+              onTap: () {
+                Navigator.pop(context);
+                Navigator.of(context).push(
+                  MaterialPageRoute(builder: (_) => const SetupScreen()),
+                );
+              },
+            ),
           ],
         ),
       ),

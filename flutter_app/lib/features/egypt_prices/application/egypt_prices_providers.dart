@@ -1,5 +1,5 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../../scenarios/application/scenarios_providers.dart' show apiClientProvider;
+import '../../../core/api_client.dart' show apiClientProvider;
 import '../data/egypt_prices_repository.dart';
 
 final egyptPricesRepositoryProvider = Provider<EgyptPricesRepository>((ref) => EgyptPricesRepository());

@@ -1,4 +1,5 @@
 import 'package:dio/dio.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'app_config.dart';
 
 Future<void> applyAuth(RequestOptions options, AppConfig config) async {
@@ -28,3 +29,5 @@ class ApiClient {
 
   Dio get dio => _dio;
 }
+
+final apiClientProvider = Provider<ApiClient>((ref) => ApiClient(ref.watch(appConfigProvider)));

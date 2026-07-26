@@ -1,8 +1,8 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../../scenarios/application/scenarios_providers.dart' show apiClientProvider;
+import '../../../core/api_client.dart' show apiClientProvider;
 import '../data/llm_providers_repository.dart';
 
-export '../../scenarios/application/scenarios_providers.dart' show apiClientProvider;
+export '../../../core/api_client.dart' show apiClientProvider;
 
 final llmProvidersRepositoryProvider = Provider<LlmProvidersRepository>((ref) => LlmProvidersRepository());
 
