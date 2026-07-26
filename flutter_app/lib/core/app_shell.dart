@@ -7,6 +7,7 @@ import '../features/calculator/presentation/calculator_screen.dart';
 import '../features/scenarios/presentation/scenarios_screen.dart';
 import '../features/tranches/presentation/tranches_screen.dart';
 import '../features/watchlist/presentation/watchlist_screen.dart';
+import '../features/llm_providers/presentation/llm_providers_screen.dart';
 
 class AppShell extends ConsumerStatefulWidget {
   const AppShell({super.key});
@@ -31,7 +32,7 @@ class _AppShellState extends ConsumerState<AppShell> {
       _ShellDestination(strings.calcTab, const CalculatorScreen(gram24k: 0, gram21k: 0, gram18k: 0)),
       _ShellDestination(strings.egyptTab, const Placeholder()),
       _ShellDestination(strings.aiTab, const Placeholder()),
-      _ShellDestination(strings.settingsTab, const Placeholder()),
+      _ShellDestination(strings.settingsTab, const LlmProvidersScreen()),
     ];
 
     return Scaffold(
