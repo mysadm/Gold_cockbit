@@ -38,6 +38,25 @@ describe('llm-providers routes', () => {
     expect(listRes.body).toHaveLength(1);
   });
 
+  it('requires a configured API key for provider routes', async () => {
+    const previousKey = process.env.GOLD_COCKPIT_API_KEY;
+    process.env.GOLD_COCKPIT_API_KEY = 'test-secret';
+
+    try {
+      const denied = await request(app).get('/api/llm-providers');
+      expect(denied.status).toBe(401);
+
+      const allowed = await request(app).get('/api/llm-providers').set('x-api-key', 'test-secret');
+      expect(allowed.status).toBe(200);
+    } finally {
+      if (previousKey === undefined) {
+        delete process.env.GOLD_COCKPIT_API_KEY;
+      } else {
+        process.env.GOLD_COCKPIT_API_KEY = previousKey;
+      }
+    }
+  });
+
   it('activates a provider and deactivates the previously active one', async () => {
     const first = await request(app)
       .post('/api/llm-providers')

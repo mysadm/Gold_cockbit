@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { createApiKeyAuthMiddleware } from '../auth.mjs';
 import { runProviderAnalysis } from '../providers/dispatch.mjs';
 
 const PUBLIC_COLUMNS = 'id, user_id, provider_type, label, base_url, model, is_active, created_at, updated_at';
@@ -12,6 +13,7 @@ function validationError(label, model) {
 
 export function createLlmProvidersRouter(db, userId) {
   const router = Router();
+  router.use(createApiKeyAuthMiddleware());
 
   router.get('/', async (req, res) => {
     const { rows } = await db.query(

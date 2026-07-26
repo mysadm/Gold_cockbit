@@ -49,6 +49,17 @@ describe('callOpenAICompatible', () => {
     expect(options.headers.Authorization).toBeUndefined();
   });
 
+  it('rejects private-network destinations to prevent SSRF', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(
+      callOpenAICompatible({ baseUrl: 'http://127.0.0.1:8080/v1', apiKey: null, model: 'llama3.1', prompt: 'x' })
+    ).rejects.toThrow(/blocked/i);
+
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
   it('throws with the provider error message on a non-ok response', async () => {
     const fetchMock = vi.fn().mockResolvedValue({
       ok: false,

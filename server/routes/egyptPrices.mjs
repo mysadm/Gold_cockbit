@@ -1,8 +1,10 @@
 import { Router } from 'express';
+import { createApiKeyAuthMiddleware } from '../auth.mjs';
 import { fetchEgyptGoldPrices } from '../isaghaPrices.mjs';
 
 export function createEgyptPricesRouter() {
   const router = Router();
+  router.use(createApiKeyAuthMiddleware());
 
   router.get('/', async (req, res) => {
     try {

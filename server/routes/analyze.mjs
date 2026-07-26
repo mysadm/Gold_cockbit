@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { createApiKeyAuthMiddleware } from '../auth.mjs';
 import { runProviderAnalysis } from '../providers/dispatch.mjs';
 import { repairAnalysisJson } from './repairAnalysisJson.mjs';
 
@@ -22,6 +23,7 @@ function isParseableJson(text) {
 
 export function createAnalyzeRouter(db, userId) {
   const router = Router();
+  router.use(createApiKeyAuthMiddleware());
 
   router.post('/', async (req, res) => {
     const { prompt } = req.body;
