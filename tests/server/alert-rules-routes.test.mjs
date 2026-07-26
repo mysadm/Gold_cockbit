@@ -82,4 +82,43 @@ describe('alert rules routes', () => {
     const list = await request(app).get('/api/alert-rules');
     expect(list.body).toHaveLength(0);
   });
+
+  it('rejects PATCH with invalid config (null)', async () => {
+    const created = await request(app)
+      .post('/api/alert-rules')
+      .send({ rule_type: 'band_edge', config: { edge: 'low' } });
+
+    const res = await request(app)
+      .patch(`/api/alert-rules/${created.body.id}`)
+      .send({ config: null });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/config/i);
+  });
+
+  it('rejects PATCH with invalid config (string)', async () => {
+    const created = await request(app)
+      .post('/api/alert-rules')
+      .send({ rule_type: 'egp_move', config: { threshold_pct: 2 } });
+
+    const res = await request(app)
+      .patch(`/api/alert-rules/${created.body.id}`)
+      .send({ config: 'invalid' });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/config/i);
+  });
+
+  it('rejects PATCH with invalid config (array)', async () => {
+    const created = await request(app)
+      .post('/api/alert-rules')
+      .send({ rule_type: 'tranche_window', config: { tranche: 1 } });
+
+    const res = await request(app)
+      .patch(`/api/alert-rules/${created.body.id}`)
+      .send({ config: [1, 2, 3] });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/config/i);
+  });
 });

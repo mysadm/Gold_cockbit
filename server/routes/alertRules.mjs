@@ -40,6 +40,12 @@ export function createAlertRulesRouter(db, userId) {
       return res.status(400).json({ error: 'rule_type must be one of band_edge, egp_move, tranche_window' });
     }
 
+    if ('config' in req.body) {
+      if (typeof req.body.config !== 'object' || req.body.config === null || Array.isArray(req.body.config)) {
+        return res.status(400).json({ error: 'config is required and must be an object' });
+      }
+    }
+
     const updates = UPDATABLE_FIELDS.filter((field) => field in req.body);
     if (updates.length === 0) {
       return res.status(400).json({ error: 'no updatable fields provided' });
