@@ -49,16 +49,32 @@ class _LlmProvidersScreenState extends ConsumerState<LlmProvidersScreen> {
                       else
                         TextButton(
                           onPressed: () async {
-                            await repository.activate(dio, provider.id);
-                            ref.invalidate(llmProvidersListProvider);
+                            try {
+                              await repository.activate(dio, provider.id);
+                              if (!context.mounted) return;
+                              ref.invalidate(llmProvidersListProvider);
+                            } catch (e) {
+                              if (!context.mounted) return;
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(content: Text('Error activating provider: $e')),
+                              );
+                            }
                           },
                           child: const Text('Set active'),
                         ),
                       IconButton(
                         icon: const Icon(Icons.delete),
                         onPressed: () async {
-                          await repository.delete(dio, provider.id);
-                          ref.invalidate(llmProvidersListProvider);
+                          try {
+                            await repository.delete(dio, provider.id);
+                            if (!context.mounted) return;
+                            ref.invalidate(llmProvidersListProvider);
+                          } catch (e) {
+                            if (!context.mounted) return;
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(content: Text('Error deleting provider: $e')),
+                            );
+                          }
                         },
                       ),
                     ],
@@ -88,20 +104,65 @@ class _LlmProvidersScreenState extends ConsumerState<LlmProvidersScreen> {
           decoration: const InputDecoration(labelText: 'API key'),
           obscureText: true,
         ),
-        ElevatedButton(
-          key: const Key('saveProviderButton'),
-          onPressed: () async {
-            await repository.create(
-              dio,
-              providerType: _providerType,
-              label: _labelController.text,
-              baseUrl: _baseUrlController.text.isEmpty ? null : _baseUrlController.text,
-              apiKey: _apiKeyController.text.isEmpty ? null : _apiKeyController.text,
-              model: _modelController.text,
-            );
-            ref.invalidate(llmProvidersListProvider);
-          },
-          child: const Text('Save'),
+        Row(
+          spacing: 8,
+          children: [
+            Expanded(
+              child: ElevatedButton(
+                key: const Key('saveProviderButton'),
+                onPressed: () async {
+                  try {
+                    await repository.create(
+                      dio,
+                      providerType: _providerType,
+                      label: _labelController.text,
+                      baseUrl: _baseUrlController.text.isEmpty ? null : _baseUrlController.text,
+                      apiKey: _apiKeyController.text.isEmpty ? null : _apiKeyController.text,
+                      model: _modelController.text,
+                    );
+                    if (!context.mounted) return;
+                    ref.invalidate(llmProvidersListProvider);
+                    _labelController.clear();
+                    _modelController.clear();
+                    _baseUrlController.clear();
+                    _apiKeyController.clear();
+                  } catch (e) {
+                    if (!context.mounted) return;
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text('Error creating provider: $e')),
+                    );
+                  }
+                },
+                child: const Text('Save'),
+              ),
+            ),
+            Expanded(
+              child: OutlinedButton(
+                key: const Key('testConnectionButton'),
+                onPressed: () async {
+                  try {
+                    final result = await repository.test(
+                      dio,
+                      providerType: _providerType,
+                      baseUrl: _baseUrlController.text.isEmpty ? null : _baseUrlController.text,
+                      apiKey: _apiKeyController.text.isEmpty ? null : _apiKeyController.text,
+                      model: _modelController.text,
+                    );
+                    if (!context.mounted) return;
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text('Connection successful: $result')),
+                    );
+                  } catch (e) {
+                    if (!context.mounted) return;
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text('Connection failed: $e')),
+                    );
+                  }
+                },
+                child: const Text('Test'),
+              ),
+            ),
+          ],
         ),
       ],
     );
