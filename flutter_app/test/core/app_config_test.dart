@@ -39,8 +39,14 @@ void main() {
       expect(await config.apiKey, 'secret-123');
     });
 
-    test('isConfigured is true once a base URL is set (default counts as configured)', () async {
+    test('isConfigured is false when no base URL has been explicitly set', () async {
       final config = AppConfig(FakeSecureStore());
+      expect(await config.isConfigured, isFalse);
+    });
+
+    test('isConfigured is true once a base URL is explicitly set', () async {
+      final config = AppConfig(FakeSecureStore());
+      await config.setBaseUrl('http://192.168.1.10:8787');
       expect(await config.isConfigured, isTrue);
     });
   });

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'app_config.dart';
+import 'app_shell.dart';
 import 'secure_store.dart';
 import '../l10n/strings.dart';
 
@@ -50,9 +51,16 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
             ElevatedButton(
               key: const Key('saveButton'),
               onPressed: () async {
+                final ctx = context;
                 await config.setBaseUrl(_baseUrlController.text);
                 if (_apiKeyController.text.isNotEmpty) {
                   await config.setApiKey(_apiKeyController.text);
+                }
+                if (mounted) {
+                  // ignore: use_build_context_synchronously
+                  Navigator.of(ctx).pushReplacement(
+                    MaterialPageRoute(builder: (_) => const AppShell()),
+                  );
                 }
               },
               child: Text(strings.saveButton),

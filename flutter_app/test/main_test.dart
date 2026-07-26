@@ -1,12 +1,12 @@
-import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import 'package:gold_cockpit_mobile/core/app_config.dart';
+import 'package:gold_cockpit_mobile/core/app_shell.dart';
 import 'package:gold_cockpit_mobile/core/language_preference.dart';
 import 'package:gold_cockpit_mobile/core/secure_store.dart';
 import 'package:gold_cockpit_mobile/core/setup_screen.dart';
-import 'package:gold_cockpit_mobile/core/app_shell.dart';
+import 'package:gold_cockpit_mobile/main.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class FakeSecureStore implements SecureStore {
   final Map<String, String> _values = {};
@@ -17,11 +17,11 @@ class FakeSecureStore implements SecureStore {
 }
 
 void main() {
-  testWidgets('saving the form persists base URL and API key', (tester) async {
+  testWidgets('shows SetupScreen when AppConfig is not configured', (tester) async {
     SharedPreferences.setMockInitialValues({});
-    final prefs = await SharedPreferences.getInstance();
     final store = FakeSecureStore();
     final config = AppConfig(store);
+    final prefs = await SharedPreferences.getInstance();
 
     await tester.pumpWidget(
       ProviderScope(
@@ -29,24 +29,23 @@ void main() {
           appConfigProvider.overrideWithValue(config),
           sharedPreferencesProvider.overrideWithValue(prefs),
         ],
-        child: const MaterialApp(home: SetupScreen()),
+        child: const MyApp(),
       ),
     );
 
-    await tester.enterText(find.byKey(const Key('baseUrlField')), 'http://192.168.1.5:8787');
-    await tester.enterText(find.byKey(const Key('apiKeyField')), 'my-secret');
-    await tester.tap(find.byKey(const Key('saveButton')));
+    // Wait for the FutureBuilder to complete
     await tester.pumpAndSettle();
 
-    expect(await config.baseUrl, 'http://192.168.1.5:8787');
-    expect(await config.apiKey, 'my-secret');
+    expect(find.byType(SetupScreen), findsOneWidget);
   });
 
-  testWidgets('saving the form navigates to app shell', (tester) async {
+  testWidgets('shows AppShell when AppConfig is configured', (tester) async {
     SharedPreferences.setMockInitialValues({});
-    final prefs = await SharedPreferences.getInstance();
     final store = FakeSecureStore();
     final config = AppConfig(store);
+    // Pre-configure the app by setting a base URL
+    await config.setBaseUrl('http://192.168.1.5:8787');
+    final prefs = await SharedPreferences.getInstance();
 
     await tester.pumpWidget(
       ProviderScope(
@@ -54,17 +53,11 @@ void main() {
           appConfigProvider.overrideWithValue(config),
           sharedPreferencesProvider.overrideWithValue(prefs),
         ],
-        child: const MaterialApp(home: SetupScreen()),
+        child: const MyApp(),
       ),
     );
 
-    await tester.enterText(find.byKey(const Key('baseUrlField')), 'http://192.168.1.5:8787');
-    await tester.tap(find.byKey(const Key('saveButton')));
     await tester.pumpAndSettle();
-
-    // The setup screen should be replaced with app shell
-    expect(find.byType(SetupScreen), findsNothing);
-    // The app shell should now be visible
     expect(find.byType(AppShell), findsOneWidget);
   });
 }

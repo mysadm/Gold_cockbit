@@ -17,5 +17,5 @@ class AppConfig {
 
   Future<void> setApiKey(String value) => _store.write(_apiKeyKey, value);
 
-  Future<bool> get isConfigured async => (await baseUrl).isNotEmpty;
+  Future<bool> get isConfigured async => (await _store.read(_baseUrlKey)) != null;
 }
