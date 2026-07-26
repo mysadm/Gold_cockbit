@@ -29,6 +29,11 @@ app.use('/api/tranches', createTranchesRouter(pool, userId));
 app.use('/api/watchlist', createWatchlistRouter(pool, userId));
 app.use('/api/alert-rules', createAlertRulesRouter(pool, userId));
 
+app.use((err, req, res, next) => {
+  console.error(err);
+  res.status(500).json({ error: 'Internal server error' });
+});
+
 app.listen(PORT, () => {
   console.log(`Gold Cockpit API server listening on http://localhost:${PORT}`);
 });
