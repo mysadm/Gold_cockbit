@@ -5,6 +5,7 @@ import '../l10n/strings.dart';
 import '../features/market/presentation/market_screen.dart';
 import '../features/calculator/presentation/calculator_screen.dart';
 import '../features/scenarios/presentation/scenarios_screen.dart';
+import '../features/tranches/presentation/tranches_screen.dart';
 
 class AppShell extends ConsumerStatefulWidget {
   const AppShell({super.key});
@@ -24,7 +25,7 @@ class _AppShellState extends ConsumerState<AppShell> {
     final destinations = <_ShellDestination>[
       _ShellDestination(strings.marketTab, const MarketScreen()),
       _ShellDestination(strings.scenariosTab, const ScenariosScreen()),
-      _ShellDestination(strings.dcaTab, const Placeholder()),
+      _ShellDestination(strings.dcaTab, const TranchesScreen()),
       _ShellDestination(strings.watchTab, const Placeholder()),
       _ShellDestination(strings.calcTab, const CalculatorScreen(gram24k: 0, gram21k: 0, gram18k: 0)),
       _ShellDestination(strings.egyptTab, const Placeholder()),
