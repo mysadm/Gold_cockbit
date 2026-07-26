@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'language_preference.dart';
 import '../l10n/strings.dart';
+import '../features/market/presentation/market_screen.dart';
 
 class AppShell extends ConsumerStatefulWidget {
   const AppShell({super.key});
@@ -19,7 +20,7 @@ class _AppShellState extends ConsumerState<AppShell> {
     final strings = Strings(language);
 
     final destinations = <_ShellDestination>[
-      _ShellDestination(strings.marketTab, const Placeholder()),
+      _ShellDestination(strings.marketTab, const MarketScreen()),
       _ShellDestination(strings.scenariosTab, const Placeholder()),
       _ShellDestination(strings.dcaTab, const Placeholder()),
       _ShellDestination(strings.watchTab, const Placeholder()),
