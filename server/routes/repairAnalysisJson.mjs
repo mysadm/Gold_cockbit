@@ -1,4 +1,4 @@
-const EXPECTED_KEYS = ['one_liner', 'trends', 'suggested_weights', 'weights_reasoning', 'tranche2', 'egp_read'];
+const EXPECTED_KEYS = ['one_liner', 'trends', 'suggested_weights', 'weights_reasoning', 'tranche2', 'egp_read', 'wallet_read', 'watchlist_read'];
 
 function tryParse(text) {
   try {

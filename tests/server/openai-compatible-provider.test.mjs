@@ -27,7 +27,7 @@ describe('callOpenAICompatible', () => {
     expect(JSON.parse(options.body)).toEqual({
       model: 'gpt-4o',
       messages: [{ role: 'user', content: 'analyze' }],
-      max_tokens: 4000,
+      max_tokens: 8000,
     });
   });
 

@@ -1,6 +1,6 @@
 const ANTHROPIC_ENDPOINT = 'https://api.anthropic.com/v1/messages';
 const ANTHROPIC_VERSION = '2023-06-01';
-const REQUEST_TIMEOUT_MS = 90000;
+const REQUEST_TIMEOUT_MS = 180000;
 
 function extractText(content) {
   if (!Array.isArray(content)) return '';
@@ -15,7 +15,13 @@ async function callAnthropic({ apiKey, model, messages, withTools }) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
   try {
-    const body = { model, max_tokens: 8000, messages };
+    // 16000 (not 8000): when web_search is enabled, the tool-call and
+    // tool-result blocks share this same output budget with the final JSON
+    // text, and the response schema now spans up to 7 written fields
+    // (one_liner, trends, weights_reasoning, tranche2, egp_read, wallet_read,
+    // watchlist_read) — 8000 was getting exhausted by search activity before
+    // the JSON was fully written, truncating it mid-string.
+    const body = { model, max_tokens: 16000, messages };
     if (withTools) body.tools = [{ type: 'web_search_20250305', name: 'web_search' }];
 
     const response = await fetch(ANTHROPIC_ENDPOINT, {

@@ -1,7 +1,7 @@
 import { lookup } from 'node:dns/promises';
 import net from 'node:net';
 
-const REQUEST_TIMEOUT_MS = 90000;
+const REQUEST_TIMEOUT_MS = 180000;
 
 function isBlockedAddress(address) {
   const ipVersion = net.isIP(address);
@@ -70,7 +70,7 @@ export async function callOpenAICompatible({ baseUrl, apiKey, model, prompt }) {
       body: JSON.stringify({
         model,
         messages: [{ role: 'user', content: prompt }],
-        max_tokens: 4000,
+        max_tokens: 8000,
       }),
     });
 
