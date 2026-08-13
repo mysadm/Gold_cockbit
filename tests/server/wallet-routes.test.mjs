@@ -32,6 +32,40 @@ describe('wallet holdings routes', () => {
     expect(Number(res.body.oz)).toBe(0);
     expect(Number(res.body.g24)).toBe(0);
     expect(res.body).toHaveProperty('updated_at');
+    expect(res.body.locked).toBe(false);
+  });
+
+  it('locks holdings when locked:true is sent alongside values', async () => {
+    const res = await request(app)
+      .put('/api/wallet')
+      .send({ oz: 3, g24: 10, g21: 0, g18: 0, pounds: 0, locked: true });
+
+    expect(res.status).toBe(200);
+    expect(Number(res.body.oz)).toBe(3);
+    expect(res.body.locked).toBe(true);
+  });
+
+  it('can lock without touching numeric fields', async () => {
+    await request(app).put('/api/wallet').send({ oz: 1 });
+    const res = await request(app).put('/api/wallet').send({ locked: true });
+
+    expect(res.status).toBe(200);
+    expect(res.body.locked).toBe(true);
+    expect(Number(res.body.oz)).toBe(1);
+  });
+
+  it('can unlock for a correction', async () => {
+    await request(app).put('/api/wallet').send({ oz: 1, locked: true });
+    const res = await request(app).put('/api/wallet').send({ locked: false });
+
+    expect(res.status).toBe(200);
+    expect(res.body.locked).toBe(false);
+  });
+
+  it('rejects a non-boolean locked value', async () => {
+    const res = await request(app).put('/api/wallet').send({ locked: 'yes' });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/locked/i);
   });
 
   it('updates holdings and bumps updated_at', async () => {
@@ -106,6 +140,32 @@ describe('wallet snapshot routes', () => {
   it('rejects a snapshot with a missing intl_value_egp', async () => {
     const res = await request(app).post('/api/wallet/snapshots').send({ egypt_value_egp: 1000 });
     expect(res.status).toBe(400);
+  });
+
+  it('accepts and persists an optional usd_egp_rate', async () => {
+    const res = await request(app)
+      .post('/api/wallet/snapshots')
+      .send({ intl_value_egp: 100000, usd_egp_rate: 49.25 });
+
+    expect(res.status).toBe(201);
+    expect(Number(res.body.usd_egp_rate)).toBe(49.25);
+
+    const list = await request(app).get('/api/wallet/snapshots');
+    expect(Number(list.body[0].usd_egp_rate)).toBe(49.25);
+  });
+
+  it('stores a null usd_egp_rate when omitted', async () => {
+    const res = await request(app).post('/api/wallet/snapshots').send({ intl_value_egp: 100000 });
+    expect(res.status).toBe(201);
+    expect(res.body.usd_egp_rate).toBeNull();
+  });
+
+  it('rejects a non-numeric usd_egp_rate', async () => {
+    const res = await request(app)
+      .post('/api/wallet/snapshots')
+      .send({ intl_value_egp: 100000, usd_egp_rate: 'lots' });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/usd_egp_rate/i);
   });
 
   it('lists snapshots ordered by recorded_at, optionally filtered by since', async () => {

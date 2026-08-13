@@ -36,7 +36,7 @@ app.use((req, res, next) => {
 });
 app.use('/api/llm-providers', createLlmProvidersRouter(pool, userId));
 app.use('/api/analyze', createAnalyzeRouter(pool, userId));
-app.use('/api/egypt-prices', createEgyptPricesRouter());
+app.use('/api/egypt-prices', createEgyptPricesRouter(pool));
 app.use('/api/scenarios', createScenariosRouter(pool, userId));
 app.use('/api/tranches', createTranchesRouter(pool, userId));
 app.use('/api/watchlist', createWatchlistRouter(pool, userId));

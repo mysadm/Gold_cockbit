@@ -6,6 +6,7 @@ export type WalletHoldingsRecord = {
   g21: number;
   g18: number;
   pounds: number;
+  locked: boolean;
   updated_at: string;
 };
 
@@ -13,6 +14,7 @@ export type WalletSnapshot = {
   id: number;
   intl_value_egp: number;
   egypt_value_egp: number | null;
+  usd_egp_rate: number | null;
   recorded_at: string;
 };
 
@@ -40,6 +42,7 @@ function toHoldings(raw: any): WalletHoldingsRecord {
     g21: Number(raw.g21),
     g18: Number(raw.g18),
     pounds: Number(raw.pounds),
+    locked: !!raw.locked,
     updated_at: raw.updated_at,
   };
 }
@@ -49,6 +52,7 @@ function toSnapshot(raw: any): WalletSnapshot {
     id: Number(raw.id),
     intl_value_egp: Number(raw.intl_value_egp),
     egypt_value_egp: raw.egypt_value_egp === null || raw.egypt_value_egp === undefined ? null : Number(raw.egypt_value_egp),
+    usd_egp_rate: raw.usd_egp_rate === null || raw.usd_egp_rate === undefined ? null : Number(raw.usd_egp_rate),
     recorded_at: raw.recorded_at,
   };
 }
@@ -69,7 +73,7 @@ export async function fetchWalletHoldings(): Promise<WalletHoldingsRecord> {
 }
 
 export async function updateWalletHoldings(
-  updates: Partial<Pick<WalletHoldingsRecord, 'oz' | 'g24' | 'g21' | 'g18' | 'pounds'>>
+  updates: Partial<Pick<WalletHoldingsRecord, 'oz' | 'g24' | 'g21' | 'g18' | 'pounds' | 'locked'>>
 ): Promise<WalletHoldingsRecord> {
   return toHoldings(
     await parse(
@@ -82,7 +86,7 @@ export async function updateWalletHoldings(
   );
 }
 
-export async function recordWalletSnapshot(input: { intl_value_egp: number; egypt_value_egp: number | null }): Promise<WalletSnapshot> {
+export async function recordWalletSnapshot(input: { intl_value_egp: number; egypt_value_egp: number | null; usd_egp_rate?: number | null }): Promise<WalletSnapshot> {
   return toSnapshot(
     await parse(
       await fetch('/api/wallet/snapshots', {
@@ -143,4 +147,25 @@ export async function deleteWalletTransaction(id: number): Promise<WalletHolding
 export async function fetchWalletTransactions(): Promise<WalletTransaction[]> {
   const data = await parse(await fetch('/api/wallet/transactions'));
   return (data as any[]).map(toTransaction);
+}
+
+export type WalletCostBasis = {
+  unit: WalletUnit;
+  avgCostEgp: number;
+  openQty: number;
+  realizedEgp: number;
+};
+
+function toCostBasis(raw: any): WalletCostBasis {
+  return {
+    unit: raw.unit,
+    avgCostEgp: Number(raw.avgCostEgp),
+    openQty: Number(raw.openQty),
+    realizedEgp: Number(raw.realizedEgp),
+  };
+}
+
+export async function fetchWalletCostBasis(): Promise<WalletCostBasis[]> {
+  const data = await parse(await fetch('/api/wallet/cost-basis'));
+  return (data as any[]).map(toCostBasis);
 }

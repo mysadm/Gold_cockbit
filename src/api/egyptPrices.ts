@@ -12,6 +12,7 @@ export type EgyptGoldSnapshot = {
   source: string;
   fetchedAt: string;
   rows: EgyptGoldRow[];
+  stale?: boolean;
 };
 
 export async function fetchEgyptPrices(): Promise<EgyptGoldSnapshot> {

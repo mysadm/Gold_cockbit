@@ -4,9 +4,9 @@ import { createApiKeyAuthMiddleware } from '../auth.mjs';
 
 const { Pool } = pg;
 
-const HOLDINGS_COLUMNS = 'user_id, oz, g24, g21, g18, pounds, created_at, updated_at';
+const HOLDINGS_COLUMNS = 'user_id, oz, g24, g21, g18, pounds, locked, created_at, updated_at';
 const HOLDINGS_FIELDS = ['oz', 'g24', 'g21', 'g18', 'pounds'];
-const SNAPSHOT_COLUMNS = 'id, user_id, intl_value_egp, egypt_value_egp, recorded_at';
+const SNAPSHOT_COLUMNS = 'id, user_id, intl_value_egp, egypt_value_egp, usd_egp_rate, recorded_at';
 const TRANSACTION_COLUMNS = 'id, user_id, unit, side, amount, price_egp, recorded_at';
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
@@ -67,7 +67,9 @@ export function createWalletRouter(db, userId) {
 
   router.put('/', async (req, res) => {
     const updates = HOLDINGS_FIELDS.filter((field) => field in req.body);
-    if (updates.length === 0) {
+    const lockProvided = 'locked' in req.body;
+
+    if (updates.length === 0 && !lockProvided) {
       return res.status(400).json({ error: 'no updatable fields provided' });
     }
 
@@ -75,16 +77,56 @@ export function createWalletRouter(db, userId) {
       const error = holdingValidationError(field, req.body[field]);
       if (error) return res.status(400).json({ error });
     }
+    if (lockProvided && typeof req.body.locked !== 'boolean') {
+      return res.status(400).json({ error: 'locked must be a boolean' });
+    }
 
-    const setClause = updates.map((field, index) => `${field} = $${index + 1}`).join(', ');
+    const setFields = [...updates];
     const values = updates.map((field) => req.body[field]);
+    if (lockProvided) {
+      setFields.push('locked');
+      values.push(req.body.locked);
+    }
+    const setClause = setFields.map((field, index) => `${field} = $${index + 1}`).join(', ');
 
     const { rows } = await db.query(
-      `UPDATE wallet_holdings SET ${setClause} WHERE user_id = $${updates.length + 1} RETURNING ${HOLDINGS_COLUMNS}`,
+      `UPDATE wallet_holdings SET ${setClause} WHERE user_id = $${setFields.length + 1} RETURNING ${HOLDINGS_COLUMNS}`,
       [...values, userId]
     );
     if (rows.length === 0) return res.status(404).json({ error: 'Wallet holdings not found' });
     res.json(rows[0]);
+  });
+
+  router.get('/cost-basis', async (req, res) => {
+    const { rows } = await db.query(
+      `SELECT unit, side, amount, price_egp FROM wallet_transactions WHERE user_id = $1 ORDER BY recorded_at ASC, id ASC`,
+      [userId]
+    );
+
+    const state = Object.fromEntries(HOLDINGS_FIELDS.map((unit) => [unit, { qty: 0, costTotal: 0, realizedEgp: 0 }]));
+
+    for (const row of rows) {
+      const unit = state[row.unit];
+      const amount = Number(row.amount);
+      const price = Number(row.price_egp);
+      if (row.side === 'buy') {
+        unit.qty += amount;
+        unit.costTotal += amount * price;
+      } else {
+        const avgCost = unit.qty > 0 ? unit.costTotal / unit.qty : 0;
+        unit.realizedEgp += (price - avgCost) * amount;
+        unit.qty -= amount;
+        unit.costTotal -= avgCost * amount;
+      }
+    }
+
+    const result = HOLDINGS_FIELDS.map((unit) => ({
+      unit,
+      avgCostEgp: state[unit].qty > 0 ? state[unit].costTotal / state[unit].qty : 0,
+      openQty: state[unit].qty,
+      realizedEgp: state[unit].realizedEgp,
+    }));
+    res.json(result);
   });
 
   router.get('/snapshots', async (req, res) => {
@@ -106,21 +148,24 @@ export function createWalletRouter(db, userId) {
   });
 
   router.post('/snapshots', async (req, res) => {
-    const { intl_value_egp, egypt_value_egp } = req.body;
+    const { intl_value_egp, egypt_value_egp, usd_egp_rate } = req.body;
     if (typeof intl_value_egp !== 'number' || Number.isNaN(intl_value_egp)) {
       return res.status(400).json({ error: 'intl_value_egp is required and must be a number' });
     }
     if (egypt_value_egp !== undefined && egypt_value_egp !== null && (typeof egypt_value_egp !== 'number' || Number.isNaN(egypt_value_egp))) {
       return res.status(400).json({ error: 'egypt_value_egp must be a number when provided' });
     }
+    if (usd_egp_rate !== undefined && usd_egp_rate !== null && (typeof usd_egp_rate !== 'number' || Number.isNaN(usd_egp_rate))) {
+      return res.status(400).json({ error: 'usd_egp_rate must be a number when provided' });
+    }
 
     const { rows } = await db.query(
-      `INSERT INTO wallet_snapshots (user_id, intl_value_egp, egypt_value_egp, recorded_at)
-       VALUES ($1, $2, $3, now())
+      `INSERT INTO wallet_snapshots (user_id, intl_value_egp, egypt_value_egp, usd_egp_rate, recorded_at)
+       VALUES ($1, $2, $3, $4, now())
        ON CONFLICT (user_id, ((recorded_at AT TIME ZONE 'UTC')::date))
-       DO UPDATE SET intl_value_egp = EXCLUDED.intl_value_egp, egypt_value_egp = EXCLUDED.egypt_value_egp, recorded_at = now()
+       DO UPDATE SET intl_value_egp = EXCLUDED.intl_value_egp, egypt_value_egp = EXCLUDED.egypt_value_egp, usd_egp_rate = EXCLUDED.usd_egp_rate, recorded_at = now()
        RETURNING ${SNAPSHOT_COLUMNS}`,
-      [userId, intl_value_egp, egypt_value_egp ?? null]
+      [userId, intl_value_egp, egypt_value_egp ?? null, usd_egp_rate ?? null]
     );
     res.status(201).json(rows[0]);
   });
@@ -131,6 +176,20 @@ export function createWalletRouter(db, userId) {
       [userId]
     );
     res.json(rows);
+  });
+
+  router.get('/transactions/export.csv', async (req, res) => {
+    const { rows } = await db.query(
+      `SELECT ${TRANSACTION_COLUMNS} FROM wallet_transactions WHERE user_id = $1 ORDER BY recorded_at DESC, id DESC`,
+      [userId]
+    );
+    const header = 'id,unit,side,amount,price_egp,recorded_at';
+    const lines = rows.map((row) =>
+      [row.id, row.unit, row.side, Number(row.amount), Number(row.price_egp), new Date(row.recorded_at).toISOString()].join(',')
+    );
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', 'attachment; filename="wallet-transactions.csv"');
+    res.send([header, ...lines].join('\n') + '\n');
   });
 
   router.post('/transactions', async (req, res) => {

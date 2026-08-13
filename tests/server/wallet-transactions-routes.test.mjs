@@ -113,6 +113,31 @@ describe('wallet transaction routes', () => {
     }
   });
 
+  it('exports transactions as CSV with a header row', async () => {
+    await request(app).post('/api/wallet/transactions').send({ unit: 'g24', side: 'buy', amount: 5, price_egp: 7000 });
+
+    const res = await request(app).get('/api/wallet/transactions/export.csv');
+
+    expect(res.status).toBe(200);
+    expect(res.headers['content-type']).toMatch(/text\/csv/);
+    const lines = res.text.trim().split('\n');
+    expect(lines[0]).toBe('id,unit,side,amount,price_egp,recorded_at');
+    expect(lines).toHaveLength(2);
+    expect(lines[1]).toContain('g24,buy,5,7000');
+  });
+
+  it('requires a configured API key for the CSV export when GOLD_COCKPIT_API_KEY is set', async () => {
+    const previousKey = process.env.GOLD_COCKPIT_API_KEY;
+    process.env.GOLD_COCKPIT_API_KEY = 'test-secret';
+    try {
+      const denied = await request(app).get('/api/wallet/transactions/export.csv');
+      expect(denied.status).toBe(401);
+    } finally {
+      if (previousKey === undefined) delete process.env.GOLD_COCKPIT_API_KEY;
+      else process.env.GOLD_COCKPIT_API_KEY = previousKey;
+    }
+  });
+
   it('accepts a client-supplied recorded_at date', async () => {
     const res = await request(app)
       .post('/api/wallet/transactions')

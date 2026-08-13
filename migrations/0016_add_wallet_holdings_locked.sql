@@ -1,0 +1,1 @@
+ALTER TABLE wallet_holdings ADD COLUMN locked BOOLEAN NOT NULL DEFAULT false;
