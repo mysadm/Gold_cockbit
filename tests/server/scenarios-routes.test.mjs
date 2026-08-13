@@ -30,7 +30,7 @@ describe('scenarios routes', () => {
     const res = await request(app).get('/api/scenarios');
     expect(res.status).toBe(200);
     expect(res.body).toHaveLength(3);
-    expect(res.body[0].name).toBe('De-escalation');
+    expect(res.body[0].name).toBe('Geopolitical Changes');
   });
 
   it('updates weight_pct on a scenario', async () => {

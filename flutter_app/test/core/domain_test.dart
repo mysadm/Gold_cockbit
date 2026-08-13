@@ -49,4 +49,48 @@ void main() {
       expect(result.goldPound, closeTo(expectedG24 * 0.875 * 8, 0.001));
     });
   });
+
+  group('calculateTrancheWindow', () {
+    test('tranche 0 starts on the plan start date', () {
+      final window = calculateTrancheWindow(DateTime(2026, 1, 15), 0);
+      expect(window.start, DateTime(2026, 1, 15));
+      expect(window.end, DateTime(2026, 3, 15));
+    });
+
+    test('tranche 1 starts two months after tranche 0', () {
+      final window = calculateTrancheWindow(DateTime(2026, 1, 15), 1);
+      expect(window.start, DateTime(2026, 3, 15));
+      expect(window.end, DateTime(2026, 5, 15));
+    });
+
+    test('tranche 2 starts four months after the plan start date', () {
+      final window = calculateTrancheWindow(DateTime(2026, 1, 15), 2);
+      expect(window.start, DateTime(2026, 5, 15));
+      expect(window.end, DateTime(2026, 7, 15));
+    });
+
+    test('rolls over into the next year', () {
+      final window = calculateTrancheWindow(DateTime(2026, 11, 1), 1);
+      expect(window.start, DateTime(2027, 1, 1));
+      expect(window.end, DateTime(2027, 3, 1));
+    });
+  });
+
+  group('calculateTrancheWindowStatus', () {
+    test('is done when now is at or after the window end', () {
+      final window = calculateTrancheWindow(DateTime(2026, 1, 1), 0);
+      expect(calculateTrancheWindowStatus(window, DateTime(2026, 3, 1)), TrancheWindowStatus.done);
+      expect(calculateTrancheWindowStatus(window, DateTime(2026, 6, 1)), TrancheWindowStatus.done);
+    });
+
+    test('is active when now is within the window', () {
+      final window = calculateTrancheWindow(DateTime(2026, 1, 1), 0);
+      expect(calculateTrancheWindowStatus(window, DateTime(2026, 2, 1)), TrancheWindowStatus.active);
+    });
+
+    test('is pending when now is before the window starts', () {
+      final window = calculateTrancheWindow(DateTime(2026, 1, 1), 1);
+      expect(calculateTrancheWindowStatus(window, DateTime(2026, 1, 15)), TrancheWindowStatus.pending);
+    });
+  });
 }

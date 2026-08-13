@@ -22,7 +22,7 @@ class Scenario {
   factory Scenario.fromJson(Map<String, dynamic> json) {
     double? toDouble(dynamic v) => v == null ? null : double.parse(v.toString());
     return Scenario(
-      id: json['id'] as int,
+      id: int.parse(json['id'].toString()),
       name: json['name'] as String,
       bandLow: toDouble(json['band_low']),
       bandHigh: toDouble(json['band_high']),

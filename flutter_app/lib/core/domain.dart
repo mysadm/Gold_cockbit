@@ -85,3 +85,32 @@ GramPrices calculateGramPrices({
   final goldPound = g21 * 8;
   return GramPrices(g24: g24, g21: g21, g18: g18, goldPound: goldPound);
 }
+
+enum TrancheWindowStatus { done, active, pending }
+
+class TrancheWindow {
+  final DateTime start;
+  final DateTime end;
+
+  const TrancheWindow({required this.start, required this.end});
+}
+
+DateTime _addMonths(DateTime date, int months) {
+  final totalMonths = date.month - 1 + months;
+  final year = date.year + totalMonths ~/ 12;
+  final month = totalMonths % 12 + 1;
+  return DateTime(year, month, date.day);
+}
+
+TrancheWindow calculateTrancheWindow(DateTime startDate, int trancheIndex, {int spacingMonths = 2}) {
+  return TrancheWindow(
+    start: _addMonths(startDate, trancheIndex * spacingMonths),
+    end: _addMonths(startDate, (trancheIndex + 1) * spacingMonths),
+  );
+}
+
+TrancheWindowStatus calculateTrancheWindowStatus(TrancheWindow window, DateTime now) {
+  if (!now.isBefore(window.end)) return TrancheWindowStatus.done;
+  if (!now.isBefore(window.start)) return TrancheWindowStatus.active;
+  return TrancheWindowStatus.pending;
+}

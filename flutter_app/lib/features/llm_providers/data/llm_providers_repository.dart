@@ -19,7 +19,7 @@ class LlmProvider {
 
   factory LlmProvider.fromJson(Map<String, dynamic> json) {
     return LlmProvider(
-      id: json['id'] as int,
+      id: int.parse(json['id'].toString()),
       providerType: json['provider_type'] as String,
       label: json['label'] as String,
       baseUrl: json['base_url'] as String?,

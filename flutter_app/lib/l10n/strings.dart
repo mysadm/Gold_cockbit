@@ -24,7 +24,7 @@ class Strings {
   String get goldPound => isAr ? 'الجنيه الذهب' : 'Gold pound';
   String get ounce => isAr ? 'الأونصة' : 'Ounce';
 
-  String get scenarioDeescalation => isAr ? 'التهدئة' : 'De-escalation';
+  String get scenarioDeescalation => isAr ? 'تغيرات جيوسياسية' : 'Geopolitical Changes';
   String get scenarioBase => isAr ? 'السيناريو الأساسي' : 'Base Case';
   String get scenarioStagflation => isAr ? 'فخ الركود التضخمي' : 'Stagflation Trap';
   String get weightedTargetLabel => isAr ? 'السعر المستهدف المرجّح' : 'Probability-weighted target';

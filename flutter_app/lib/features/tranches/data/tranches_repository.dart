@@ -22,7 +22,7 @@ class Tranche {
   factory Tranche.fromJson(Map<String, dynamic> json) {
     double? toDouble(dynamic v) => v == null ? null : double.parse(v.toString());
     return Tranche(
-      id: json['id'] as int,
+      id: int.parse(json['id'].toString()),
       trancheNumber: json['tranche_number'] as int,
       planPct: toDouble(json['plan_pct'])!,
       amountEgp: toDouble(json['amount_egp']),

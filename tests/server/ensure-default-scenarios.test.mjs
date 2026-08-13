@@ -23,7 +23,7 @@ describe('ensureDefaultScenarios', () => {
       [userId]
     );
     expect(rows).toHaveLength(3);
-    expect(rows.map((r) => r.name)).toEqual(['De-escalation', 'Base Case', 'Stagflation Trap']);
+    expect(rows.map((r) => r.name)).toEqual(['Geopolitical Changes', 'Base Case', 'Stagflation Trap']);
     expect(rows.map((r) => Number(r.weight_pct))).toEqual([35, 45, 20]);
   });
 

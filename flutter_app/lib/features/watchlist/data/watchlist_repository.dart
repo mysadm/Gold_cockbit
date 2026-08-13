@@ -15,7 +15,7 @@ class WatchlistItem {
 
   factory WatchlistItem.fromJson(Map<String, dynamic> json) {
     return WatchlistItem(
-      id: json['id'] as int,
+      id: int.parse(json['id'].toString()),
       label: json['label'] as String,
       status: json['status'] as String,
       sortOrder: json['sort_order'] as int,

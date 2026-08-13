@@ -1,5 +1,5 @@
 const DEFAULT_SCENARIOS = [
-  { name: 'De-escalation', band_low: 5800, band_high: 6300, weight_pct: 35, sort_order: 0 },
+  { name: 'Geopolitical Changes', band_low: 5800, band_high: 6300, weight_pct: 35, sort_order: 0 },
   { name: 'Base Case', band_low: 5000, band_high: 5400, weight_pct: 45, sort_order: 1 },
   { name: 'Stagflation Trap', band_low: 3600, band_high: 4000, weight_pct: 20, sort_order: 2 },
 ];
