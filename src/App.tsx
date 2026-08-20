@@ -32,6 +32,8 @@ import {
   type WalletCostBasis,
 } from './api/wallet';
 import { fetchAlertRules, createAlertRule, setAlertRuleActive, type AlertRule } from './api/alertRules';
+import { Sidebar, NAV_LABELS, type ScreenKey } from './ui/Sidebar';
+import { Card, SectionLabel, Hairline, MetricRow, GlowBar, ChangeTag, Icon } from './ui/primitives';
 
 type Theme = 'light' | 'vault';
 type Language = 'en' | 'ar';
@@ -1116,944 +1118,1105 @@ The three suggested_weights values must sum to 100.`;
     }
   };
 
+  const ar = state.lang === 'ar';
+  const vault = state.theme === 'vault';
+  const sidebarScreen: ScreenKey = activeTab === 'market' ? 'home' : (activeTab as ScreenKey);
+  const screenTitle = NAV_LABELS[sidebarScreen][ar ? 'ar' : 'en'];
+
   return (
-    <div className={`app-shell ${state.theme}`} dir={state.lang === 'ar' ? 'rtl' : 'ltr'}>
-      <div className="wrap">
-        <div className="header">
+    <div className={vault ? 'theme-vault' : ''} style={{ height: '100vh', display: 'flex', background: 'var(--bg)' }} dir={ar ? 'rtl' : 'ltr'}>
+      <Sidebar
+        screen={sidebarScreen}
+        setScreen={(s) => setActiveTab(s)}
+        ar={ar}
+        vault={vault}
+        toggleTheme={() => setState((prev) => ({ ...prev, theme: prev.theme === 'vault' ? 'light' : 'vault' }))}
+        toggleLang={toggleLang}
+        liveLabel={`LIVE · $${fmt(state.spot)}`}
+      />
+
+      <main style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
+        <header
+          style={{
+            padding: '16px 24px',
+            borderBottom: '1px solid var(--border)',
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            background: 'var(--surface)',
+          }}
+        >
           <div>
-            <div className="eyebrow">{t.eyebrow}</div>
-            <h1>{t.title}</h1>
+            <h1 style={{ margin: 0, fontSize: 22, fontWeight: 600, color: 'var(--text)', fontFamily: ar ? 'var(--font-arabic)' : 'var(--font-sans)' }}>
+              {screenTitle}
+            </h1>
+            <div className="muted-text font-mono" style={{ fontSize: 15, marginTop: 2 }}>{t.eyebrow}</div>
           </div>
-          <button className="langbtn" onClick={toggleLang}>{t.langBtn}</button>
-        </div>
-
-        <div className="tab-shell">
-          <div className="tabbar">
-            {[
-              { key: 'home' as const, label: t.homeTab },
-              { key: 'market' as const, label: t.marketTab },
-              { key: 'calc' as const, label: t.calcTab },
-              { key: 'target' as const, label: t.targetTab },
-              { key: 'scenarios' as const, label: t.scenTab },
-              { key: 'egypt' as const, label: t.egyptTab },
-              { key: 'ai' as const, label: t.aiTab },
-              { key: 'dca' as const, label: t.dcaTab },
-              { key: 'watch' as const, label: t.watchTab },
-              { key: 'wallet' as const, label: t.walletTab },
-              { key: 'settings' as const, label: t.settingsTab },
-            ].map((tab) => (
-              <button key={tab.key} className={`tab ${activeTab === tab.key ? 'active' : ''}`} onClick={() => setActiveTab(tab.key)}>{tab.label}</button>
-            ))}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <div className="live-dot" />
+              <span className="font-mono" style={{ fontSize: 16, color: 'var(--text-soft)' }}>XAU/USD</span>
+              <span className="font-mono gold-text" style={{ fontSize: 18, fontWeight: 600 }}>${fmt(state.spot)}</span>
+            </div>
           </div>
+        </header>
 
-          <div className={`section-wrap ${activeTab === 'home' || activeTab === 'market' ? 'active' : ''}`}>
-            <div className="panel">
-              <div className="grid3">
-                <div>
-                  <div className="lbl">{t.inSpot}</div>
-                  <input type="text" inputMode="decimal" className="numf" value={state.spot} onInput={(event) => updateNumber('spot', (event.target as HTMLInputElement).value)} />
-                </div>
-                <div>
-                  <div className="lbl">{t.inEgp}</div>
-                  <input type="text" inputMode="decimal" className="numf" value={state.egp} onInput={(event) => updateNumber('egp', (event.target as HTMLInputElement).value)} />
-                </div>
-                <div>
-                  <div className="lbl">{t.inPrem}</div>
-                  <input type="text" inputMode="decimal" className="numf" value={state.prem} onInput={(event) => updateNumber('prem', (event.target as HTMLInputElement).value)} />
-                </div>
-              </div>
+        <div style={{ flex: 1, overflowY: 'auto', padding: '20px 24px' }}>
+          <div style={{ maxWidth: 720, margin: '0 auto' }}>
 
-              <div className="board">
-                <div className="cell hero">
-                  <div className="k">{t.ounce}</div>
-                  <div className="v">${fmt(state.spot)} · {fmt(ozEgp)} EGP</div>
-                  <div className="u">{t.ounceU}</div>
+          {(activeTab === 'home' || activeTab === 'market') && (
+            <div>
+              <Card>
+                <SectionLabel text={t.ounce.toUpperCase()} />
+                <div style={{ display: 'flex', alignItems: 'baseline', gap: 12, flexWrap: 'wrap' }}>
+                  <span className="font-display" style={{ fontSize: 52, color: 'var(--text)', lineHeight: 1 }}>
+                    ${fmt(state.spot)}
+                  </span>
+                  <span className="font-mono soft-text" style={{ fontSize: 17 }}>{fmt(ozEgp)} EGP</span>
                 </div>
-                <div className="cell">
-                  <div className="k">{t.g24}</div>
-                  <div className="v">{fmt(g24)}</div>
-                  <div className="u">{t.inclU}</div>
-                </div>
-                <div className="cell">
-                  <div className="k">{t.g21}</div>
-                  <div className="v">{fmt(g21)}</div>
-                  <div className="u">{t.inclU}</div>
-                </div>
-                <div className="cell">
-                  <div className="k">{t.g18}</div>
-                  <div className="v">{fmt(g18)}</div>
-                  <div className="u">{t.inclU}</div>
-                </div>
-                <div className="cell">
-                  <div className="k">{t.gp}</div>
-                  <div className="v">{fmt(pound)}</div>
-                  <div className="u">{t.gpU}</div>
-                </div>
-              </div>
+                <div className="muted-text" style={{ fontSize: 15, marginTop: 6 }}>{t.ounceU}</div>
+              </Card>
 
-              <div className="pullrow">
-                <button className="pull" onClick={() => void pullLive()}>{t.pull}</button>
-                <div id="stamp" className={`stamp ${state.stamp.cls}`}>{state.stamp.txt || t.stampInit}</div>
-              </div>
-              {state.diag ? <pre className="diag">{state.diag}</pre> : null}
-            </div>
+              <div style={{ height: 16 }} />
 
-            <details>
-              <summary>{t.expGramT}</summary>
-              <div className="exp">{t.expGram}</div>
-            </details>
-          </div>
-
-          <div className={`section-wrap ${activeTab === 'calc' ? 'active' : ''}`}>
-            <div className="sechead">
-              <div className="lbl">{t.calcT}</div>
-            </div>
-            <div className="panel" style={{ marginTop: 0 }}>
-              <div className="calcrow">
-                {t.calcAmt} <input type="text" inputMode="decimal" className="numf" value={state.calcamt} onInput={(event) => updateNumber('calcamt', (event.target as HTMLInputElement).value)} /> {t.calcCur}
-              </div>
-              <table className="karat">
-                <thead>
-                  <tr>
-                    <th>{t.thK}</th>
-                    <th className="n">{t.thP}</th>
-                    <th className="n">{t.thQ}</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {karatRows.map((row) => {
-                    const perGram = g24 * row.f;
-                    return (
-                      <tr className={row.hl ? 'hl' : ''}>
-                        <td>{row.k}</td>
-                        <td className="n">{fmt(perGram)} EGP</td>
-                        <td className="n">{fmt(state.calcamt / perGram, 1)}g</td>
-                      </tr>
-                    );
-                  })}
-                  <tr>
-                    <td>{t.gpRow}</td>
-                    <td className="n">{fmt(pound)} EGP</td>
-                    <td className="n">{Math.floor(state.calcamt / pound)} <span className="badge">+ {fmt(state.calcamt - Math.floor(state.calcamt / pound) * pound)} {t.change}</span></td>
-                  </tr>
-                </tbody>
-              </table>
-              <div className="ai-meta">{t.calcSpreadNote}</div>
-            </div>
-            <details>
-              <summary>{t.expKaratT}</summary>
-              <div className="exp">{t.expKarat}</div>
-            </details>
-          </div>
-
-          <div className={`section-wrap ${activeTab === 'target' ? 'active' : ''}`}>
-            <div className="target">
-              <div className="eyebrow">{t.targetLbl}</div>
-              <div className="bignum">${fmt(weighted)}</div>
-              <div className="delta" style={{ color: delta >= 0 ? 'var(--green)' : 'var(--red)' }}>
-                <span className="num">{delta >= 0 ? '▲' : '▼'} {fmt(Math.abs(delta), 1)}%</span> {t.deltaVs} <span className="num">${fmt(state.spot)}</span>
-              </div>
-              {!inBand ? <div className="bandnote">{t.bandNote}</div> : null}
-            </div>
-
-            {targetAlertRule?.active && delta > 0 && !targetBannerDismissed ? (
-              <div className="panel" style={{ borderInlineStartColor: 'var(--green)', borderInlineStartWidth: 3 }}>
-                {t.targetBuyHint}
-                <span className="linklike" style={{ cursor: 'pointer', textDecoration: 'underline', marginInlineStart: 10 }} onClick={() => setTargetBannerDismissed(true)}>
-                  {t.alertDismissBtn}
-                </span>
-              </div>
-            ) : null}
-
-            <div className="panel" style={{ marginTop: 0 }}>
-              <div className="toggle-row">
-                <button
-                  type="button"
-                  role="switch"
-                  aria-checked={!!targetAlertRule?.active}
-                  className={`toggle-switch ${targetAlertRule?.active ? 'on' : ''}`}
-                  onClick={() => void toggleTargetAlert()}
-                >
-                  <span className="knob" />
-                </button>
-                <div className="toggle-text">
-                  <div className="lbl2">{targetAlertRule?.active ? t.alertTargetOnLbl : t.alertTargetOffLbl}</div>
-                  <div className="note">
-                    {delta > 0
-                      ? t.alertTargetNoteBelow.replace('{pct}', fmt(Math.abs(delta), 1))
-                      : t.alertTargetNoteAbove.replace('{pct}', fmt(Math.abs(delta), 1))}
+              <Card>
+                <SectionLabel text={t.calcT.toUpperCase()} />
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 14 }}>
+                  <div>
+                    <div className="section-label" style={{ marginBottom: 6, fontSize: 13 }}>{t.inSpot}</div>
+                    <input type="text" inputMode="decimal" className="font-mono" value={state.spot} onInput={(event) => updateNumber('spot', (event.target as HTMLInputElement).value)} style={{ width: '100%' }} />
+                  </div>
+                  <div>
+                    <div className="section-label" style={{ marginBottom: 6, fontSize: 13 }}>{t.inEgp}</div>
+                    <input type="text" inputMode="decimal" className="font-mono" value={state.egp} onInput={(event) => updateNumber('egp', (event.target as HTMLInputElement).value)} style={{ width: '100%' }} />
+                  </div>
+                  <div>
+                    <div className="section-label" style={{ marginBottom: 6, fontSize: 13 }}>{t.inPrem}</div>
+                    <input type="text" inputMode="decimal" className="font-mono" value={state.prem} onInput={(event) => updateNumber('prem', (event.target as HTMLInputElement).value)} style={{ width: '100%' }} />
                   </div>
                 </div>
+              </Card>
+
+              <div style={{ height: 16 }} />
+
+              <Card>
+                <SectionLabel text={t.g24.toUpperCase() + ' / ' + t.g21.toUpperCase() + ' / ' + t.g18.toUpperCase() + ' / ' + t.gp.toUpperCase()} />
+                <MetricRow label={t.g24} value={`${fmt(g24)} EGP`} gold />
+                <Hairline />
+                <MetricRow label={t.g21} value={`${fmt(g21)} EGP`} />
+                <Hairline />
+                <MetricRow label={t.g18} value={`${fmt(g18)} EGP`} />
+                <Hairline />
+                <MetricRow label={t.gp} value={`${fmt(pound)} EGP`} />
+              </Card>
+
+              <div style={{ height: 16 }} />
+
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+                <button className="btn-primary" onClick={() => void pullLive()}>{t.pull}</button>
+                <div id="stamp" className="muted-text font-mono" style={{ fontSize: 14 }}>{state.stamp.txt || t.stampInit}</div>
               </div>
+              {state.diag ? <pre className="font-mono" style={{ fontSize: 12, color: 'var(--down)', marginTop: 12, whiteSpace: 'pre-wrap' }}>{state.diag}</pre> : null}
+
+              <details className="legacy-ui" style={{ marginTop: 16 }}>
+                <summary>{t.expGramT}</summary>
+                <div className="exp">{t.expGram}</div>
+              </details>
             </div>
+          )}
 
-            <details>
-              <summary>{t.expWT}</summary>
-              <div className="exp">
-                {t.expW}
-                <div className="formula"><span className="num">{t.formulaLbl} ({weightedBreakdown}) ÷ 100 = ${fmt(weighted)}</span></div>
-                <div style={{ marginTop: 8 }}>{t.expWUse}</div>
-                <div style={{ marginTop: 4, fontWeight: 600 }}>{delta > 0 ? t.targetBuyHint : t.targetHoldHint}</div>
-                <div style={{ marginTop: 4, opacity: 0.75 }}>{t.targetCaveat}</div>
-              </div>
-            </details>
-          </div>
-
-          <div className={`section-wrap ${activeTab === 'scenarios' ? 'active' : ''}`}>
-            {SCEN_META.map((scenario) => {
-              const label = t.scen[scenario.key];
-              return (
-                <div className="panel scen" style={{ borderInlineStartColor: scenario.color }}>
-                  <div className="top">
-                    <div className="name">{label.name}<span className="sub">{label.sub}</span></div>
-                    <div className="w" style={{ color: scenario.color }}>{state.weights[scenario.key]}%</div>
-                  </div>
-                  <div className="thesis"><span className="num">${fmt(scenario.lo)}–${fmt(scenario.hi)}</span> · {label.thesis}</div>
-                  <input type="range" min="2" max="96" value={state.weights[scenario.key]} onInput={(event) => setWeight(scenario.key, Number((event.target as HTMLInputElement).value))} />
+          {activeTab === 'calc' && (
+            <div>
+              <SectionLabel text={t.calcT.toUpperCase()} />
+              <Card>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 4 }}>
+                  <span className="soft-text" style={{ fontSize: 17 }}>{t.calcAmt}</span>
+                  <input
+                    type="text"
+                    inputMode="decimal"
+                    className="font-mono"
+                    value={state.calcamt}
+                    onInput={(event) => updateNumber('calcamt', (event.target as HTMLInputElement).value)}
+                    style={{ width: 140 }}
+                  />
+                  <span className="soft-text" style={{ fontSize: 17 }}>{t.calcCur}</span>
                 </div>
-              );
-            })}
+              </Card>
 
-            <div className="panel watch-implied">
-              <div className="sechead" style={{ margin: 0 }}>
-                <div className="lbl">{t.watchImpliedLbl}</div>
-              </div>
-              <div className="watch-implied-counts">
-                <span className="ok">{watchlistCounts.support} {t.siglbl[0]}</span> · <span className="watch">{watchlistCounts.monitor} {t.siglbl[1]}</span> · <span className="risk">{watchlistCounts.risk} {t.siglbl[2]}</span>
-              </div>
-              <div className="watch-implied-values">{watchlistImpliedWeights.deesc}% / {watchlistImpliedWeights.base}% / {watchlistImpliedWeights.stag}%</div>
-              <button className="ai-apply" onClick={applyWatchlistWeights}>{watchApplied ? t.aiApplied : t.watchApplyBtn}</button>
-            </div>
+              <div style={{ height: 14 }} />
 
-            <details>
-              <summary>{t.expScT}</summary>
-              <div className="exp">{t.expSc}</div>
-            </details>
-          </div>
-
-          <div className={`section-wrap ${activeTab === 'egypt' ? 'active' : ''}`}>
-            <div className="sechead">
-              <div className="lbl">{t.egyptHeading}</div>
-              <button className="pull" onClick={loadEgyptPrices} disabled={egypt.loading}>{egypt.loading ? t.egyptLoading : t.pull}</button>
-            </div>
-            <div className="panel" style={{ marginTop: 0 }}>
-              {egypt.error ? <div className="ai-status err">{t.egyptErr}{egypt.error}</div> : null}
-              {egypt.data ? (
-                <>
-                  {egypt.data.stale ? (
-                    <div className="ai-status err">
-                      {t.egyptStaleNote} {new Date(egypt.data.fetchedAt).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
-                    </div>
-                  ) : null}
-                  <table className="karat">
-                    <thead>
-                      <tr>
-                        <th>{t.thK}</th>
-                        <th className="n">{t.egyptSell}</th>
-                        <th className="n">{t.egyptBuy}</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {egypt.data.rows.map((row) => (
-                        <tr>
-                          <td>{EGYPT_KARAT_LABEL[row.karat](t)}</td>
-                          <td className="n">{fmt(row.sell)} EGP</td>
-                          <td className="n">{fmt(row.buy)} EGP</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                  <div className="ai-meta">{t.egyptSourceNote} · {new Date(egypt.data.fetchedAt).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</div>
-                </>
-              ) : null}
-              {!egypt.data && !egypt.error && egypt.loading ? <div>{t.egyptLoading}</div> : null}
-            </div>
-          </div>
-
-          <div className={`section-wrap ${activeTab === 'ai' ? 'active' : ''}`}>
-            <div className="sechead">
-              <div className="lbl">{t.aiT}</div>
-            </div>
-            <div className="panel ai-panel" style={{ marginTop: 0 }}>
-              <div className="ai-providerline">
-                {t.aiUsingProvider}: {activeProvider ? `${activeProvider.label} (${providerTypeLabel(activeProvider.provider_type)})` : t.aiNoProvider}
-              </div>
-              {analyzeQuota?.shared ? (
-                <div className="ai-providerline">
-                  {t.aiQuotaLabel}: {analyzeQuota.limit - analyzeQuota.used}/{analyzeQuota.limit}
+              <Card>
+                <div style={{ display: 'flex', fontSize: 14, fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--text-muted)', padding: '0 0 10px' }}>
+                  <span style={{ flex: 1 }}>{t.thK}</span>
+                  <span style={{ flex: 1, textAlign: 'end' }}>{t.thP}</span>
+                  <span style={{ flex: 1, textAlign: 'end' }}>{t.thQ}</span>
                 </div>
-              ) : null}
-              <div className="lvlrow">
-                <span className="lvlbl">{t.aiLvl}:</span>
-                <button className={`lvl ${state.aiLevel === 'beginner' ? 'on' : ''}`} onClick={() => setState((prev) => ({ ...prev, aiLevel: 'beginner' }))}>{t.aiLvlBeg}</button>
-                <button className={`lvl ${state.aiLevel === 'expert' ? 'on' : ''}`} onClick={() => setState((prev) => ({ ...prev, aiLevel: 'expert' }))}>{t.aiLvlExp}</button>
-              </div>
-              <button className="ai-go" onClick={() => void analyze()} disabled={state.ai.loading}>{state.ai.loading ? t.aiGoing : t.aiGo}</button>
-              <div className={`ai-status ${state.ai.error ? 'err' : ''}`}>{state.ai.error ? `${t.aiErr}${state.ai.error}` : ''}</div>
-              {state.ai.data ? (
-                <div className="ai-result">
-                  <div className="ai-section">
-                    <div className="ai-section-tape">{state.lang === 'ar' ? 'ملخص سريع' : 'Quick read'}</div>
-                    <div className="ai-oneliner">{state.ai.data.one_liner}</div>
-                  </div>
-                  {state.ai.data.trends && state.ai.data.trends.length ? (
-                    <div className="ai-section">
-                      <div className="ai-section-tape">{t.aiTrendsH}</div>
-                      {(state.ai.data.trends || []).map((item) => <div className="ai-trend">{item}</div>)}
-                    </div>
-                  ) : null}
-                  {state.ai.data.suggested_weights ? (
-                    <div className="ai-section">
-                      <div className="ai-section-tape">{t.aiWeightsH}</div>
-                      <div className="ai-wgrid">
-                        {SCEN_META.map((scenario) => (
-                          <div className="ai-w">
-                            <div className="nm">{t.scen[scenario.key].name}</div>
-                            <div className="vals">{state.weights[scenario.key]}% → <span className="new">{state.ai.data?.suggested_weights?.[scenario.key] ?? state.ai.data?.suggested_weights?.[scenario.key as keyof typeof state.ai.data.suggested_weights] ?? '-'}%</span></div>
-                          </div>
-                        ))}
-                      </div>
-                      <div className="ai-body">{state.ai.data.weights_reasoning}</div>
-                      <button className="ai-apply" onClick={applyAI}>{state.ai.applied ? t.aiApplied : t.aiApply}</button>
-                    </div>
-                  ) : null}
-                  {state.ai.data.tranche2 ? (
-                    <div className="ai-section">
-                      <div className="ai-section-tape">{t.aiTrancheH}</div>
-                      <div className="ai-body">{state.ai.data.tranche2.reasoning}</div>
-                    </div>
-                  ) : null}
-                  {state.ai.data.egp_read ? (
-                    <div className="ai-section">
-                      <div className="ai-section-tape">{t.aiEgpH}</div>
-                      <div className="ai-body">{state.ai.data.egp_read}</div>
-                    </div>
-                  ) : null}
-                  {state.ai.data.wallet_read ? (
-                    <div className="ai-section">
-                      <div className="ai-section-tape">{t.aiWalletH}</div>
-                      <div className="ai-body">{state.ai.data.wallet_read}</div>
-                    </div>
-                  ) : null}
-                  {state.ai.data.watchlist_read ? (
-                    <div className="ai-section">
-                      <div className="ai-section-tape">{t.aiWatchH}</div>
-                      <div className="ai-body">{state.ai.data.watchlist_read}</div>
-                    </div>
-                  ) : null}
-                  <div className="ai-meta">{state.ai.at || ''} {state.ai.providerLabel ? `· ${state.ai.providerLabel}` : ''} {state.ai.usedWebSearch ? '+ web search' : ''} · {t.aiDisc}</div>
-                </div>
-              ) : null}
-            </div>
-            <details>
-              <summary>{t.expAiT}</summary>
-              <div className="exp">{t.expAi}</div>
-            </details>
-          </div>
-
-          <div className={`section-wrap ${activeTab === 'dca' ? 'active' : ''}`}>
-            <div className="sechead">
-              <div className="lbl">{t.dcaT} {dcaMode === 'fixed' ? `· ${tranchePct.join(' / ')}` : ''}</div>
-              <div className="calcrow">
-                <button className={`lvl ${dcaMode === 'fixed' ? 'on' : ''}`} onClick={() => patchDcaPlan({ mode: 'fixed' })}>{t.dcaModeFixed}</button>
-                <button className={`lvl ${dcaMode === 'recurring' ? 'on' : ''}`} onClick={() => patchDcaPlan({ mode: 'recurring' })}>{t.dcaModeRecurring}</button>
-              </div>
-              <div className="budget">
-                {t.startDateLbl} <input type="date" className="numf" value={dcaPlan.data?.start_date ?? ''} onInput={(event) => patchDcaPlan({ start_date: (event.target as HTMLInputElement).value })} />
-              </div>
-              <div className="budget">
-                {dcaMode === 'recurring' ? t.budgetMonthlyLbl : t.budgetLbl} <input type="text" inputMode="decimal" className="numf" value={dcaPlan.data?.total_investment_egp ?? 0} onInput={(event) => patchDcaPlan({ total_investment_egp: normNum((event.target as HTMLInputElement).value) })} /> {t.cur}
-              </div>
-              <div className="budget">
-                {t.spacingLbl} <input type="text" inputMode="numeric" className="numf" value={dcaPlan.data?.spacing_months ?? 2} onInput={(event) => patchDcaPlan({ spacing_months: Math.max(1, Math.round(normNum((event.target as HTMLInputElement).value))) })} /> {t.spacingUnitLbl}
-              </div>
-            </div>
-            {dcaPlan.error ? <div className="ai-status err">{dcaPlan.error}</div> : null}
-
-            {dcaMode === 'fixed' && trancheDraft ? (
-              <div className="panel" style={{ marginTop: 0 }}>
-                <div className="sechead" style={{ margin: 0 }}><div className="lbl">{t.dcaSplitLbl}</div></div>
-                {trancheDraft.map((pct, index) => (
-                  <div className="calcrow">
-                    {t.trancheLbl} {index + 1}
-                    <input
-                      type="text"
-                      inputMode="decimal"
-                      className="numf"
-                      value={pct}
-                      onInput={(event) => updateTrancheDraftPct(index, (event.target as HTMLInputElement).value)}
-                    />
-                    %
-                    {trancheDraft.length > 1 ? (
-                      <span className="linklike" style={{ cursor: 'pointer', textDecoration: 'underline', marginInlineStart: 8 }} onClick={() => removeTrancheDraftRow(index)}>
-                        {t.settingsDeleteBtn}
-                      </span>
-                    ) : null}
-                  </div>
-                ))}
-                <div className="ai-meta">
-                  {t.dcaSplitSumLbl} {fmt(trancheDraft.reduce((total, pct) => total + pct, 0), 1)}%
-                </div>
-                {trancheDraftError ? <div className="ai-status err">{trancheDraftError}</div> : null}
-                <button onClick={addTrancheDraftRow}>{t.dcaAddTrancheBtn}</button>
-                <button className="ai-go" onClick={saveTrancheDraft} style={{ marginInlineStart: 8 }}>{t.dcaSaveSplitBtn}</button>
-              </div>
-            ) : null}
-
-            {dcaAlertRule?.active && dcaTrancheOpen && !dcaBannerDismissed ? (
-              <div className="panel" style={{ borderInlineStartColor: 'var(--gold)', borderInlineStartWidth: 3 }}>
-                {t.alertDcaOpenMsg}
-                <span className="linklike" style={{ cursor: 'pointer', textDecoration: 'underline', marginInlineStart: 10 }} onClick={() => setDcaBannerDismissed(true)}>
-                  {t.alertDismissBtn}
-                </span>
-              </div>
-            ) : null}
-
-            <div className="panel" style={{ marginTop: 0 }}>
-              <div className="toggle-row">
-                <button
-                  type="button"
-                  role="switch"
-                  aria-checked={!!dcaAlertRule?.active}
-                  className={`toggle-switch ${dcaAlertRule?.active ? 'on' : ''}`}
-                  onClick={() => void toggleDcaAlert()}
-                >
-                  <span className="knob" />
-                </button>
-                <div className="toggle-text">
-                  <div className="lbl2">{dcaAlertRule?.active ? t.alertDcaOnLbl : t.alertDcaOffLbl}</div>
-                  <div className="note">
-                    {(() => {
-                      if (dcaTrancheOpen) return t.alertDcaNoteOpen;
-                      const nextIndex = trancheStatus.findIndex((status) => status === 'pending');
-                      if (nextIndex === -1 || !dcaWindows) return t.alertDcaNoteDone;
-                      const locale = state.lang === 'ar' ? 'ar-EG' : 'en-GB';
-                      const date = dcaWindows[nextIndex].windowStart.toLocaleDateString(locale, { day: 'numeric', month: 'short', year: 'numeric' });
-                      return t.alertDcaNoteNext.replace('{date}', date);
-                    })()}
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {dcaMode === 'fixed'
-              ? tranchePct.map((pct, index) => {
-                  const totalInvestment = dcaPlan.data?.total_investment_egp ?? 0;
-                  const amount = totalInvestment * pct / 100;
-                  const grams = amount / g21;
-                  const window = dcaWindows ? formatTrancheWindow(dcaWindows[index].windowStart, dcaWindows[index].windowEnd) : '';
+                {karatRows.map((row) => {
+                  const perGram = g24 * row.f;
                   return (
-                    <div className={`tranche ${trancheStatus[index]}`}>
-                      <div className="tpct">{pct}%</div>
-                      <div className="tmid">
-                        <div className="row1">
-                          {t.trancheLbl} {index + 1} · {window}
-                          {trancheStatus[index] === 'done' ? ' ✓' : null}
-                          {trancheStatus[index] === 'active' ? <span style={{ color: 'var(--gold)' }}> {t.nowMark}</span> : null}
-                        </div>
-                      </div>
-                      <div className="tright"><div className="amt">{fmt(amount)} EGP</div><div>≈ {fmt(grams, 1)}g 21k</div></div>
-                    </div>
-                  );
-                })
-              : (dcaWindows ?? []).slice(0, RECURRING_DISPLAY_COUNT).map(({ windowStart, windowEnd }, index) => {
-                  const amount = dcaPlan.data?.total_investment_egp ?? 0;
-                  const grams = amount / g21;
-                  const window = formatTrancheWindow(windowStart, windowEnd);
-                  return (
-                    <div className={`tranche ${trancheStatus[index]}`}>
-                      <div className="tpct">#{index + 1}</div>
-                      <div className="tmid">
-                        <div className="row1">
-                          {t.deploymentLbl} · {window}
-                          {trancheStatus[index] === 'done' ? ' ✓' : null}
-                          {trancheStatus[index] === 'active' ? <span style={{ color: 'var(--gold)' }}> {t.nowMark}</span> : null}
-                        </div>
-                      </div>
-                      <div className="tright"><div className="amt">{fmt(amount)} EGP</div><div>≈ {fmt(grams, 1)}g 21k</div></div>
+                    <div key={row.k} style={{ display: 'flex', alignItems: 'center', padding: '10px 0', borderTop: '1px solid var(--border)' }}>
+                      <span style={{ flex: 1, fontSize: 17, color: row.hl ? 'var(--gold)' : 'var(--text)' }}>{row.k}</span>
+                      <span className="font-mono" style={{ flex: 1, textAlign: 'end', fontSize: 17, color: row.hl ? 'var(--gold)' : 'var(--text)' }}>{fmt(perGram)} EGP</span>
+                      <span className="font-mono" style={{ flex: 1, textAlign: 'end', fontSize: 17, color: row.hl ? 'var(--gold)' : 'var(--text)' }}>{fmt(state.calcamt / perGram, 1)}g</span>
                     </div>
                   );
                 })}
-            <details>
-              <summary>{t.expDcaT}</summary>
-              <div className="exp">{t.expDca}</div>
-            </details>
-          </div>
-
-          <div className={`section-wrap ${activeTab === 'watch' ? 'active' : ''}`}>
-            <div className="sechead"><div className="lbl">{t.watchT}</div></div>
-            <div className="chips">
-              {state.monitors.map((monitor, index) => (
-                <span className="chip">
-                  <span className="chipmain" onClick={() => cycleSignal(index)}>
-                    <span className="dot" style={{ background: SIGCOL[monitor.sig] }} />
-                    {state.lang === 'ar' ? monitor.ar : monitor.en}<span className="st">{t.siglbl[monitor.sig]}</span>
+                <div style={{ display: 'flex', alignItems: 'center', padding: '10px 0', borderTop: '1px solid var(--border)' }}>
+                  <span style={{ flex: 1, fontSize: 17 }}>{t.gpRow}</span>
+                  <span className="font-mono" style={{ flex: 1, textAlign: 'end', fontSize: 17 }}>{fmt(pound)} EGP</span>
+                  <span className="font-mono" style={{ flex: 1, textAlign: 'end', fontSize: 17 }}>
+                    {Math.floor(state.calcamt / pound)} <span className="muted-text" style={{ fontSize: 14 }}>+ {fmt(state.calcamt - Math.floor(state.calcamt / pound) * pound)} {t.change}</span>
                   </span>
-                  <span className="x" onClick={() => delMonitor(index)} title={t.delMon}>×</span>
-                </span>
-              ))}
-            </div>
-            <div className="addrow">
-              <input type="text" value={state.newMonitor} maxLength={40} placeholder={t.addMonPh} onInput={(event) => setState((prev) => ({ ...prev, newMonitor: (event.target as HTMLInputElement).value }))} onKeyDown={(event) => { if (event.key === 'Enter') addMonitor(); }} />
-              <button className="addbtn" onClick={addMonitor}>{t.addMonBtn}</button>
-            </div>
-            <details>
-              <summary>{t.expMonT}</summary>
-              <div className="exp">{t.expMon}</div>
-            </details>
-          </div>
+                </div>
+                <Hairline />
+                <div className="muted-text" style={{ fontSize: 14, lineHeight: 1.7 }}>{t.calcSpreadNote}</div>
+              </Card>
 
-          <div className={`section-wrap ${activeTab === 'wallet' ? 'active' : ''}`}>
-            <div className="sechead"><div className="lbl">{t.walletT}</div></div>
+              <details className="legacy-ui" style={{ marginTop: 16 }}>
+                <summary>{t.expKaratT}</summary>
+                <div className="exp">{t.expKarat}</div>
+              </details>
+            </div>
+          )}
 
-            <div className="panel" style={{ marginTop: 0 }}>
-              <table className="karat">
-                <thead>
-                  <tr>
-                    <th>{t.walletKaratCol}</th>
-                    <th className="n">{t.walletAmountCol}</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {walletRows.map((row) => {
-                    const draftValue = walletDraft ? walletDraft[row.key] : row.amount;
-                    return (
-                      <tr className={row.key === 'g24' || row.key === 'oz' ? 'hl' : ''}>
-                        <td>{t[row.labelKey]}</td>
-                        <td className="n">
-                          {walletEditing ? (
-                            <input
-                              type="text"
-                              inputMode={row.key === 'oz' ? 'numeric' : 'decimal'}
-                              className="numf"
-                              value={row.key === 'oz' ? Math.round(draftValue) : Number(draftValue.toFixed(1))}
-                              onInput={(event) => patchWalletHoldings(row.key, (event.target as HTMLInputElement).value)}
-                            />
-                          ) : (
-                            <span>{row.key === 'oz' ? Math.round(row.amount) : Number(row.amount.toFixed(1))}</span>
-                          )}
-                          {row.key === 'oz' || row.key === 'pounds' ? '' : ' g'}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-              {walletHoldings.data?.locked ? (
-                <div className="toggle-row" style={{ marginTop: 12 }}>
+          {activeTab === 'target' && (
+            <div>
+              <Card>
+                <SectionLabel text={t.targetLbl.toUpperCase()} />
+                <div className="font-display" style={{ fontSize: 52, color: 'var(--text)', lineHeight: 1 }}>${fmt(weighted)}</div>
+                <div className="font-mono" style={{ fontSize: 16, marginTop: 8, color: delta >= 0 ? 'var(--up)' : 'var(--down)' }}>
+                  {delta >= 0 ? '▲' : '▼'} {fmt(Math.abs(delta), 1)}% {t.deltaVs} ${fmt(state.spot)}
+                </div>
+                {!inBand ? <div className="muted-text" style={{ fontSize: 15, marginTop: 10, lineHeight: 1.7 }}>{t.bandNote}</div> : null}
+              </Card>
+
+              {targetAlertRule?.active && delta > 0 && !targetBannerDismissed ? (
+                <>
+                  <div style={{ height: 14 }} />
+                  <Card style={{ borderInlineStartColor: 'var(--gold)', borderInlineStartWidth: 3 }} className="soft-text">
+                    <span style={{ fontSize: 16 }}>{t.targetBuyHint}</span>
+                    <span className="gold-text" style={{ cursor: 'pointer', textDecoration: 'underline', marginInlineStart: 10, fontSize: 16 }} onClick={() => setTargetBannerDismissed(true)}>
+                      {t.alertDismissBtn}
+                    </span>
+                  </Card>
+                </>
+              ) : null}
+
+              <div style={{ height: 14 }} />
+
+              <Card>
+                <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
                   <button
                     type="button"
                     role="switch"
-                    aria-checked={walletEditing}
-                    className={`toggle-switch ${walletEditing ? 'on' : ''}`}
-                    onClick={() => (walletEditing ? cancelWalletEdit() : startWalletEdit())}
+                    aria-checked={!!targetAlertRule?.active}
+                    onClick={() => void toggleTargetAlert()}
+                    style={{
+                      position: 'relative',
+                      flexShrink: 0,
+                      width: 40,
+                      height: 22,
+                      marginTop: 1,
+                      padding: 0,
+                      border: 'none',
+                      borderRadius: 999,
+                      background: targetAlertRule?.active ? 'var(--gold)' : 'var(--border-solid)',
+                      cursor: 'pointer',
+                      transition: 'background .15s ease',
+                    }}
                   >
-                    <span className="knob" />
+                    <span
+                      style={{
+                        position: 'absolute',
+                        top: 2,
+                        insetInlineStart: targetAlertRule?.active ? 20 : 2,
+                        width: 18,
+                        height: 18,
+                        borderRadius: '50%',
+                        background: '#fff',
+                        boxShadow: '0 1px 3px rgba(0,0,0,.25)',
+                        transition: 'inset-inline-start .15s ease',
+                      }}
+                    />
                   </button>
-                  <div className="toggle-text">
-                    <div className="lbl2">{walletEditing ? t.walletCorrectingLbl : t.walletModifyBtn}</div>
-                    <div className="note">{walletEditing ? t.walletLockNote : t.walletLockedNote}</div>
+                  <div>
+                    <div style={{ fontSize: 16, fontWeight: 600, color: 'var(--text)' }}>{targetAlertRule?.active ? t.alertTargetOnLbl : t.alertTargetOffLbl}</div>
+                    <div className="muted-text" style={{ fontSize: 14, marginTop: 3, lineHeight: 1.6 }}>
+                      {delta > 0
+                        ? t.alertTargetNoteBelow.replace('{pct}', fmt(Math.abs(delta), 1))
+                        : t.alertTargetNoteAbove.replace('{pct}', fmt(Math.abs(delta), 1))}
+                    </div>
                   </div>
                 </div>
-              ) : (
-                <>
-                  <div className="ai-meta">{t.walletLockNote}</div>
-                  <div className="ai-meta">{t.walletFirstSaveNote}</div>
-                </>
-              )}
-              {walletEditing ? (
-                <button className="ai-go" style={{ marginTop: 10 }} onClick={() => void saveWalletHoldings()} disabled={walletSaving}>
-                  {walletSaving ? t.walletSaving : t.walletSaveBtn}
-                </button>
-              ) : null}
+              </Card>
+
+              <details className="legacy-ui" style={{ marginTop: 16 }}>
+                <summary>{t.expWT}</summary>
+                <div className="exp">
+                  {t.expW}
+                  <div className="formula"><span className="num">{t.formulaLbl} ({weightedBreakdown}) ÷ 100 = ${fmt(weighted)}</span></div>
+                  <div style={{ marginTop: 8 }}>{t.expWUse}</div>
+                  <div style={{ marginTop: 4, fontWeight: 600 }}>{delta > 0 ? t.targetBuyHint : t.targetHoldHint}</div>
+                  <div style={{ marginTop: 4, opacity: 0.75 }}>{t.targetCaveat}</div>
+                </div>
+              </details>
             </div>
+          )}
 
-            <div className="panel">
-              <div className="sechead" style={{ margin: 0 }}>
-                <div className="lbl">{txEditingId !== null ? t.walletTxEditingT : t.walletTxT}</div>
-              </div>
-              <div className="calcrow">
-                {t.walletTxUnitLbl}
-                <select
-                  value={txForm.unit}
-                  onChange={(event) => setTxForm((prev) => ({ ...prev, unit: (event.target as HTMLSelectElement).value as WalletUnit }))}
-                >
-                  {walletRows.map((row) => (
-                    <option value={row.key}>{t[row.labelKey]}</option>
-                  ))}
-                </select>
-              </div>
-              <div className="calcrow">
-                <button
-                  className={`lvl ${txForm.side === 'buy' ? 'on' : ''}`}
-                  onClick={() => setTxForm((prev) => ({ ...prev, side: 'buy' }))}
-                >
-                  {t.walletTxBuy}
-                </button>
-                <button
-                  className={`lvl ${txForm.side === 'sell' ? 'on' : ''}`}
-                  onClick={() => setTxForm((prev) => ({ ...prev, side: 'sell' }))}
-                >
-                  {t.walletTxSell}
-                </button>
-              </div>
-              <div className="calcrow">
-                {t.walletTxAmountLbl}
-                <input
-                  type="text"
-                  inputMode={txForm.unit === 'oz' ? 'numeric' : 'decimal'}
-                  className="numf"
-                  value={txForm.amount}
-                  onInput={(event) => setTxForm((prev) => ({ ...prev, amount: (event.target as HTMLInputElement).value }))}
-                />
-              </div>
-              <div className="calcrow">
-                {t.walletTxPriceLbl}
-                <input
-                  type="text"
-                  inputMode="decimal"
-                  className="numf"
-                  value={txForm.price}
-                  onInput={(event) => setTxForm((prev) => ({ ...prev, price: (event.target as HTMLInputElement).value }))}
-                />
-                {t.cur}
-              </div>
-              {(() => {
-                const amount = normNum(txForm.amount);
-                const total = normNum(txForm.price);
-                if (amount <= 0 || total <= 0) return null;
+          {activeTab === 'scenarios' && (
+            <div>
+              {SCEN_META.map((scenario) => {
+                const label = t.scen[scenario.key];
                 return (
-                  <div className="ai-meta">
-                    {t.walletTxPerUnitNote} {fmt(total / amount)} {t.cur}
+                  <div key={scenario.key} style={{ marginBottom: 14 }}>
+                    <Card style={{ borderInlineStartColor: scenario.color, borderInlineStartWidth: 3 }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+                        <div style={{ fontSize: 18, fontWeight: 700, color: 'var(--text)' }}>
+                          {label.name}
+                          <span className="font-mono muted-text" style={{ fontSize: 13, marginInlineStart: 10 }}>{label.sub}</span>
+                        </div>
+                        <div className="font-mono" style={{ fontSize: 24, color: scenario.color }}>{state.weights[scenario.key]}%</div>
+                      </div>
+                      <div className="soft-text" style={{ fontSize: 14, margin: '6px 0 14px', lineHeight: 1.7 }}>
+                        <span className="font-mono">${fmt(scenario.lo)}–${fmt(scenario.hi)}</span> · {label.thesis}
+                      </div>
+                      <GlowBar pct={state.weights[scenario.key]} color={scenario.color} />
+                      <input
+                        type="range"
+                        min="2"
+                        max="96"
+                        value={state.weights[scenario.key]}
+                        onInput={(event) => setWeight(scenario.key, Number((event.target as HTMLInputElement).value))}
+                        style={{ width: '100%', marginTop: 10 }}
+                      />
+                    </Card>
                   </div>
                 );
-              })()}
-              {(() => {
-                const selectedRow = walletRows.find((r) => r.key === txForm.unit);
-                if (!selectedRow) return null;
-                const amount = normNum(txForm.amount);
-                const suggestedTotal = selectedRow.intlPrice * (amount > 0 ? amount : 1);
-                return (
-                  <div className="ai-meta">
-                    {t.walletTxLookupLbl} {fmt(selectedRow.intlPrice)} {t.cur} ({t.walletIntlLbl})
-                    {selectedRow.egyptPrice !== null ? ` · ${fmt(selectedRow.egyptPrice)} ${t.cur} (${t.walletEgyptLbl})` : ''}
-                    {' · '}
-                    <span
-                      className="linklike"
-                      style={{ cursor: 'pointer', textDecoration: 'underline' }}
-                      onClick={() => setTxForm((prev) => ({ ...prev, price: String(suggestedTotal.toFixed(0)) }))}
-                    >
-                      {t.walletTxUseLookup}
-                    </span>
-                  </div>
-                );
-              })()}
-              <div className="calcrow">
-                {t.walletTxDateLbl}
-                <input
-                  type="date"
-                  className="numf"
-                  value={txForm.date}
-                  onInput={(event) => setTxForm((prev) => ({ ...prev, date: (event.target as HTMLInputElement).value }))}
-                />
-              </div>
-              {txError ? <div className="ai-status err">{txError}</div> : null}
-              <button className="ai-go" onClick={() => void submitWalletTransaction()} disabled={txSubmitting}>
-                {txSubmitting ? t.walletTxSubmitting : txEditingId !== null ? t.walletTxUpdate : t.walletTxSubmit}
-              </button>
-              {txEditingId !== null ? (
-                <button onClick={resetTxForm} style={{ marginInlineStart: 8 }}>
-                  {t.settingsCancelBtn}
+              })}
+
+              <Card>
+                <SectionLabel text={t.watchImpliedLbl.toUpperCase()} />
+                <div className="soft-text font-mono" style={{ fontSize: 15, marginBottom: 8 }}>
+                  <span className="up-text">{watchlistCounts.support} {t.siglbl[0]}</span> · <span className="gold-text">{watchlistCounts.monitor} {t.siglbl[1]}</span> · <span className="down-text">{watchlistCounts.risk} {t.siglbl[2]}</span>
+                </div>
+                <div className="font-mono" style={{ fontSize: 22, fontWeight: 600, color: 'var(--text)', marginBottom: 12 }}>
+                  {watchlistImpliedWeights.deesc}% / {watchlistImpliedWeights.base}% / {watchlistImpliedWeights.stag}%
+                </div>
+                <button className="btn-outline" onClick={applyWatchlistWeights}>{watchApplied ? t.aiApplied : t.watchApplyBtn}</button>
+              </Card>
+
+              <details className="legacy-ui" style={{ marginTop: 16 }}>
+                <summary>{t.expScT}</summary>
+                <div className="exp">{t.expSc}</div>
+              </details>
+            </div>
+          )}
+
+          {activeTab === 'egypt' && (
+            <div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14, flexWrap: 'wrap', gap: 10 }}>
+                <SectionLabel text={t.egyptHeading.toUpperCase()} />
+                <button className="btn-outline" onClick={loadEgyptPrices} disabled={egypt.loading} style={{ padding: '6px 14px', fontSize: 15 }}>
+                  {egypt.loading ? t.egyptLoading : t.pull}
                 </button>
+              </div>
+              <Card>
+                {egypt.error ? <div className="down-text" style={{ fontSize: 15, marginBottom: 10 }}>{t.egyptErr}{egypt.error}</div> : null}
+                {egypt.data ? (
+                  <>
+                    {egypt.data.stale ? (
+                      <div className="down-text" style={{ fontSize: 14, marginBottom: 10 }}>
+                        {t.egyptStaleNote} {new Date(egypt.data.fetchedAt).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                      </div>
+                    ) : null}
+                    <div style={{ display: 'flex', fontSize: 14, fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--text-muted)', padding: '0 0 10px' }}>
+                      <span style={{ flex: 1 }}>{t.thK}</span>
+                      <span style={{ flex: 1, textAlign: 'end' }}>{t.egyptSell}</span>
+                      <span style={{ flex: 1, textAlign: 'end' }}>{t.egyptBuy}</span>
+                    </div>
+                    {egypt.data.rows.map((row) => (
+                      <div key={row.karat} style={{ display: 'flex', alignItems: 'center', padding: '10px 0', borderTop: '1px solid var(--border)' }}>
+                        <span style={{ flex: 1, fontSize: 17 }}>{EGYPT_KARAT_LABEL[row.karat](t)}</span>
+                        <span className="font-mono" style={{ flex: 1, textAlign: 'end', fontSize: 17 }}>{fmt(row.sell)} EGP</span>
+                        <span className="font-mono gold-text" style={{ flex: 1, textAlign: 'end', fontSize: 17 }}>{fmt(row.buy)} EGP</span>
+                      </div>
+                    ))}
+                    <Hairline />
+                    <div className="muted-text" style={{ fontSize: 13 }}>
+                      {t.egyptSourceNote} · {new Date(egypt.data.fetchedAt).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                    </div>
+                  </>
+                ) : null}
+                {!egypt.data && !egypt.error && egypt.loading ? <div className="soft-text" style={{ fontSize: 16 }}>{t.egyptLoading}</div> : null}
+              </Card>
+            </div>
+          )}
+
+          {activeTab === 'ai' && (
+            <div>
+              <SectionLabel text={t.aiT.toUpperCase()} />
+              <Card>
+                <div className="soft-text" style={{ fontSize: 15, marginBottom: 6 }}>
+                  {t.aiUsingProvider}: {activeProvider ? `${activeProvider.label} (${providerTypeLabel(activeProvider.provider_type)})` : t.aiNoProvider}
+                </div>
+                {analyzeQuota?.shared ? (
+                  <div className="soft-text" style={{ fontSize: 15, marginBottom: 6 }}>
+                    {t.aiQuotaLabel}: {analyzeQuota.limit - analyzeQuota.used}/{analyzeQuota.limit}
+                  </div>
+                ) : null}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, margin: '10px 0 16px' }}>
+                  <span className="muted-text" style={{ fontSize: 15 }}>{t.aiLvl}:</span>
+                  <button className={state.aiLevel === 'beginner' ? 'btn-primary' : 'btn-outline'} style={{ padding: '5px 12px', fontSize: 15 }} onClick={() => setState((prev) => ({ ...prev, aiLevel: 'beginner' }))}>{t.aiLvlBeg}</button>
+                  <button className={state.aiLevel === 'expert' ? 'btn-primary' : 'btn-outline'} style={{ padding: '5px 12px', fontSize: 15 }} onClick={() => setState((prev) => ({ ...prev, aiLevel: 'expert' }))}>{t.aiLvlExp}</button>
+                </div>
+                <button className="btn-primary" style={{ width: '100%' }} onClick={() => void analyze()} disabled={state.ai.loading}>{state.ai.loading ? t.aiGoing : t.aiGo}</button>
+                {state.ai.error ? <div className="down-text" style={{ fontSize: 14, marginTop: 10, textAlign: 'center' }}>{t.aiErr}{state.ai.error}</div> : null}
+                {state.ai.data ? (
+                  <div style={{ marginTop: 16, borderTop: '1px solid var(--border)', paddingTop: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
+                    <div>
+                      <div className="section-label gold-text" style={{ marginBottom: 6 }}>{state.lang === 'ar' ? 'ملخص سريع' : 'Quick read'}</div>
+                      <div style={{ fontSize: 17, fontWeight: 700, color: 'var(--text)', lineHeight: 1.6 }}>{state.ai.data.one_liner}</div>
+                    </div>
+                    {state.ai.data.trends && state.ai.data.trends.length ? (
+                      <div>
+                        <div className="section-label gold-text" style={{ marginBottom: 6 }}>{t.aiTrendsH}</div>
+                        {(state.ai.data.trends || []).map((item) => <div key={item} className="soft-text" style={{ fontSize: 15, lineHeight: 1.8 }}>• {item}</div>)}
+                      </div>
+                    ) : null}
+                    {state.ai.data.suggested_weights ? (
+                      <div>
+                        <div className="section-label gold-text" style={{ marginBottom: 6 }}>{t.aiWeightsH}</div>
+                        <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
+                          {SCEN_META.map((scenario) => (
+                            <div key={scenario.key} style={{ flex: 1, background: 'var(--elevated)', border: '1px solid var(--border)', padding: 10, textAlign: 'center', borderRadius: 8 }}>
+                              <div className="muted-text" style={{ fontSize: 12 }}>{t.scen[scenario.key].name}</div>
+                              <div className="font-mono" style={{ fontSize: 16, marginTop: 4 }}>
+                                {state.weights[scenario.key]}% → <span className="gold-text" style={{ fontWeight: 700 }}>{state.ai.data?.suggested_weights?.[scenario.key] ?? '-'}%</span>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                        <div className="soft-text" style={{ fontSize: 15, lineHeight: 1.8 }}>{state.ai.data.weights_reasoning}</div>
+                        <button className="btn-outline" style={{ marginTop: 8, padding: '6px 14px', fontSize: 14 }} onClick={applyAI}>{state.ai.applied ? t.aiApplied : t.aiApply}</button>
+                      </div>
+                    ) : null}
+                    {state.ai.data.tranche2 ? (
+                      <div>
+                        <div className="section-label gold-text" style={{ marginBottom: 6 }}>{t.aiTrancheH}</div>
+                        <div className="soft-text" style={{ fontSize: 15, lineHeight: 1.8 }}>{state.ai.data.tranche2.reasoning}</div>
+                      </div>
+                    ) : null}
+                    {state.ai.data.egp_read ? (
+                      <div>
+                        <div className="section-label gold-text" style={{ marginBottom: 6 }}>{t.aiEgpH}</div>
+                        <div className="soft-text" style={{ fontSize: 15, lineHeight: 1.8 }}>{state.ai.data.egp_read}</div>
+                      </div>
+                    ) : null}
+                    {state.ai.data.wallet_read ? (
+                      <div>
+                        <div className="section-label gold-text" style={{ marginBottom: 6 }}>{t.aiWalletH}</div>
+                        <div className="soft-text" style={{ fontSize: 15, lineHeight: 1.8 }}>{state.ai.data.wallet_read}</div>
+                      </div>
+                    ) : null}
+                    {state.ai.data.watchlist_read ? (
+                      <div>
+                        <div className="section-label gold-text" style={{ marginBottom: 6 }}>{t.aiWatchH}</div>
+                        <div className="soft-text" style={{ fontSize: 15, lineHeight: 1.8 }}>{state.ai.data.watchlist_read}</div>
+                      </div>
+                    ) : null}
+                    <div className="muted-text font-mono" style={{ fontSize: 13, borderTop: '1px dashed var(--border)', paddingTop: 10 }}>
+                      {state.ai.at || ''} {state.ai.providerLabel ? `· ${state.ai.providerLabel}` : ''} {state.ai.usedWebSearch ? '+ web search' : ''} · {t.aiDisc}
+                    </div>
+                  </div>
+                ) : null}
+              </Card>
+              <details className="legacy-ui" style={{ marginTop: 16 }}>
+                <summary>{t.expAiT}</summary>
+                <div className="exp">{t.expAi}</div>
+              </details>
+            </div>
+          )}
+
+          {activeTab === 'dca' && (
+            <div>
+              <SectionLabel text={`${t.dcaT}${dcaMode === 'fixed' ? ` · ${tranchePct.join(' / ')}` : ''}`.toUpperCase()} />
+              <Card>
+                <div style={{ display: 'flex', gap: 6, marginBottom: 14 }}>
+                  <button className={dcaMode === 'fixed' ? 'btn-primary' : 'btn-outline'} style={{ padding: '6px 14px', fontSize: 15 }} onClick={() => patchDcaPlan({ mode: 'fixed' })}>{t.dcaModeFixed}</button>
+                  <button className={dcaMode === 'recurring' ? 'btn-primary' : 'btn-outline'} style={{ padding: '6px 14px', fontSize: 15 }} onClick={() => patchDcaPlan({ mode: 'recurring' })}>{t.dcaModeRecurring}</button>
+                </div>
+                <div style={{ padding: '6px 0 4px' }}>
+                  <span className="soft-text" style={{ fontSize: 17 }}>{t.startDateLbl}</span>
+                </div>
+                <input type="date" value={dcaPlan.data?.start_date ?? ''} onInput={(event) => patchDcaPlan({ start_date: (event.target as HTMLInputElement).value })} style={{ width: '100%', marginBottom: 8 }} />
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 0' }}>
+                  <span className="soft-text" style={{ fontSize: 17, flex: 1 }}>{dcaMode === 'recurring' ? t.budgetMonthlyLbl : t.budgetLbl}</span>
+                  <input type="text" inputMode="decimal" className="font-mono" value={dcaPlan.data?.total_investment_egp ?? 0} onInput={(event) => patchDcaPlan({ total_investment_egp: normNum((event.target as HTMLInputElement).value) })} style={{ width: 120 }} />
+                  <span className="muted-text" style={{ fontSize: 15 }}>{t.cur}</span>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 0' }}>
+                  <span className="soft-text" style={{ fontSize: 17, flex: 1 }}>{t.spacingLbl}</span>
+                  <input type="text" inputMode="numeric" className="font-mono" value={dcaPlan.data?.spacing_months ?? 2} onInput={(event) => patchDcaPlan({ spacing_months: Math.max(1, Math.round(normNum((event.target as HTMLInputElement).value))) })} style={{ width: 60 }} />
+                  <span className="muted-text" style={{ fontSize: 15 }}>{t.spacingUnitLbl}</span>
+                </div>
+              </Card>
+              {dcaPlan.error ? <div className="down-text" style={{ fontSize: 14, marginTop: 8 }}>{dcaPlan.error}</div> : null}
+
+              {dcaMode === 'fixed' && trancheDraft ? (
+                <>
+                  <div style={{ height: 14 }} />
+                  <Card>
+                    <SectionLabel text={t.dcaSplitLbl.toUpperCase()} />
+                    {trancheDraft.map((pct, index) => (
+                      <div key={index} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 0' }}>
+                        <span className="soft-text" style={{ fontSize: 16, flex: 1 }}>{t.trancheLbl} {index + 1}</span>
+                        <input
+                          type="text"
+                          inputMode="decimal"
+                          className="font-mono"
+                          value={pct}
+                          onInput={(event) => updateTrancheDraftPct(index, (event.target as HTMLInputElement).value)}
+                          style={{ width: 70 }}
+                        />
+                        <span className="soft-text" style={{ fontSize: 16 }}>%</span>
+                        {trancheDraft.length > 1 ? (
+                          <span className="down-text" style={{ cursor: 'pointer', textDecoration: 'underline', fontSize: 14 }} onClick={() => removeTrancheDraftRow(index)}>
+                            {t.settingsDeleteBtn}
+                          </span>
+                        ) : null}
+                      </div>
+                    ))}
+                    <div className="muted-text font-mono" style={{ fontSize: 14, marginTop: 6 }}>
+                      {t.dcaSplitSumLbl} {fmt(trancheDraft.reduce((total, pct) => total + pct, 0), 1)}%
+                    </div>
+                    {trancheDraftError ? <div className="down-text" style={{ fontSize: 14, marginTop: 4 }}>{trancheDraftError}</div> : null}
+                    <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
+                      <button className="btn-outline" style={{ padding: '6px 14px', fontSize: 15 }} onClick={addTrancheDraftRow}>{t.dcaAddTrancheBtn}</button>
+                      <button className="btn-primary" style={{ padding: '6px 14px', fontSize: 15 }} onClick={saveTrancheDraft}>{t.dcaSaveSplitBtn}</button>
+                    </div>
+                  </Card>
+                </>
               ) : null}
 
-              {walletTransactions.length > 0 ? (
+              {dcaAlertRule?.active && dcaTrancheOpen && !dcaBannerDismissed ? (
                 <>
-                <table className="karat" style={{ marginTop: 12 }}>
-                  <thead>
-                    <tr>
-                      <th>{t.walletKaratCol}</th>
-                      <th className="n">{t.walletTxAmountLbl}</th>
-                      <th className="n">{t.walletTxPriceLbl}</th>
-                      <th className="n">{t.walletTxDateLbl}</th>
-                      <th className="n"></th>
-                    </tr>
-                  </thead>
-                  <tbody>
+                  <div style={{ height: 14 }} />
+                  <Card style={{ borderInlineStartColor: 'var(--gold)', borderInlineStartWidth: 3 }} className="soft-text">
+                    <span style={{ fontSize: 16 }}>{t.alertDcaOpenMsg}</span>
+                    <span className="gold-text" style={{ cursor: 'pointer', textDecoration: 'underline', marginInlineStart: 10, fontSize: 16 }} onClick={() => setDcaBannerDismissed(true)}>
+                      {t.alertDismissBtn}
+                    </span>
+                  </Card>
+                </>
+              ) : null}
+
+              <div style={{ height: 14 }} />
+
+              <Card>
+                <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={!!dcaAlertRule?.active}
+                    onClick={() => void toggleDcaAlert()}
+                    style={{
+                      position: 'relative', flexShrink: 0, width: 40, height: 22, marginTop: 1, padding: 0, border: 'none',
+                      borderRadius: 999, background: dcaAlertRule?.active ? 'var(--gold)' : 'var(--border-solid)', cursor: 'pointer',
+                    }}
+                  >
+                    <span style={{ position: 'absolute', top: 2, insetInlineStart: dcaAlertRule?.active ? 20 : 2, width: 18, height: 18, borderRadius: '50%', background: '#fff', boxShadow: '0 1px 3px rgba(0,0,0,.25)' }} />
+                  </button>
+                  <div>
+                    <div style={{ fontSize: 16, fontWeight: 600, color: 'var(--text)' }}>{dcaAlertRule?.active ? t.alertDcaOnLbl : t.alertDcaOffLbl}</div>
+                    <div className="muted-text" style={{ fontSize: 14, marginTop: 3, lineHeight: 1.6 }}>
+                      {(() => {
+                        if (dcaTrancheOpen) return t.alertDcaNoteOpen;
+                        const nextIndex = trancheStatus.findIndex((status) => status === 'pending');
+                        if (nextIndex === -1 || !dcaWindows) return t.alertDcaNoteDone;
+                        const locale = state.lang === 'ar' ? 'ar-EG' : 'en-GB';
+                        const date = dcaWindows[nextIndex].windowStart.toLocaleDateString(locale, { day: 'numeric', month: 'short', year: 'numeric' });
+                        return t.alertDcaNoteNext.replace('{date}', date);
+                      })()}
+                    </div>
+                  </div>
+                </div>
+              </Card>
+
+              <div style={{ height: 14 }} />
+
+              {(dcaMode === 'fixed'
+                ? tranchePct.map((pct, index) => {
+                    const totalInvestment = dcaPlan.data?.total_investment_egp ?? 0;
+                    const amount = totalInvestment * pct / 100;
+                    const grams = amount / g21;
+                    const window = dcaWindows ? formatTrancheWindow(dcaWindows[index].windowStart, dcaWindows[index].windowEnd) : '';
+                    const status = trancheStatus[index];
+                    return (
+                      <div key={index} style={{ marginBottom: 10 }}>
+                        <Card
+                          style={{
+                            background: status === 'active' ? 'var(--gold-glow)' : undefined,
+                            borderColor: status === 'active' ? 'var(--gold-dim)' : status === 'done' ? 'var(--up)' : undefined,
+                            borderWidth: status !== 'pending' ? 2 : 1,
+                          }}
+                        >
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+                            <div className="font-display" style={{ fontSize: 26, color: status === 'active' ? 'var(--gold)' : 'var(--text)' }}>{pct}%</div>
+                            <div style={{ flex: 1 }}>
+                              <div style={{ fontSize: 15, color: status === 'active' ? 'var(--gold)' : 'var(--text-soft)' }}>
+                                {t.trancheLbl} {index + 1} · {window}
+                                {status === 'done' ? ' ✓' : null}
+                                {status === 'active' ? ` ${t.nowMark}` : null}
+                              </div>
+                            </div>
+                            <div style={{ textAlign: 'end' }}>
+                              <div className="font-mono" style={{ fontSize: 16, fontWeight: 600, color: 'var(--text)' }}>{fmt(amount)} EGP</div>
+                              <div className="font-mono muted-text" style={{ fontSize: 13 }}>≈ {fmt(grams, 1)}g 21k</div>
+                            </div>
+                          </div>
+                        </Card>
+                      </div>
+                    );
+                  })
+                : (dcaWindows ?? []).slice(0, RECURRING_DISPLAY_COUNT).map(({ windowStart, windowEnd }, index) => {
+                    const amount = dcaPlan.data?.total_investment_egp ?? 0;
+                    const grams = amount / g21;
+                    const window = formatTrancheWindow(windowStart, windowEnd);
+                    const status = trancheStatus[index];
+                    return (
+                      <div key={index} style={{ marginBottom: 10 }}>
+                        <Card
+                          style={{
+                            background: status === 'active' ? 'var(--gold-glow)' : undefined,
+                            borderColor: status === 'active' ? 'var(--gold-dim)' : status === 'done' ? 'var(--up)' : undefined,
+                            borderWidth: status !== 'pending' ? 2 : 1,
+                          }}
+                        >
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+                            <div className="font-display" style={{ fontSize: 26, color: status === 'active' ? 'var(--gold)' : 'var(--text)' }}>#{index + 1}</div>
+                            <div style={{ flex: 1 }}>
+                              <div style={{ fontSize: 15, color: status === 'active' ? 'var(--gold)' : 'var(--text-soft)' }}>
+                                {t.deploymentLbl} · {window}
+                                {status === 'done' ? ' ✓' : null}
+                                {status === 'active' ? ` ${t.nowMark}` : null}
+                              </div>
+                            </div>
+                            <div style={{ textAlign: 'end' }}>
+                              <div className="font-mono" style={{ fontSize: 16, fontWeight: 600, color: 'var(--text)' }}>{fmt(amount)} EGP</div>
+                              <div className="font-mono muted-text" style={{ fontSize: 13 }}>≈ {fmt(grams, 1)}g 21k</div>
+                            </div>
+                          </div>
+                        </Card>
+                      </div>
+                    );
+                  }))}
+
+              <details className="legacy-ui" style={{ marginTop: 6 }}>
+                <summary>{t.expDcaT}</summary>
+                <div className="exp">{t.expDca}</div>
+              </details>
+            </div>
+          )}
+
+          {activeTab === 'watch' && (
+            <div>
+              <SectionLabel text={t.watchT.toUpperCase()} />
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 14 }}>
+                {state.monitors.map((monitor, index) => (
+                  <div
+                    key={index}
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', borderRadius: 999,
+                      background: 'var(--elevated)', border: '1px solid var(--border)', fontSize: 14, color: 'var(--text)',
+                    }}
+                  >
+                    <span
+                      onClick={() => cycleSignal(index)}
+                      style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}
+                    >
+                      <span style={{ width: 8, height: 8, borderRadius: '50%', flexShrink: 0, background: SIGCOL[monitor.sig] }} />
+                      <span style={{ fontWeight: 600 }}>{state.lang === 'ar' ? monitor.ar : monitor.en}</span>
+                      <span className="muted-text">· {t.siglbl[monitor.sig]}</span>
+                    </span>
+                    <span onClick={() => delMonitor(index)} title={t.delMon} className="muted-text" style={{ cursor: 'pointer', fontSize: 16 }}>×</span>
+                  </div>
+                ))}
+              </div>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <input
+                  type="text"
+                  value={state.newMonitor}
+                  maxLength={40}
+                  placeholder={t.addMonPh}
+                  onInput={(event) => setState((prev) => ({ ...prev, newMonitor: (event.target as HTMLInputElement).value }))}
+                  onKeyDown={(event) => { if (event.key === 'Enter') addMonitor(); }}
+                  style={{ flex: 1 }}
+                />
+                <button className="btn-primary" onClick={addMonitor}>{t.addMonBtn}</button>
+              </div>
+              <details className="legacy-ui" style={{ marginTop: 16 }}>
+                <summary>{t.expMonT}</summary>
+                <div className="exp">{t.expMon}</div>
+              </details>
+            </div>
+          )}
+
+          {activeTab === 'wallet' && (
+            <div>
+              <SectionLabel text={t.walletT.toUpperCase()} />
+
+              <Card>
+                <div style={{ display: 'flex', fontSize: 14, fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--text-muted)', padding: '0 0 10px' }}>
+                  <span style={{ flex: 1 }}>{t.walletKaratCol}</span>
+                  <span style={{ flex: 1, textAlign: 'end' }}>{t.walletAmountCol}</span>
+                </div>
+                {walletRows.map((row) => {
+                  const draftValue = walletDraft ? walletDraft[row.key] : row.amount;
+                  const hl = row.key === 'g24' || row.key === 'oz';
+                  return (
+                    <div key={row.key} style={{ display: 'flex', alignItems: 'center', padding: '9px 0', borderTop: '1px solid var(--border)' }}>
+                      <span style={{ flex: 1, fontSize: 17, color: hl ? 'var(--gold)' : 'var(--text)' }}>{t[row.labelKey]}</span>
+                      <span className="font-mono" style={{ flex: 1, textAlign: 'end', fontSize: 17, color: hl ? 'var(--gold)' : 'var(--text)' }}>
+                        {walletEditing ? (
+                          <input
+                            type="text"
+                            inputMode={row.key === 'oz' ? 'numeric' : 'decimal'}
+                            className="font-mono"
+                            value={row.key === 'oz' ? Math.round(draftValue) : Number(draftValue.toFixed(1))}
+                            onInput={(event) => patchWalletHoldings(row.key, (event.target as HTMLInputElement).value)}
+                            style={{ width: 100, textAlign: 'end' }}
+                          />
+                        ) : (
+                          <span>{row.key === 'oz' ? Math.round(row.amount) : Number(row.amount.toFixed(1))}</span>
+                        )}
+                        {row.key === 'oz' || row.key === 'pounds' ? '' : ' g'}
+                      </span>
+                    </div>
+                  );
+                })}
+                {walletHoldings.data?.locked ? (
+                  <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12, marginTop: 14 }}>
+                    <button
+                      type="button"
+                      role="switch"
+                      aria-checked={walletEditing}
+                      onClick={() => (walletEditing ? cancelWalletEdit() : startWalletEdit())}
+                      style={{
+                        position: 'relative', flexShrink: 0, width: 40, height: 22, marginTop: 1, padding: 0, border: 'none',
+                        borderRadius: 999, background: walletEditing ? 'var(--gold)' : 'var(--border-solid)', cursor: 'pointer',
+                      }}
+                    >
+                      <span style={{ position: 'absolute', top: 2, insetInlineStart: walletEditing ? 20 : 2, width: 18, height: 18, borderRadius: '50%', background: '#fff', boxShadow: '0 1px 3px rgba(0,0,0,.25)' }} />
+                    </button>
+                    <div>
+                      <div style={{ fontSize: 16, fontWeight: 600, color: 'var(--text)' }}>{walletEditing ? t.walletCorrectingLbl : t.walletModifyBtn}</div>
+                      <div className="muted-text" style={{ fontSize: 14, marginTop: 3, lineHeight: 1.6 }}>{walletEditing ? t.walletLockNote : t.walletLockedNote}</div>
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                    <div className="muted-text" style={{ fontSize: 13, marginTop: 10, lineHeight: 1.7 }}>{t.walletLockNote}</div>
+                    <div className="muted-text" style={{ fontSize: 13, marginTop: 6, lineHeight: 1.7 }}>{t.walletFirstSaveNote}</div>
+                  </>
+                )}
+                {walletEditing ? (
+                  <button className="btn-primary" style={{ marginTop: 12, width: '100%' }} onClick={() => void saveWalletHoldings()} disabled={walletSaving}>
+                    {walletSaving ? t.walletSaving : t.walletSaveBtn}
+                  </button>
+                ) : null}
+              </Card>
+
+              <div style={{ height: 14 }} />
+
+              <Card>
+                <SectionLabel text={(txEditingId !== null ? t.walletTxEditingT : t.walletTxT).toUpperCase()} />
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 0' }}>
+                  <span className="soft-text" style={{ fontSize: 16, flex: 1 }}>{t.walletTxUnitLbl}</span>
+                  <select
+                    value={txForm.unit}
+                    onChange={(event) => setTxForm((prev) => ({ ...prev, unit: (event.target as HTMLSelectElement).value as WalletUnit }))}
+                  >
+                    {walletRows.map((row) => (
+                      <option key={row.key} value={row.key}>{t[row.labelKey]}</option>
+                    ))}
+                  </select>
+                </div>
+                <div style={{ display: 'flex', gap: 6, margin: '8px 0' }}>
+                  <button
+                    className={txForm.side === 'buy' ? 'btn-primary' : 'btn-outline'}
+                    style={{ flex: 1, padding: '6px 0', fontSize: 15 }}
+                    onClick={() => setTxForm((prev) => ({ ...prev, side: 'buy' }))}
+                  >
+                    {t.walletTxBuy}
+                  </button>
+                  <button
+                    className={txForm.side === 'sell' ? 'btn-primary' : 'btn-outline'}
+                    style={{ flex: 1, padding: '6px 0', fontSize: 15 }}
+                    onClick={() => setTxForm((prev) => ({ ...prev, side: 'sell' }))}
+                  >
+                    {t.walletTxSell}
+                  </button>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 0' }}>
+                  <span className="soft-text" style={{ fontSize: 16, flex: 1 }}>{t.walletTxAmountLbl}</span>
+                  <input
+                    type="text"
+                    inputMode={txForm.unit === 'oz' ? 'numeric' : 'decimal'}
+                    className="font-mono"
+                    value={txForm.amount}
+                    onInput={(event) => setTxForm((prev) => ({ ...prev, amount: (event.target as HTMLInputElement).value }))}
+                    style={{ width: 110 }}
+                  />
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 0' }}>
+                  <span className="soft-text" style={{ fontSize: 16, flex: 1 }}>{t.walletTxPriceLbl}</span>
+                  <input
+                    type="text"
+                    inputMode="decimal"
+                    className="font-mono"
+                    value={txForm.price}
+                    onInput={(event) => setTxForm((prev) => ({ ...prev, price: (event.target as HTMLInputElement).value }))}
+                    style={{ width: 110 }}
+                  />
+                  <span className="muted-text" style={{ fontSize: 14 }}>{t.cur}</span>
+                </div>
+                {(() => {
+                  const amount = normNum(txForm.amount);
+                  const total = normNum(txForm.price);
+                  if (amount <= 0 || total <= 0) return null;
+                  return (
+                    <div className="muted-text" style={{ fontSize: 13, marginTop: 4 }}>
+                      {t.walletTxPerUnitNote} {fmt(total / amount)} {t.cur}
+                    </div>
+                  );
+                })()}
+                {(() => {
+                  const selectedRow = walletRows.find((r) => r.key === txForm.unit);
+                  if (!selectedRow) return null;
+                  const amount = normNum(txForm.amount);
+                  const suggestedTotal = selectedRow.intlPrice * (amount > 0 ? amount : 1);
+                  return (
+                    <div className="muted-text" style={{ fontSize: 13, marginTop: 4 }}>
+                      {t.walletTxLookupLbl} {fmt(selectedRow.intlPrice)} {t.cur} ({t.walletIntlLbl})
+                      {selectedRow.egyptPrice !== null ? ` · ${fmt(selectedRow.egyptPrice)} ${t.cur} (${t.walletEgyptLbl})` : ''}
+                      {' · '}
+                      <span
+                        className="gold-text"
+                        style={{ cursor: 'pointer', textDecoration: 'underline' }}
+                        onClick={() => setTxForm((prev) => ({ ...prev, price: String(suggestedTotal.toFixed(0)) }))}
+                      >
+                        {t.walletTxUseLookup}
+                      </span>
+                    </div>
+                  );
+                })()}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 0 6px' }}>
+                  <span className="soft-text" style={{ fontSize: 16, flex: 1 }}>{t.walletTxDateLbl}</span>
+                  <input
+                    type="date"
+                    value={txForm.date}
+                    onInput={(event) => setTxForm((prev) => ({ ...prev, date: (event.target as HTMLInputElement).value }))}
+                  />
+                </div>
+                {txError ? <div className="down-text" style={{ fontSize: 14, marginTop: 6 }}>{txError}</div> : null}
+                <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
+                  <button className="btn-primary" onClick={() => void submitWalletTransaction()} disabled={txSubmitting}>
+                    {txSubmitting ? t.walletTxSubmitting : txEditingId !== null ? t.walletTxUpdate : t.walletTxSubmit}
+                  </button>
+                  {txEditingId !== null ? (
+                    <button className="btn-outline" onClick={resetTxForm}>{t.settingsCancelBtn}</button>
+                  ) : null}
+                </div>
+
+                {walletTransactions.length > 0 ? (
+                  <>
+                    <Hairline />
                     {walletTransactions.slice(0, 10).map((tx) => {
                       const row = walletRows.find((r) => r.key === tx.unit);
                       return (
-                        <tr>
-                          <td>
-                            <span style={{ color: tx.side === 'buy' ? 'var(--green)' : 'var(--red)' }}>{tx.side === 'buy' ? t.walletTxBuy : t.walletTxSell}</span>
+                        <div key={tx.id} style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', padding: '8px 0', borderTop: '1px solid var(--border)', fontSize: 15, gap: 10 }}>
+                          <div>
+                            <span style={{ color: tx.side === 'buy' ? 'var(--up)' : 'var(--down)' }}>{tx.side === 'buy' ? t.walletTxBuy : t.walletTxSell}</span>
                             {' · '}{row ? t[row.labelKey] : tx.unit}
-                          </td>
-                          <td className="n">{fmt(tx.amount, tx.unit === 'oz' ? 0 : 1)}</td>
-                          <td className="n">
-                            {fmt(tx.price_egp * tx.amount)} {t.cur}
-                            <span style={{ display: 'block', fontSize: 11, opacity: 0.7 }}>{fmt(tx.price_egp)} {t.cur} {t.walletTxPerUnitSuffix}</span>
-                          </td>
-                          <td className="n">{tx.recorded_at.slice(0, 10)}</td>
-                          <td className="n">
-                            <span className="linklike" style={{ cursor: 'pointer', textDecoration: 'underline' }} onClick={() => startEditWalletTransaction(tx)}>
+                            <div className="muted-text" style={{ fontSize: 13, marginTop: 2 }}>{tx.recorded_at.slice(0, 10)}</div>
+                          </div>
+                          <div style={{ textAlign: 'end' }}>
+                            <div className="font-mono">{fmt(tx.amount, tx.unit === 'oz' ? 0 : 1)}</div>
+                            <div className="font-mono" style={{ fontSize: 14 }}>{fmt(tx.price_egp * tx.amount)} {t.cur}</div>
+                            <div className="muted-text font-mono" style={{ fontSize: 12 }}>{fmt(tx.price_egp)} {t.cur} {t.walletTxPerUnitSuffix}</div>
+                          </div>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 4, alignItems: 'flex-end' }}>
+                            <span className="gold-text" style={{ cursor: 'pointer', textDecoration: 'underline', fontSize: 13 }} onClick={() => startEditWalletTransaction(tx)}>
                               {t.settingsEditBtn}
                             </span>
-                            {' · '}
-                            <span className="linklike" style={{ cursor: 'pointer', textDecoration: 'underline', color: 'var(--red)' }} onClick={() => void removeWalletTransaction(tx.id)}>
+                            <span className="down-text" style={{ cursor: 'pointer', textDecoration: 'underline', fontSize: 13 }} onClick={() => void removeWalletTransaction(tx.id)}>
                               {t.settingsDeleteBtn}
                             </span>
-                          </td>
-                        </tr>
+                          </div>
+                        </div>
                       );
                     })}
-                  </tbody>
-                </table>
-                <a href="/api/wallet/transactions/export.csv" download className="ai-apply">{t.walletExportBtn}</a>
-                </>
-              ) : null}
-            </div>
-
-            {walletHasHoldings ? (
-              <div className="panel">
-                <table className="karat">
-                  <thead>
-                    <tr>
-                      <th>{t.walletKaratCol}</th>
-                      <th className="n">{t.walletIntlLbl}</th>
-                      <th className="n">{t.walletEgyptLbl}</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {walletRows.filter((row) => row.amount > 0).map((row) => (
-                      <tr>
-                        <td>{t[row.labelKey]}</td>
-                        <td className="n">{fmt(row.amount * row.intlPrice)} {t.cur}</td>
-                        <td className="n">{row.egyptPrice !== null ? `${fmt(row.amount * row.egyptPrice)} ${t.cur}` : '—'}</td>
-                      </tr>
-                    ))}
-                    <tr className="hl">
-                      <td>{t.walletTotalLbl}</td>
-                      <td className="n">{fmt(walletIntlValue)} {t.cur}</td>
-                      <td className="n">{walletEgyptValue !== null ? `${fmt(walletEgyptValue)} ${t.cur}` : '—'}</td>
-                    </tr>
-                  </tbody>
-                </table>
-                {walletEgyptValue !== null ? (
-                  <div className="delta" style={{ color: walletEgyptValue >= walletIntlValue ? 'var(--green)' : 'var(--red)' }}>
-                    <span className="num">{walletEgyptValue >= walletIntlValue ? '▲' : '▼'} {fmt(Math.abs(((walletEgyptValue - walletIntlValue) / walletIntlValue) * 100), 1)}%</span> {t.walletDeltaLbl}
-                  </div>
-                ) : (
-                  <div className="ai-status err">{egypt.loading ? t.egyptLoading : t.walletNoEgyptData}</div>
-                )}
-                <div className="ai-meta">{t.calcSpreadNote}</div>
-              </div>
-            ) : (
-              <div className="panel">{t.walletEmptyHint}</div>
-            )}
-
-            {(() => {
-              const totalRealized = walletCostBasis.reduce((sum, cb) => sum + cb.realizedEgp, 0);
-              if (!walletHasHoldings && totalRealized === 0) return null;
-              const anyUntracked = walletRows.some((row) => {
-                const cb = walletCostBasis.find((c) => c.unit === row.key);
-                return row.amount > (cb?.openQty ?? 0) + 0.001;
-              });
-              return (
-                <div className="panel">
-                  <div className="sechead" style={{ margin: 0 }}><div className="lbl">{t.walletCostBasisLbl}</div></div>
-                  {walletHasHoldings ? (
-                    <table className="karat">
-                      <thead>
-                        <tr>
-                          <th>{t.walletKaratCol}</th>
-                          <th className="n">{t.walletAvgCostLbl}</th>
-                          <th className="n">{t.walletUnrealizedLbl}</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {walletRows.filter((row) => row.amount > 0).map((row) => {
-                          const cb = walletCostBasis.find((c) => c.unit === row.key);
-                          const trackedQty = cb?.openQty ?? 0;
-                          const untrackedQty = Math.max(0, row.amount - trackedQty);
-                          const hasTrackedCost = cb && trackedQty > 0.001 && cb.avgCostEgp > 0;
-                          const unrealizedPct = hasTrackedCost ? ((row.intlPrice - cb.avgCostEgp) / cb.avgCostEgp) * 100 : null;
-                          return (
-                            <tr>
-                              <td>
-                                {t[row.labelKey]}
-                                {untrackedQty > 0.001 ? (
-                                  <span style={{ display: 'block', fontSize: 11, opacity: 0.7 }}>
-                                    {t.walletUntrackedNote.replace('{qty}', fmt(untrackedQty, row.key === 'oz' ? 0 : 1))}
-                                  </span>
-                                ) : null}
-                              </td>
-                              <td className="n">{hasTrackedCost ? `${fmt(cb!.avgCostEgp)} ${t.cur}` : '—'}</td>
-                              <td className="n">
-                                {unrealizedPct !== null ? (
-                                  <span style={{ color: unrealizedPct >= 0 ? 'var(--green)' : 'var(--red)' }}>
-                                    {unrealizedPct >= 0 ? '▲' : '▼'} {fmt(Math.abs(unrealizedPct), 1)}%
-                                  </span>
-                                ) : '—'}
-                              </td>
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
-                  ) : null}
-                  {totalRealized !== 0 ? (
-                    <div className="delta" style={{ color: totalRealized >= 0 ? 'var(--green)' : 'var(--red)' }}>
-                      <span className="num">{totalRealized >= 0 ? '▲' : '▼'} {fmt(Math.abs(totalRealized))} {t.cur}</span> {t.walletRealizedLbl}
-                    </div>
-                  ) : null}
-                  <div className="ai-meta">{t.walletCostBasisNote}</div>
-                  {anyUntracked ? <div className="ai-meta">{t.walletUntrackedGeneralNote}</div> : null}
-                </div>
-              );
-            })()}
-
-            {walletHasHoldings && walletLastEvaluation ? (
-              <div className="panel">
-                <div className="sechead" style={{ margin: 0 }}><div className="lbl">{t.walletChangeLbl}</div></div>
-                {walletIntlChangePct !== null ? (
-                  <div className="delta" style={{ color: walletIntlChangePct >= 0 ? 'var(--green)' : 'var(--red)' }}>
-                    <span className="num">{walletIntlChangePct >= 0 ? '▲' : '▼'} {fmt(Math.abs(walletIntlChangePct), 1)}%</span> {t.walletIntlLbl}
-                  </div>
-                ) : null}
-                {walletEgyptChangePct !== null ? (
-                  <div className="delta" style={{ color: walletEgyptChangePct >= 0 ? 'var(--green)' : 'var(--red)' }}>
-                    <span className="num">{walletEgyptChangePct >= 0 ? '▲' : '▼'} {fmt(Math.abs(walletEgyptChangePct), 1)}%</span> {t.walletEgyptLbl}
-                  </div>
-                ) : null}
-                <div className="ai-meta">{t.walletSinceLbl} {new Date(walletLastEvaluation.recorded_at).toLocaleDateString(state.lang === 'ar' ? 'ar-EG' : 'en-GB', { day: 'numeric', month: 'short' })}</div>
-              </div>
-            ) : null}
-
-            {walletHasHoldings ? (
-              <div className="panel">
-                <div className="sechead" style={{ margin: 0 }}><div className="lbl">{t.walletTrendLbl}</div></div>
-                {walletTrendChart ? (
-                  <>
-                    <svg viewBox={`0 0 ${walletTrendChart.width} ${walletTrendChart.height}`} style={{ width: '100%', height: 160 }}>
-                      <polyline points={walletTrendChart.intlPoints} fill="none" stroke="var(--gold)" strokeWidth="2" />
-                      {walletTrendChart.egyptPoints ? (
-                        <polyline points={walletTrendChart.egyptPoints} fill="none" stroke="var(--green)" strokeWidth="2" />
-                      ) : null}
-                    </svg>
-                    <div className="ai-meta">
-                      <span style={{ color: 'var(--gold)' }}>● {t.walletIntlLbl}</span>
-                      {walletTrendChart.egyptPoints ? <span style={{ color: 'var(--green)', marginInlineStart: 12 }}>● {t.walletEgyptLbl}</span> : null}
-                    </div>
+                    <a href="/api/wallet/transactions/export.csv" download className="btn-outline" style={{ display: 'inline-block', marginTop: 12, textDecoration: 'none', fontSize: 14, padding: '6px 14px' }}>{t.walletExportBtn}</a>
                   </>
-                ) : (
-                  <div className="ai-meta">{t.walletTrendEmpty}</div>
-                )}
-                {walletHedgeMetric ? (
-                  <div style={{ marginTop: 14, borderTop: '1px dashed #dfe8dc', paddingTop: 12 }}>
-                    <div className="lbl" style={{ marginBottom: 6 }}>{t.walletHedgeLbl}</div>
-                    <div className="delta" style={{ color: walletHedgeMetric.diffPct >= 0 ? 'var(--green)' : 'var(--red)' }}>
-                      <span className="num">{walletHedgeMetric.diffPct >= 0 ? '▲' : '▼'} {fmt(Math.abs(walletHedgeMetric.diffPct), 1)}%</span>{' '}
-                      {walletHedgeMetric.diffPct >= 0
-                        ? t.walletHedgeAheadMsg.replace('{gold}', fmt(walletHedgeMetric.walletChangePct, 1)).replace('{egp}', fmt(walletHedgeMetric.egpChangePct, 1))
-                        : t.walletHedgeBehindMsg.replace('{gold}', fmt(walletHedgeMetric.walletChangePct, 1)).replace('{egp}', fmt(walletHedgeMetric.egpChangePct, 1))}
-                    </div>
-                    <div className="ai-meta">{t.walletSinceLbl} {new Date(walletHedgeMetric.sinceDate).toLocaleDateString(state.lang === 'ar' ? 'ar-EG' : 'en-GB', { day: 'numeric', month: 'short' })}</div>
-                  </div>
                 ) : null}
-              </div>
-            ) : null}
+              </Card>
 
-            <details>
-              <summary>{t.expWalletT}</summary>
-              <div className="exp">{t.expWallet}</div>
-            </details>
-          </div>
+              <div style={{ height: 14 }} />
 
-          <div className={`section-wrap ${activeTab === 'settings' ? 'active' : ''}`}>
-            <div className="sechead"><div className="lbl">{t.settingsHeading}</div></div>
-
-            {providers.length === 0 ? <div className="settings-empty">{t.settingsEmpty}</div> : null}
-
-            <div className="settings-list">
-              {providers.map((provider) => (
-                <div className={`panel settings-card ${provider.is_active ? 'active' : ''}`}>
-                  <div className="settings-card-top">
-                    <div>
-                      <div className="settings-card-label">{provider.label}</div>
-                      <div className="settings-card-meta">{providerTypeLabel(provider.provider_type)} · {provider.model}</div>
+              {walletHasHoldings ? (
+                <Card>
+                  <div style={{ display: 'flex', fontSize: 14, fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--text-muted)', padding: '0 0 10px' }}>
+                    <span style={{ flex: 1 }}>{t.walletKaratCol}</span>
+                    <span style={{ flex: 1, textAlign: 'end' }}>{t.walletIntlLbl}</span>
+                    <span style={{ flex: 1, textAlign: 'end' }}>{t.walletEgyptLbl}</span>
+                  </div>
+                  {walletRows.filter((row) => row.amount > 0).map((row) => (
+                    <div key={row.key} style={{ display: 'flex', padding: '8px 0', borderTop: '1px solid var(--border)' }}>
+                      <span style={{ flex: 1, fontSize: 16 }}>{t[row.labelKey]}</span>
+                      <span className="font-mono" style={{ flex: 1, textAlign: 'end', fontSize: 16 }}>{fmt(row.amount * row.intlPrice)} {t.cur}</span>
+                      <span className="font-mono" style={{ flex: 1, textAlign: 'end', fontSize: 16 }}>{row.egyptPrice !== null ? `${fmt(row.amount * row.egyptPrice)} ${t.cur}` : '—'}</span>
                     </div>
-                    {provider.is_active ? <span className="badge">{t.settingsActiveBadge}</span> : null}
+                  ))}
+                  <div style={{ display: 'flex', padding: '10px 0', borderTop: '1px solid var(--border)' }}>
+                    <span style={{ flex: 1, fontSize: 16, fontWeight: 700, color: 'var(--gold)' }}>{t.walletTotalLbl}</span>
+                    <span className="font-mono" style={{ flex: 1, textAlign: 'end', fontSize: 16, fontWeight: 700, color: 'var(--gold)' }}>{fmt(walletIntlValue)} {t.cur}</span>
+                    <span className="font-mono" style={{ flex: 1, textAlign: 'end', fontSize: 16, fontWeight: 700, color: 'var(--gold)' }}>{walletEgyptValue !== null ? `${fmt(walletEgyptValue)} ${t.cur}` : '—'}</span>
                   </div>
-                  <div className="settings-actions">
-                    {!provider.is_active ? <button onClick={() => void activate(provider.id)}>{t.settingsActivateBtn}</button> : null}
-                    <button onClick={() => editProvider(provider)}>{t.settingsEditBtn}</button>
-                    <button onClick={() => void removeProvider(provider.id)}>{t.settingsDeleteBtn}</button>
-                  </div>
-                </div>
-              ))}
-            </div>
-
-            <div className="panel settings-form">
-              {providerError ? <div className="settings-error">{providerError}</div> : null}
-              <div className="sechead"><div className="lbl">{t.settingsAddHeading}</div></div>
-
-              <div className="settings-field">
-                <div className="lbl">{t.settingsTypeLabel}</div>
-                <select
-                  value={providerForm.provider_type}
-                  onChange={(event) => setProviderForm((prev) => ({ ...prev, provider_type: (event.target as HTMLSelectElement).value as ProviderType }))}
-                >
-                  <option value="ollama">{t.settingsTypeOllama}</option>
-                  <option value="shared">{t.settingsTypeShared}</option>
-                  <option value="openai">{t.settingsTypeOpenAI}</option>
-                  <option value="claude">{t.settingsTypeClaude}</option>
-                  <option value="custom">{t.settingsTypeCustom}</option>
-                </select>
-              </div>
-
-              <div className="settings-field">
-                <div className="lbl">{t.settingsLabelLabel}</div>
-                <input type="text" value={providerForm.label} onInput={(event) => setProviderForm((prev) => ({ ...prev, label: (event.target as HTMLInputElement).value }))} />
-              </div>
-
-              {providerForm.provider_type === 'ollama' || providerForm.provider_type === 'custom' ? (
-                <div className="settings-field">
-                  <div className="lbl">{t.settingsBaseUrlLabel}</div>
-                  <input type="text" value={providerForm.base_url ?? ''} onInput={(event) => setProviderForm((prev) => ({ ...prev, base_url: (event.target as HTMLInputElement).value }))} />
-                </div>
-              ) : null}
-
-              {providerForm.provider_type !== 'ollama' && providerForm.provider_type !== 'shared' ? (
-                <div className="settings-field">
-                  <div className="lbl">{t.settingsApiKeyLabel}</div>
-                  <input type="password" value={providerForm.api_key ?? ''} placeholder={providerForm.id !== null ? t.settingsApiKeyUnchangedPh : ''} onInput={(event) => setProviderForm((prev) => ({ ...prev, api_key: (event.target as HTMLInputElement).value }))} />
-                </div>
-              ) : null}
-
-              {providerForm.provider_type === 'shared' ? (
-                <div className="settings-field ai-providerline">{t.settingsSharedNote}</div>
+                  {walletEgyptValue !== null ? (
+                    <div className="font-mono" style={{ fontSize: 15, marginTop: 10, color: walletEgyptValue >= walletIntlValue ? 'var(--up)' : 'var(--down)' }}>
+                      {walletEgyptValue >= walletIntlValue ? '▲' : '▼'} {fmt(Math.abs(((walletEgyptValue - walletIntlValue) / walletIntlValue) * 100), 1)}% {t.walletDeltaLbl}
+                    </div>
+                  ) : (
+                    <div className="down-text" style={{ fontSize: 14, marginTop: 10 }}>{egypt.loading ? t.egyptLoading : t.walletNoEgyptData}</div>
+                  )}
+                  <div className="muted-text" style={{ fontSize: 13, marginTop: 8, lineHeight: 1.7 }}>{t.calcSpreadNote}</div>
+                </Card>
               ) : (
-                <div className="settings-field">
-                  <div className="lbl">{t.settingsModelLabel}</div>
-                  <input type="text" value={providerForm.model} onInput={(event) => setProviderForm((prev) => ({ ...prev, model: (event.target as HTMLInputElement).value }))} />
-                </div>
+                <Card className="soft-text" style={{ fontSize: 16 }}>{t.walletEmptyHint}</Card>
               )}
 
-              <div className="settings-actions">
-                <button className="ai-go" onClick={() => void saveProvider()}>{t.settingsSaveBtn}</button>
-                <button onClick={() => void testConnection()} disabled={testStatus.loading}>{testStatus.loading ? t.settingsTesting : t.settingsTestBtn}</button>
-                {providerForm.id !== null ? <button onClick={resetProviderForm}>{t.settingsCancelBtn}</button> : null}
-              </div>
-              {testStatus.ok === true ? <div className="settings-success">{t.settingsTestSuccess} {testStatus.message}</div> : null}
-              {testStatus.ok === false ? <div className="settings-error">{t.settingsTestError} {testStatus.message}</div> : null}
-            </div>
-          </div>
+              {(() => {
+                const totalRealized = walletCostBasis.reduce((sum, cb) => sum + cb.realizedEgp, 0);
+                if (!walletHasHoldings && totalRealized === 0) return null;
+                const anyUntracked = walletRows.some((row) => {
+                  const cb = walletCostBasis.find((c) => c.unit === row.key);
+                  return row.amount > (cb?.openQty ?? 0) + 0.001;
+                });
+                return (
+                  <>
+                    <div style={{ height: 14 }} />
+                    <Card>
+                      <SectionLabel text={t.walletCostBasisLbl.toUpperCase()} />
+                      {walletHasHoldings ? (
+                        <>
+                          <div style={{ display: 'flex', fontSize: 14, fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--text-muted)', padding: '0 0 10px' }}>
+                            <span style={{ flex: 1 }}>{t.walletKaratCol}</span>
+                            <span style={{ flex: 1, textAlign: 'end' }}>{t.walletAvgCostLbl}</span>
+                            <span style={{ flex: 1, textAlign: 'end' }}>{t.walletUnrealizedLbl}</span>
+                          </div>
+                          {walletRows.filter((row) => row.amount > 0).map((row) => {
+                            const cb = walletCostBasis.find((c) => c.unit === row.key);
+                            const trackedQty = cb?.openQty ?? 0;
+                            const untrackedQty = Math.max(0, row.amount - trackedQty);
+                            const hasTrackedCost = cb && trackedQty > 0.001 && cb.avgCostEgp > 0;
+                            const unrealizedPct = hasTrackedCost ? ((row.intlPrice - cb.avgCostEgp) / cb.avgCostEgp) * 100 : null;
+                            return (
+                              <div key={row.key} style={{ display: 'flex', padding: '8px 0', borderTop: '1px solid var(--border)' }}>
+                                <span style={{ flex: 1, fontSize: 16 }}>
+                                  {t[row.labelKey]}
+                                  {untrackedQty > 0.001 ? (
+                                    <span className="muted-text" style={{ display: 'block', fontSize: 13 }}>
+                                      {t.walletUntrackedNote.replace('{qty}', fmt(untrackedQty, row.key === 'oz' ? 0 : 1))}
+                                    </span>
+                                  ) : null}
+                                </span>
+                                <span className="font-mono" style={{ flex: 1, textAlign: 'end', fontSize: 16 }}>{hasTrackedCost ? `${fmt(cb!.avgCostEgp)} ${t.cur}` : '—'}</span>
+                                <span className="font-mono" style={{ flex: 1, textAlign: 'end', fontSize: 16 }}>
+                                  {unrealizedPct !== null ? (
+                                    <span style={{ color: unrealizedPct >= 0 ? 'var(--up)' : 'var(--down)' }}>
+                                      {unrealizedPct >= 0 ? '▲' : '▼'} {fmt(Math.abs(unrealizedPct), 1)}%
+                                    </span>
+                                  ) : '—'}
+                                </span>
+                              </div>
+                            );
+                          })}
+                        </>
+                      ) : null}
+                      {totalRealized !== 0 ? (
+                        <div className="font-mono" style={{ fontSize: 15, marginTop: 10, color: totalRealized >= 0 ? 'var(--up)' : 'var(--down)' }}>
+                          {totalRealized >= 0 ? '▲' : '▼'} {fmt(Math.abs(totalRealized))} {t.cur} {t.walletRealizedLbl}
+                        </div>
+                      ) : null}
+                      <div className="muted-text" style={{ fontSize: 13, marginTop: 8, lineHeight: 1.7 }}>{t.walletCostBasisNote}</div>
+                      {anyUntracked ? <div className="muted-text" style={{ fontSize: 13, marginTop: 4, lineHeight: 1.7 }}>{t.walletUntrackedGeneralNote}</div> : null}
+                    </Card>
+                  </>
+                );
+              })()}
 
-          <div className="foot">
+              {walletHasHoldings && walletLastEvaluation ? (
+                <>
+                  <div style={{ height: 14 }} />
+                  <Card>
+                    <SectionLabel text={t.walletChangeLbl.toUpperCase()} />
+                    {walletIntlChangePct !== null ? (
+                      <div className="font-mono" style={{ fontSize: 15, color: walletIntlChangePct >= 0 ? 'var(--up)' : 'var(--down)' }}>
+                        {walletIntlChangePct >= 0 ? '▲' : '▼'} {fmt(Math.abs(walletIntlChangePct), 1)}% {t.walletIntlLbl}
+                      </div>
+                    ) : null}
+                    {walletEgyptChangePct !== null ? (
+                      <div className="font-mono" style={{ fontSize: 15, marginTop: 4, color: walletEgyptChangePct >= 0 ? 'var(--up)' : 'var(--down)' }}>
+                        {walletEgyptChangePct >= 0 ? '▲' : '▼'} {fmt(Math.abs(walletEgyptChangePct), 1)}% {t.walletEgyptLbl}
+                      </div>
+                    ) : null}
+                    <div className="muted-text" style={{ fontSize: 13, marginTop: 8 }}>{t.walletSinceLbl} {new Date(walletLastEvaluation.recorded_at).toLocaleDateString(state.lang === 'ar' ? 'ar-EG' : 'en-GB', { day: 'numeric', month: 'short' })}</div>
+                  </Card>
+                </>
+              ) : null}
+
+              {walletHasHoldings ? (
+                <>
+                  <div style={{ height: 14 }} />
+                  <Card>
+                    <SectionLabel text={t.walletTrendLbl.toUpperCase()} />
+                    {walletTrendChart ? (
+                      <>
+                        <svg viewBox={`0 0 ${walletTrendChart.width} ${walletTrendChart.height}`} style={{ width: '100%', height: 160 }}>
+                          <polyline points={walletTrendChart.intlPoints} fill="none" stroke="var(--gold)" strokeWidth="2" />
+                          {walletTrendChart.egyptPoints ? (
+                            <polyline points={walletTrendChart.egyptPoints} fill="none" stroke="var(--up)" strokeWidth="2" />
+                          ) : null}
+                        </svg>
+                        <div className="muted-text" style={{ fontSize: 13, marginTop: 6 }}>
+                          <span className="gold-text">● {t.walletIntlLbl}</span>
+                          {walletTrendChart.egyptPoints ? <span className="up-text" style={{ marginInlineStart: 12 }}>● {t.walletEgyptLbl}</span> : null}
+                        </div>
+                      </>
+                    ) : (
+                      <div className="muted-text" style={{ fontSize: 15 }}>{t.walletTrendEmpty}</div>
+                    )}
+                    {walletHedgeMetric ? (
+                      <div style={{ marginTop: 14, borderTop: '1px dashed var(--border)', paddingTop: 12 }}>
+                        <div className="section-label" style={{ marginBottom: 6 }}>{t.walletHedgeLbl}</div>
+                        <div className="font-mono" style={{ fontSize: 15, color: walletHedgeMetric.diffPct >= 0 ? 'var(--up)' : 'var(--down)' }}>
+                          {walletHedgeMetric.diffPct >= 0 ? '▲' : '▼'} {fmt(Math.abs(walletHedgeMetric.diffPct), 1)}%{' '}
+                          {walletHedgeMetric.diffPct >= 0
+                            ? t.walletHedgeAheadMsg.replace('{gold}', fmt(walletHedgeMetric.walletChangePct, 1)).replace('{egp}', fmt(walletHedgeMetric.egpChangePct, 1))
+                            : t.walletHedgeBehindMsg.replace('{gold}', fmt(walletHedgeMetric.walletChangePct, 1)).replace('{egp}', fmt(walletHedgeMetric.egpChangePct, 1))}
+                        </div>
+                        <div className="muted-text" style={{ fontSize: 13, marginTop: 6 }}>{t.walletSinceLbl} {new Date(walletHedgeMetric.sinceDate).toLocaleDateString(state.lang === 'ar' ? 'ar-EG' : 'en-GB', { day: 'numeric', month: 'short' })}</div>
+                      </div>
+                    ) : null}
+                  </Card>
+                </>
+              ) : null}
+
+              <details className="legacy-ui" style={{ marginTop: 16 }}>
+                <summary>{t.expWalletT}</summary>
+                <div className="exp">{t.expWallet}</div>
+              </details>
+            </div>
+          )}
+
+          {activeTab === 'settings' && (
+            <div>
+              <SectionLabel text={t.settingsHeading.toUpperCase()} />
+
+              <Card>
+                {providers.length === 0 ? <div className="soft-text" style={{ fontSize: 16 }}>{t.settingsEmpty}</div> : null}
+                {providers.map((provider) => (
+                  <div
+                    key={provider.id}
+                    style={{
+                      display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10,
+                      padding: '10px 12px', marginBottom: 8, borderRadius: 8,
+                      background: provider.is_active ? 'var(--gold-glow)' : 'var(--elevated)',
+                    }}
+                  >
+                    <div>
+                      <div style={{ fontWeight: 700, fontSize: 16, color: 'var(--text)' }}>{provider.label}</div>
+                      <div className="muted-text" style={{ fontSize: 14, marginTop: 2 }}>{providerTypeLabel(provider.provider_type)} · {provider.model}</div>
+                    </div>
+                    <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                      {provider.is_active ? (
+                        <span style={{ background: 'var(--gold)', color: '#0e1210', fontSize: 12, fontWeight: 700, padding: '4px 10px', borderRadius: 999 }}>{t.settingsActiveBadge}</span>
+                      ) : (
+                        <button className="btn-outline" style={{ padding: '5px 10px', fontSize: 13 }} onClick={() => void activate(provider.id)}>{t.settingsActivateBtn}</button>
+                      )}
+                      <button className="btn-outline" style={{ padding: '5px 10px', fontSize: 13 }} onClick={() => editProvider(provider)}>{t.settingsEditBtn}</button>
+                      <button className="btn-outline" style={{ padding: '5px 10px', fontSize: 13 }} onClick={() => void removeProvider(provider.id)}>{t.settingsDeleteBtn}</button>
+                    </div>
+                  </div>
+                ))}
+              </Card>
+
+              <div style={{ height: 14 }} />
+
+              <Card>
+                {providerError ? <div className="down-text" style={{ fontSize: 14, marginBottom: 10 }}>{providerError}</div> : null}
+                <SectionLabel text={t.settingsAddHeading.toUpperCase()} />
+
+                <div style={{ marginBottom: 12 }}>
+                  <div className="section-label" style={{ marginBottom: 6, fontSize: 13 }}>{t.settingsTypeLabel}</div>
+                  <select
+                    value={providerForm.provider_type}
+                    onChange={(event) => setProviderForm((prev) => ({ ...prev, provider_type: (event.target as HTMLSelectElement).value as ProviderType }))}
+                    style={{ width: '100%' }}
+                  >
+                    <option value="ollama">{t.settingsTypeOllama}</option>
+                    <option value="shared">{t.settingsTypeShared}</option>
+                    <option value="openai">{t.settingsTypeOpenAI}</option>
+                    <option value="claude">{t.settingsTypeClaude}</option>
+                    <option value="custom">{t.settingsTypeCustom}</option>
+                  </select>
+                </div>
+
+                <div style={{ marginBottom: 12 }}>
+                  <div className="section-label" style={{ marginBottom: 6, fontSize: 13 }}>{t.settingsLabelLabel}</div>
+                  <input type="text" value={providerForm.label} onInput={(event) => setProviderForm((prev) => ({ ...prev, label: (event.target as HTMLInputElement).value }))} style={{ width: '100%' }} />
+                </div>
+
+                {providerForm.provider_type === 'ollama' || providerForm.provider_type === 'custom' ? (
+                  <div style={{ marginBottom: 12 }}>
+                    <div className="section-label" style={{ marginBottom: 6, fontSize: 13 }}>{t.settingsBaseUrlLabel}</div>
+                    <input type="text" value={providerForm.base_url ?? ''} onInput={(event) => setProviderForm((prev) => ({ ...prev, base_url: (event.target as HTMLInputElement).value }))} style={{ width: '100%' }} />
+                  </div>
+                ) : null}
+
+                {providerForm.provider_type !== 'ollama' && providerForm.provider_type !== 'shared' ? (
+                  <div style={{ marginBottom: 12 }}>
+                    <div className="section-label" style={{ marginBottom: 6, fontSize: 13 }}>{t.settingsApiKeyLabel}</div>
+                    <input type="password" value={providerForm.api_key ?? ''} placeholder={providerForm.id !== null ? t.settingsApiKeyUnchangedPh : ''} onInput={(event) => setProviderForm((prev) => ({ ...prev, api_key: (event.target as HTMLInputElement).value }))} style={{ width: '100%' }} />
+                  </div>
+                ) : null}
+
+                {providerForm.provider_type === 'shared' ? (
+                  <div className="soft-text" style={{ fontSize: 15, marginBottom: 12 }}>{t.settingsSharedNote}</div>
+                ) : (
+                  <div style={{ marginBottom: 12 }}>
+                    <div className="section-label" style={{ marginBottom: 6, fontSize: 13 }}>{t.settingsModelLabel}</div>
+                    <input type="text" value={providerForm.model} onInput={(event) => setProviderForm((prev) => ({ ...prev, model: (event.target as HTMLInputElement).value }))} style={{ width: '100%' }} />
+                  </div>
+                )}
+
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <button className="btn-primary" onClick={() => void saveProvider()}>{t.settingsSaveBtn}</button>
+                  <button className="btn-outline" onClick={() => void testConnection()} disabled={testStatus.loading}>{testStatus.loading ? t.settingsTesting : t.settingsTestBtn}</button>
+                  {providerForm.id !== null ? <button className="btn-outline" onClick={resetProviderForm}>{t.settingsCancelBtn}</button> : null}
+                </div>
+                {testStatus.ok === true ? <div className="up-text" style={{ fontSize: 14, marginTop: 10 }}>{t.settingsTestSuccess} {testStatus.message}</div> : null}
+                {testStatus.ok === false ? <div className="down-text" style={{ fontSize: 14, marginTop: 10 }}>{t.settingsTestError} {testStatus.message}</div> : null}
+              </Card>
+            </div>
+          )}
+
+          <div className="muted-text" style={{ fontSize: 13, lineHeight: 2, marginTop: 24, borderTop: '1px solid var(--border)', paddingTop: 16 }}>
             {t.footFramework.replace('{date}', new Date().toLocaleDateString(state.lang === 'ar' ? 'ar-EG' : 'en-US', { month: 'long', year: 'numeric' }))} {t.foot}
           </div>
+          </div>
         </div>
-      </div>
+      </main>
     </div>
   );
 }
