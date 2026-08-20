@@ -52,21 +52,32 @@ async function callAnthropic({ apiKey, model, messages, withTools }) {
   }
 }
 
-export async function callClaude({ apiKey, model, prompt }) {
+export async function callClaude({ apiKey, model, prompt, allowWebSearch = true }) {
   let messages = [{ role: 'user', content: prompt }];
   let data;
-  let usedWebSearch = true;
+  let usedWebSearch = false;
+  const usage = { input_tokens: 0, output_tokens: 0 };
+  const addUsage = (d) => {
+    if (!d?.usage) return;
+    usage.input_tokens += d.usage.input_tokens || 0;
+    usage.output_tokens += d.usage.output_tokens || 0;
+  };
 
-  try {
-    data = await callAnthropic({ apiKey, model, messages, withTools: true });
-  } catch (firstErr) {
+  if (allowWebSearch) {
     try {
-      data = await callAnthropic({ apiKey, model, messages, withTools: false });
-      usedWebSearch = false;
-    } catch {
-      throw firstErr;
+      data = await callAnthropic({ apiKey, model, messages, withTools: true });
+      usedWebSearch = true;
+    } catch (firstErr) {
+      try {
+        data = await callAnthropic({ apiKey, model, messages, withTools: false });
+      } catch {
+        throw firstErr;
+      }
     }
+  } else {
+    data = await callAnthropic({ apiKey, model, messages, withTools: false });
   }
+  addUsage(data);
 
   let text = extractText(data?.content);
   if (!text.includes('{')) {
@@ -76,8 +87,9 @@ export async function callClaude({ apiKey, model, prompt }) {
       { role: 'user', content: 'Output ONLY the final JSON object now.' },
     ];
     data = await callAnthropic({ apiKey, model, messages, withTools: false });
+    addUsage(data);
     text = extractText(data?.content);
   }
 
-  return { text, usedWebSearch };
+  return { text, usedWebSearch, usage };
 }

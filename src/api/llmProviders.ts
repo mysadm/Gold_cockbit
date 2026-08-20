@@ -1,4 +1,4 @@
-export type ProviderType = 'ollama' | 'openai' | 'claude' | 'custom';
+export type ProviderType = 'ollama' | 'openai' | 'claude' | 'custom' | 'shared';
 
 export type LlmProvider = {
   id: number;
@@ -80,5 +80,12 @@ export async function analyzeViaBackend(prompt: string): Promise<{ text: string;
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ prompt }),
   });
+  return parseJsonOrThrow(response);
+}
+
+export type AnalyzeQuota = { shared: false } | { shared: true; used: number; limit: number };
+
+export async function fetchAnalyzeQuota(): Promise<AnalyzeQuota> {
+  const response = await fetch('/api/analyze/quota');
   return parseJsonOrThrow(response);
 }

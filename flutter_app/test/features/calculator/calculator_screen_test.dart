@@ -1,13 +1,22 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:gold_cockpit_mobile/core/language_preference.dart';
 import 'package:gold_cockpit_mobile/features/calculator/presentation/calculator_screen.dart';
 
 void main() {
   testWidgets('entering an EGP amount shows the karat breakdown', (tester) async {
+    SharedPreferences.setMockInitialValues({});
+    final prefs = await SharedPreferences.getInstance();
+
     await tester.pumpWidget(
-      const MaterialApp(
-        home: Scaffold(
-          body: CalculatorScreen(gram24k: 5000, gram21k: 4375, gram18k: 3750),
+      ProviderScope(
+        overrides: [sharedPreferencesProvider.overrideWithValue(prefs)],
+        child: const MaterialApp(
+          home: Scaffold(
+            body: CalculatorScreen(gram24k: 5000, gram21k: 4375, gram18k: 3750),
+          ),
         ),
       ),
     );

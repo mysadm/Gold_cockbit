@@ -15,6 +15,7 @@ class Strings {
   String get watchTab => isAr ? 'لوحة المتابعة' : 'Watchlist';
   String get calcTab => isAr ? 'الحاسبة' : 'Calculator';
   String get egyptTab => isAr ? 'السوق المصري' : 'Egypt Prices';
+  String get walletTab => isAr ? 'محفظتي' : 'My Wallet';
   String get aiTab => isAr ? 'المحلل الذكي' : 'AI Analyst';
   String get settingsTab => isAr ? 'الإعدادات' : 'Settings';
 
@@ -23,6 +24,19 @@ class Strings {
   String get g18 => isAr ? 'جرام 18' : '18k gram';
   String get goldPound => isAr ? 'الجنيه الذهب' : 'Gold pound';
   String get ounce => isAr ? 'الأونصة' : 'Ounce';
+  String get ounceConversionNote => isAr ? 'التحويل المباشر بدون مصنعية' : 'direct conversion, no premium';
+  String get inclPremiumNote => isAr ? 'جنيه · شامل المصنعية' : 'EGP · incl. premium';
+  String get goldPoundNote => isAr ? 'جنيه · 8 جرام عيار 21' : 'EGP · 8g of 21k';
+  String get pullLiveMarket => isAr ? '⟳ تحديث الأسعار مباشرة' : '⟳ PULL LIVE MARKET';
+
+  String get calcHeading => isAr ? 'حاسبة الشراء بالأعيرة' : 'KARAT PURCHASE CALCULATOR';
+  String get calcAmountLabel => isAr ? 'المبلغ (جنيه)' : 'Amount (EGP)';
+  String get calcColKarat => isAr ? 'العيار' : 'Karat';
+  String get calcColPerGram => isAr ? 'سعر الجرام' : 'Per gram';
+  String get calcColQuantity => isAr ? 'الكمية' : 'Quantity';
+  String get calc24k => isAr ? 'عيار 24 (سبائك)' : '24k (bullion)';
+  String get calc21k => isAr ? 'عيار 21' : '21k';
+  String get calc18k => isAr ? 'عيار 18 (مشغولات)' : '18k (jewelry)';
 
   String get scenarioDeescalation => isAr ? 'تغيرات جيوسياسية' : 'Geopolitical Changes';
   String get scenarioBase => isAr ? 'السيناريو الأساسي' : 'Base Case';

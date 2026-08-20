@@ -55,6 +55,22 @@ async function validateBaseUrl(baseUrl) {
   return parsedUrl.toString();
 }
 
+async function postChatCompletion(baseUrl, headers, model, messages, signal) {
+  const response = await fetch(`${baseUrl}/chat/completions`, {
+    method: 'POST',
+    signal,
+    headers,
+    body: JSON.stringify({ model, messages, max_tokens: 16000 }),
+  });
+
+  const data = await response.json();
+  if (!response.ok) {
+    throw new Error(data?.error?.message || `HTTP ${response.status}`);
+  }
+
+  return data?.choices?.[0]?.message?.content || '';
+}
+
 export async function callOpenAICompatible({ baseUrl, apiKey, model, prompt }) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
@@ -63,23 +79,18 @@ export async function callOpenAICompatible({ baseUrl, apiKey, model, prompt }) {
     const headers = { 'Content-Type': 'application/json' };
     if (apiKey) headers.Authorization = `Bearer ${apiKey}`;
 
-    const response = await fetch(`${safeBaseUrl}/chat/completions`, {
-      method: 'POST',
-      signal: controller.signal,
-      headers,
-      body: JSON.stringify({
-        model,
-        messages: [{ role: 'user', content: prompt }],
-        max_tokens: 8000,
-      }),
-    });
+    let messages = [{ role: 'user', content: prompt }];
+    let text = await postChatCompletion(safeBaseUrl, headers, model, messages, controller.signal);
 
-    const data = await response.json();
-    if (!response.ok) {
-      throw new Error(data?.error?.message || `HTTP ${response.status}`);
+    if (!text.includes('{')) {
+      messages = [
+        ...messages,
+        { role: 'assistant', content: text },
+        { role: 'user', content: 'Output ONLY the final JSON object now.' },
+      ];
+      text = await postChatCompletion(safeBaseUrl, headers, model, messages, controller.signal);
     }
 
-    const text = data?.choices?.[0]?.message?.content || '';
     return { text, usedWebSearch: false };
   } finally {
     clearTimeout(timeout);

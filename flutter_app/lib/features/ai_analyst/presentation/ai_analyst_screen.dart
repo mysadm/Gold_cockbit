@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/api_client.dart';
+import '../../../core/app_theme.dart';
 import '../../scenarios/application/scenarios_providers.dart';
 import '../../watchlist/application/watchlist_providers.dart';
 import '../application/ai_analyst_providers.dart';
@@ -52,38 +53,61 @@ class _AiAnalystScreenState extends ConsumerState<AiAnalystScreen> {
   Widget build(BuildContext context) {
     final result = _result;
 
-    return ListView(
-      padding: const EdgeInsets.all(16),
-      children: [
-        ElevatedButton(
-          key: const Key('analyzeButton'),
-          onPressed: _loading ? null : _analyze,
-          child: Text(_loading ? 'Analyzing…' : 'Analyze the market'),
-        ),
-        if (_error != null) Text(_error!, style: const TextStyle(color: Colors.red)),
-        if (result != null) ...[
-          const SizedBox(height: 16),
-          Text(result.oneLiner, style: const TextStyle(fontWeight: FontWeight.bold)),
-          const SizedBox(height: 8),
-          const Text('What moved the market', style: TextStyle(fontWeight: FontWeight.w600)),
-          for (final trend in result.trends) Text('• $trend'),
-          if (result.weightsReasoning != null) ...[
-            const SizedBox(height: 8),
-            const Text('Suggested weights', style: TextStyle(fontWeight: FontWeight.w600)),
-            Text(result.weightsReasoning!),
-          ],
-          if (result.trancheReasoning != null) ...[
-            const SizedBox(height: 8),
-            Text('Tranche 2 call: ${result.trancheVerdict ?? ''}', style: const TextStyle(fontWeight: FontWeight.w600)),
-            Text(result.trancheReasoning!),
-          ],
-          if (result.egpRead != null) ...[
-            const SizedBox(height: 8),
-            const Text('EGP read', style: TextStyle(fontWeight: FontWeight.w600)),
-            Text(result.egpRead!),
-          ],
+    return Container(
+      decoration: const BoxDecoration(gradient: AppColors.backgroundGradient),
+      child: ListView(
+        padding: const EdgeInsets.all(16),
+        children: [
+          Text('AI ANALYST', style: AppTextStyles.label()),
+          const SizedBox(height: 12),
+          Container(
+            padding: const EdgeInsets.all(20),
+            decoration: AppDecorations.panel,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                FilledButton(
+                  key: const Key('analyzeButton'),
+                  onPressed: _loading ? null : _analyze,
+                  child: Text(_loading ? 'Analyzing…' : '⚡ Analyze the market'),
+                ),
+                if (_error != null) ...[
+                  const SizedBox(height: 8),
+                  Text(_error!, style: AppTextStyles.label(color: AppColors.red, size: 12)),
+                ],
+                if (result != null) ...[
+                  const SizedBox(height: 16),
+                  Text(result.oneLiner, style: AppTextStyles.label(color: AppColors.dark, weight: FontWeight.bold, size: 14)),
+                  const SizedBox(height: 12),
+                  Text('WHAT MOVED THE MARKET', style: AppTextStyles.label()),
+                  const SizedBox(height: 4),
+                  for (final trend in result.trends)
+                    Text('• $trend', style: AppTextStyles.label(color: AppColors.gray, size: 13)),
+                  if (result.weightsReasoning != null) ...[
+                    const SizedBox(height: 12),
+                    Text('SUGGESTED WEIGHTS', style: AppTextStyles.label()),
+                    const SizedBox(height: 4),
+                    Text(result.weightsReasoning!, style: AppTextStyles.label(color: AppColors.gray, size: 13)),
+                  ],
+                  if (result.trancheReasoning != null) ...[
+                    const SizedBox(height: 12),
+                    Text('TRANCHE 2 CALL · ${result.trancheVerdict ?? ''}',
+                        style: AppTextStyles.label(color: AppColors.dark, weight: FontWeight.w600, size: 12)),
+                    const SizedBox(height: 4),
+                    Text(result.trancheReasoning!, style: AppTextStyles.label(color: AppColors.gray, size: 13)),
+                  ],
+                  if (result.egpRead != null) ...[
+                    const SizedBox(height: 12),
+                    Text('EGP READ', style: AppTextStyles.label()),
+                    const SizedBox(height: 4),
+                    Text(result.egpRead!, style: AppTextStyles.label(color: AppColors.gray, size: 13)),
+                  ],
+                ],
+              ],
+            ),
+          ),
         ],
-      ],
+      ),
     );
   }
 }

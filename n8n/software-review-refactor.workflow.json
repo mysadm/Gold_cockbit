@@ -1,0 +1,63 @@
+{
+  "name": "Local Software Review and Approved Refactor",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "software-review-refactor",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "80b2241c-bc22-47d5-8848-d0841585d27e",
+      "name": "Review Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [0, 0],
+      "webhookId": "software-review-refactor"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{$env.GOLD_COCKPIT_API_URL}}/api/software-review/run",
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/json",
+        "body": "={{ JSON.stringify($json.body ?? $json) }}",
+        "options": { "timeout": 1200000 }
+      },
+      "id": "f928325c-e1d8-427a-817c-09318632ab67",
+      "name": "Run Local Review Agents",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [260, 0]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json }}",
+        "options": {}
+      },
+      "id": "6f4e983f-d21c-40eb-b2b9-a42a20fc915a",
+      "name": "Return Local Result",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [520, 0]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Review Webhook": { "main": [[{ "node": "Run Local Review Agents", "type": "main", "index": 0 }]] },
+    "Run Local Review Agents": { "main": [[{ "node": "Return Local Result", "type": "main", "index": 0 }]] }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "saveDataErrorExecution": "all",
+    "saveDataSuccessExecution": "none",
+    "saveManualExecutions": true,
+    "callerPolicy": "workflowsFromSameOwner"
+  },
+  "versionId": "961d22c1-981e-47fd-bc3e-a05f76e12d2f",
+  "meta": { "templateCredsSetupCompleted": true },
+  "tags": []
+}

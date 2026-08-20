@@ -27,8 +27,49 @@ describe('callOpenAICompatible', () => {
     expect(JSON.parse(options.body)).toEqual({
       model: 'gpt-4o',
       messages: [{ role: 'user', content: 'analyze' }],
-      max_tokens: 8000,
+      max_tokens: 16000,
     });
+  });
+
+  it('sends a continuation turn if the first reply has no JSON', async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ choices: [{ message: { content: 'plain text, no braces' } }] }) })
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ choices: [{ message: { content: '{"one_liner":"continued"}' } }] }) });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const result = await callOpenAICompatible({
+      baseUrl: 'http://localhost:11434/v1',
+      apiKey: null,
+      model: 'gemma4',
+      prompt: 'analyze',
+    });
+
+    expect(result).toEqual({ text: '{"one_liner":"continued"}', usedWebSearch: false });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    const [, secondOptions] = fetchMock.mock.calls[1];
+    const secondBody = JSON.parse(secondOptions.body);
+    expect(secondBody.messages).toEqual([
+      { role: 'user', content: 'analyze' },
+      { role: 'assistant', content: 'plain text, no braces' },
+      { role: 'user', content: 'Output ONLY the final JSON object now.' },
+    ]);
+  });
+
+  it('does not send a continuation turn when the first reply already has JSON', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ choices: [{ message: { content: '{"one_liner":"ok"}' } }] }),
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    await callOpenAICompatible({
+      baseUrl: 'http://localhost:11434/v1',
+      apiKey: null,
+      model: 'gemma4',
+      prompt: 'analyze',
+    });
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
   it('omits the Authorization header when apiKey is not set (Ollama case)', async () => {

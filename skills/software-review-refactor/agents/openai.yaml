@@ -1,0 +1,4 @@
+interface:
+  display_name: "Software Review & Refactor"
+  short_description: "Security, usability, quality, and test review"
+  default_prompt: "Use $software-review-refactor to review this codebase, report prioritized findings, and propose a safe refactoring plan."

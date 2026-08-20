@@ -6,6 +6,7 @@ import { ensureDefaultScenarios } from './ensureDefaultScenarios.mjs';
 import { ensureDefaultTranches } from './ensureDefaultTranches.mjs';
 import { ensureDefaultDcaPlan } from './ensureDefaultDcaPlan.mjs';
 import { ensureDefaultWalletHoldings } from './ensureDefaultWalletHoldings.mjs';
+import { ensureDefaultLlmProvider } from './ensureDefaultLlmProvider.mjs';
 import { createLlmProvidersRouter } from './routes/llmProviders.mjs';
 import { createAnalyzeRouter } from './routes/analyze.mjs';
 import { createEgyptPricesRouter } from './routes/egyptPrices.mjs';
@@ -15,6 +16,7 @@ import { createWatchlistRouter } from './routes/watchlist.mjs';
 import { createAlertRulesRouter } from './routes/alertRules.mjs';
 import { createDcaPlanRouter } from './routes/dcaPlan.mjs';
 import { createWalletRouter } from './routes/wallet.mjs';
+import { createSoftwareReviewRouter } from './routes/softwareReview.mjs';
 
 const PORT = process.env.SERVER_PORT || 8787;
 
@@ -24,6 +26,7 @@ await ensureDefaultScenarios(pool, userId);
 await ensureDefaultTranches(pool, userId);
 await ensureDefaultDcaPlan(pool, userId);
 await ensureDefaultWalletHoldings(pool, userId);
+await ensureDefaultLlmProvider(pool, userId);
 
 const app = express();
 app.use(express.json());
@@ -43,6 +46,7 @@ app.use('/api/watchlist', createWatchlistRouter(pool, userId));
 app.use('/api/alert-rules', createAlertRulesRouter(pool, userId));
 app.use('/api/dca-plan', createDcaPlanRouter(pool, userId));
 app.use('/api/wallet', createWalletRouter(pool, userId));
+app.use('/api/software-review', createSoftwareReviewRouter());
 
 app.use((err, req, res, next) => {
   console.error(err);

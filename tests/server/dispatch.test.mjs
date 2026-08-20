@@ -77,6 +77,43 @@ describe('runProviderAnalysis', () => {
     });
   });
 
+  it('dispatches shared provider_type to callClaude with the server-side key, Haiku, and web search disabled', async () => {
+    const previousKey = process.env.SHARED_AI_API_KEY;
+    process.env.SHARED_AI_API_KEY = 'sk-ant-shared-test';
+    try {
+      callClaude.mockResolvedValue({ text: 'shared-result', usedWebSearch: false, usage: { input_tokens: 1, output_tokens: 1 } });
+
+      const result = await runProviderAnalysis(
+        { provider_type: 'shared', api_key: null, model: 'ignored', base_url: null },
+        'prompt text'
+      );
+
+      expect(result).toEqual({ text: 'shared-result', usedWebSearch: false, usage: { input_tokens: 1, output_tokens: 1 } });
+      expect(callClaude).toHaveBeenCalledWith({
+        apiKey: 'sk-ant-shared-test',
+        model: 'claude-haiku-4-5',
+        prompt: 'prompt text',
+        allowWebSearch: false,
+      });
+      expect(callOpenAICompatible).not.toHaveBeenCalled();
+    } finally {
+      if (previousKey === undefined) delete process.env.SHARED_AI_API_KEY;
+      else process.env.SHARED_AI_API_KEY = previousKey;
+    }
+  });
+
+  it('throws a clear error when the shared tier is used but SHARED_AI_API_KEY is not configured', async () => {
+    const previousKey = process.env.SHARED_AI_API_KEY;
+    delete process.env.SHARED_AI_API_KEY;
+    try {
+      await expect(
+        runProviderAnalysis({ provider_type: 'shared', api_key: null, model: 'ignored', base_url: null }, 'prompt text')
+      ).rejects.toThrow(/not configured/i);
+    } finally {
+      if (previousKey !== undefined) process.env.SHARED_AI_API_KEY = previousKey;
+    }
+  });
+
   it('prefers a stored base_url over the default for openai/ollama when present', async () => {
     callOpenAICompatible.mockResolvedValue({ text: 'x', usedWebSearch: false });
 

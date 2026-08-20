@@ -11,6 +11,8 @@ import '../features/watchlist/presentation/watchlist_screen.dart';
 import '../features/egypt_prices/presentation/egypt_prices_screen.dart';
 import '../features/ai_analyst/presentation/ai_analyst_screen.dart';
 import '../features/llm_providers/presentation/llm_providers_screen.dart';
+import '../features/wallet/presentation/wallet_screen.dart';
+import 'domain.dart';
 import 'setup_screen.dart';
 
 class AppShell extends ConsumerStatefulWidget {
@@ -47,6 +49,13 @@ class _AppShellState extends ConsumerState<AppShell> {
         ),
       ),
       _ShellDestination(strings.egyptTab, const EgyptPricesScreen()),
+      _ShellDestination(
+        strings.walletTab,
+        WalletScreen(
+          gramPrices: gramPrices ??
+              const GramPrices(g24: 0, g21: 0, g18: 0, goldPound: 0),
+        ),
+      ),
       _ShellDestination(strings.aiTab, AiAnalystScreen(spot: spot, usdEgp: usdEgp)),
       _ShellDestination(strings.settingsTab, const LlmProvidersScreen()),
     ];

@@ -15,7 +15,7 @@ describe('callClaude', () => {
 
     const result = await callClaude({ apiKey: 'sk-ant-test', model: 'claude-sonnet-4-6', prompt: 'analyze' });
 
-    expect(result).toEqual({ text: '{"one_liner":"ok"}', usedWebSearch: true });
+    expect(result).toEqual({ text: '{"one_liner":"ok"}', usedWebSearch: true, usage: { input_tokens: 0, output_tokens: 0 } });
     expect(fetchMock).toHaveBeenCalledTimes(1);
     const [, options] = fetchMock.mock.calls[0];
     const body = JSON.parse(options.body);
@@ -30,7 +30,7 @@ describe('callClaude', () => {
 
     const result = await callClaude({ apiKey: 'sk-ant-test', model: 'claude-sonnet-4-6', prompt: 'analyze' });
 
-    expect(result).toEqual({ text: '{"one_liner":"fallback"}', usedWebSearch: false });
+    expect(result).toEqual({ text: '{"one_liner":"fallback"}', usedWebSearch: false, usage: { input_tokens: 0, output_tokens: 0 } });
     expect(fetchMock).toHaveBeenCalledTimes(2);
     const [, secondOptions] = fetchMock.mock.calls[1];
     expect(JSON.parse(secondOptions.body).tools).toBeUndefined();
@@ -45,6 +45,28 @@ describe('callClaude', () => {
     await expect(
       callClaude({ apiKey: 'sk-ant-test', model: 'claude-sonnet-4-6', prompt: 'analyze' })
     ).rejects.toThrow('first failure');
+  });
+
+  it('skips the tools call entirely when allowWebSearch is false', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      text: async () => JSON.stringify({
+        content: [{ type: 'text', text: '{"one_liner":"ok"}' }],
+        usage: { input_tokens: 100, output_tokens: 50 },
+      }),
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const result = await callClaude({ apiKey: 'sk-ant-test', model: 'claude-haiku-4-5', prompt: 'analyze', allowWebSearch: false });
+
+    expect(result).toEqual({
+      text: '{"one_liner":"ok"}',
+      usedWebSearch: false,
+      usage: { input_tokens: 100, output_tokens: 50 },
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [, options] = fetchMock.mock.calls[0];
+    expect(JSON.parse(options.body).tools).toBeUndefined();
   });
 
   it('sends a continuation turn if the first reply has no JSON', async () => {

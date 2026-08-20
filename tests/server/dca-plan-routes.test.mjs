@@ -60,6 +60,69 @@ describe('dca-plan routes', () => {
     expect(res.status).toBe(400);
   });
 
+  it('defaults to the fixed 40/35/25 split, 2-month spacing', async () => {
+    const res = await request(app).get('/api/dca-plan');
+    expect(res.body.tranche_pcts.map(Number)).toEqual([40, 35, 25]);
+    expect(res.body.spacing_months).toBe(2);
+    expect(res.body.mode).toBe('fixed');
+  });
+
+  it('updates tranche_pcts when it still sums to 100', async () => {
+    const res = await request(app).patch('/api/dca-plan').send({ tranche_pcts: [50, 30, 20] });
+    expect(res.status).toBe(200);
+    expect(res.body.tranche_pcts.map(Number)).toEqual([50, 30, 20]);
+  });
+
+  it('allows an arbitrary tranche count as long as it sums to 100', async () => {
+    const res = await request(app).patch('/api/dca-plan').send({ tranche_pcts: [25, 25, 25, 25] });
+    expect(res.status).toBe(200);
+    expect(res.body.tranche_pcts.map(Number)).toEqual([25, 25, 25, 25]);
+  });
+
+  it('rejects tranche_pcts that do not sum to 100 while in fixed mode', async () => {
+    const res = await request(app).patch('/api/dca-plan').send({ tranche_pcts: [50, 30, 10] });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/tranche_pcts/i);
+  });
+
+  it('rejects a non-positive value inside tranche_pcts', async () => {
+    const res = await request(app).patch('/api/dca-plan').send({ tranche_pcts: [100, 0] });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/tranche_pcts/i);
+  });
+
+  it('updates spacing_months', async () => {
+    const res = await request(app).patch('/api/dca-plan').send({ spacing_months: 1 });
+    expect(res.status).toBe(200);
+    expect(res.body.spacing_months).toBe(1);
+  });
+
+  it('rejects a non-positive spacing_months', async () => {
+    const res = await request(app).patch('/api/dca-plan').send({ spacing_months: 0 });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/spacing_months/i);
+  });
+
+  it('switches to recurring mode without requiring tranche_pcts to sum to 100', async () => {
+    const res = await request(app).patch('/api/dca-plan').send({ mode: 'recurring', tranche_pcts: [15] });
+    expect(res.status).toBe(200);
+    expect(res.body.mode).toBe('recurring');
+    expect(res.body.tranche_pcts.map(Number)).toEqual([15]);
+  });
+
+  it('re-validates the sum against the stored tranche_pcts when only switching back to fixed mode', async () => {
+    await request(app).patch('/api/dca-plan').send({ mode: 'recurring', tranche_pcts: [15] });
+    const res = await request(app).patch('/api/dca-plan').send({ mode: 'fixed' });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/tranche_pcts/i);
+  });
+
+  it('rejects an invalid mode', async () => {
+    const res = await request(app).patch('/api/dca-plan').send({ mode: 'weekly' });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/mode/i);
+  });
+
   it('requires a configured API key when GOLD_COCKPIT_API_KEY is set', async () => {
     const previousKey = process.env.GOLD_COCKPIT_API_KEY;
     process.env.GOLD_COCKPIT_API_KEY = 'test-secret';
