@@ -1,4 +1,4 @@
-export type ProviderType = 'ollama' | 'openai' | 'claude' | 'custom' | 'shared';
+export type ProviderType = 'ollama' | 'openai' | 'claude' | 'custom' | 'shared' | 'openrouter';
 
 export type LlmProvider = {
   id: number;

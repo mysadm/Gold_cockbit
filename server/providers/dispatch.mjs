@@ -4,6 +4,7 @@ import { callOpenAICompatible } from './openaiCompatible.mjs';
 const DEFAULT_BASE_URLS = {
   openai: 'https://api.openai.com/v1',
   ollama: 'http://localhost:11434/v1',
+  openrouter: 'https://openrouter.ai/api/v1',
 };
 
 // The shared tier always uses this specific model (chosen to keep a single
