@@ -268,7 +268,7 @@ describe('POST /api/analyze — web search augmentation for non-native-search pr
     expect(runProviderAnalysis).toHaveBeenCalledWith(expect.anything(), 'analyze this');
   });
 
-  it('does not search for providers with native web search (claude, shared)', async () => {
+  it('does not search for providers with native web search (claude only — the shared tier runs on Claude but has its native tool disabled to protect its cost cap, so it still needs the injected search)', async () => {
     process.env.SERPAPI_API_KEY = 'serp-test-key';
     await client.query(
       `INSERT INTO llm_providers (user_id, provider_type, label, model, is_active)
@@ -283,8 +283,8 @@ describe('POST /api/analyze — web search augmentation for non-native-search pr
     expect(searchWeb).not.toHaveBeenCalled();
   });
 
-  it.each(['openai', 'openrouter', 'custom'])(
-    'augments the prompt with search results for %s, the same as ollama, since none of them have native search',
+  it.each(['shared', 'openai', 'openrouter', 'custom'])(
+    'augments the prompt with search results for %s, the same as ollama, since none of them have a working native search',
     async (providerType) => {
       process.env.SERPAPI_API_KEY = 'serp-test-key';
       await client.query(

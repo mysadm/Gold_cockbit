@@ -70,4 +70,62 @@ describe('GET /api/egypt-prices', () => {
     expect(response.status).toBe(502);
     expect(response.body.error).toMatch(/could not parse/i);
   });
+
+  it('records a history row on a successful fetch, distinct from the single-row cache', async () => {
+    fetchEgyptGoldPrices.mockResolvedValue({
+      source: 'isagha.com',
+      fetchedAt: '2026-07-22T10:00:00.000Z',
+      rows: [{ karat: '21k', sell: 6000, buy: 5950, changeAmount: 5, changePct: 0.08 }],
+    });
+
+    await request(buildApp()).get('/api/egypt-prices');
+
+    const { rows } = await client.query('SELECT rows, fetched_at FROM egypt_price_history');
+    expect(rows).toHaveLength(1);
+    expect(rows[0].rows).toEqual([{ karat: '21k', sell: 6000, buy: 5950, changeAmount: 5, changePct: 0.08 }]);
+  });
+
+  it('does not fail the request or fall back to stale cache when only the history insert would collide', async () => {
+    fetchEgyptGoldPrices.mockResolvedValue({
+      source: 'isagha.com',
+      fetchedAt: '2026-07-22T10:00:00.000Z',
+      rows: [{ karat: '21k', sell: 6000, buy: 5950, changeAmount: 5, changePct: 0.08 }],
+    });
+    await request(buildApp()).get('/api/egypt-prices');
+
+    fetchEgyptGoldPrices.mockResolvedValue({
+      source: 'isagha.com',
+      fetchedAt: '2026-07-22T18:00:00.000Z',
+      rows: [{ karat: '21k', sell: 6100, buy: 6050, changeAmount: 105, changePct: 1.75 }],
+    });
+    const response = await request(buildApp()).get('/api/egypt-prices');
+
+    expect(response.status).toBe(200);
+    expect(response.body.stale).toBeFalsy();
+    const { rows } = await client.query('SELECT rows FROM egypt_price_history');
+    expect(rows).toHaveLength(1);
+    expect(rows[0].rows[0].sell).toBe(6100);
+  });
+});
+
+describe('GET /api/egypt-prices/history', () => {
+  it('returns recorded history rows ordered by fetch time', async () => {
+    fetchEgyptGoldPrices.mockResolvedValue({
+      source: 'isagha.com',
+      fetchedAt: '2026-07-22T10:00:00.000Z',
+      rows: [{ karat: '21k', sell: 6000, buy: 5950, changeAmount: 5, changePct: 0.08 }],
+    });
+    await request(buildApp()).get('/api/egypt-prices');
+    await client.query(
+      `INSERT INTO egypt_price_history (rows, fetched_at) VALUES ($1, $2)`,
+      [JSON.stringify([{ karat: '21k', sell: 6200, buy: 6150, changeAmount: 200, changePct: 3.3 }]), '2026-07-23T10:00:00.000Z']
+    );
+
+    const response = await request(buildApp()).get('/api/egypt-prices/history');
+
+    expect(response.status).toBe(200);
+    expect(response.body).toHaveLength(2);
+    expect(response.body[0].fetchedAt).toBe('2026-07-22T10:00:00.000Z');
+    expect(response.body[1].fetchedAt).toBe('2026-07-23T10:00:00.000Z');
+  });
 });

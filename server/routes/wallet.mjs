@@ -1,8 +1,6 @@
 import { Router } from 'express';
-import pg from 'pg';
 import { createApiKeyAuthMiddleware } from '../auth.mjs';
-
-const { Pool } = pg;
+import { withTransactionClient } from '../withTransactionClient.mjs';
 
 const HOLDINGS_COLUMNS = 'user_id, oz, g24, g21, g18, pounds, locked, created_at, updated_at';
 const HOLDINGS_FIELDS = ['oz', 'g24', 'g21', 'g18', 'pounds'];
@@ -39,21 +37,6 @@ class HttpError extends Error {
   }
 }
 
-async function withTransactionClient(db, fn) {
-  const isPool = db instanceof Pool;
-  const client = isPool ? await db.connect() : db;
-  try {
-    await client.query('BEGIN');
-    const result = await fn(client);
-    await client.query('COMMIT');
-    return result;
-  } catch (err) {
-    await client.query('ROLLBACK').catch(() => {});
-    throw err;
-  } finally {
-    if (isPool) client.release();
-  }
-}
 
 export function createWalletRouter(db, userId) {
   const router = Router();

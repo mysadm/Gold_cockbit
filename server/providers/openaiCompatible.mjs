@@ -76,7 +76,7 @@ async function postChatCompletion(baseUrl, headers, model, messages, signal, tem
   return data?.choices?.[0]?.message?.content || '';
 }
 
-export async function callOpenAICompatible({ baseUrl, apiKey, model, prompt, temperature, maxTokens, expectJson = true }) {
+export async function callOpenAICompatible({ baseUrl, apiKey, model, prompt, temperature, maxTokens, expectJson = true, system }) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
   try {
@@ -84,7 +84,9 @@ export async function callOpenAICompatible({ baseUrl, apiKey, model, prompt, tem
     const headers = { 'Content-Type': 'application/json' };
     if (apiKey) headers.Authorization = `Bearer ${apiKey}`;
 
-    let messages = [{ role: 'user', content: prompt }];
+    let messages = system
+      ? [{ role: 'system', content: system }, { role: 'user', content: prompt }]
+      : [{ role: 'user', content: prompt }];
     let text = await postChatCompletion(safeBaseUrl, headers, model, messages, controller.signal, temperature, maxTokens);
 
     if (expectJson && !text.includes('{')) {

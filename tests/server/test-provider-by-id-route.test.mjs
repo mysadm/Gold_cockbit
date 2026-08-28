@@ -45,7 +45,7 @@ describe('POST /api/llm-providers/:id/test', () => {
     expect(runProviderAnalysis).toHaveBeenCalledWith(
       expect.objectContaining({ provider_type: 'openai', api_key: 'sk-secret', model: 'gpt-4o-mini' }),
       'Reply with only the single word: OK',
-      { expectJson: false }
+      { expectJson: false, system: null }
     );
   });
 

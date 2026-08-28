@@ -11,7 +11,7 @@ function extractText(content) {
     .trim();
 }
 
-async function callAnthropic({ apiKey, model, messages, withTools, temperature, maxTokens }) {
+async function callAnthropic({ apiKey, model, messages, withTools, temperature, maxTokens, system }) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
   try {
@@ -24,6 +24,7 @@ async function callAnthropic({ apiKey, model, messages, withTools, temperature, 
     // maxTokens can only raise this floor, never lower it.
     const body = { model, max_tokens: Math.max(maxTokens || 0, 16000), messages };
     if (typeof temperature === 'number') body.temperature = temperature;
+    if (system) body.system = system;
     if (withTools) body.tools = [{ type: 'web_search_20250305', name: 'web_search' }];
 
     const response = await fetch(ANTHROPIC_ENDPOINT, {
@@ -54,7 +55,7 @@ async function callAnthropic({ apiKey, model, messages, withTools, temperature, 
   }
 }
 
-export async function callClaude({ apiKey, model, prompt, allowWebSearch = true, temperature, maxTokens, expectJson = true }) {
+export async function callClaude({ apiKey, model, prompt, allowWebSearch = true, temperature, maxTokens, expectJson = true, system }) {
   let messages = [{ role: 'user', content: prompt }];
   let data;
   let usedWebSearch = false;
@@ -67,17 +68,17 @@ export async function callClaude({ apiKey, model, prompt, allowWebSearch = true,
 
   if (allowWebSearch) {
     try {
-      data = await callAnthropic({ apiKey, model, messages, withTools: true, temperature, maxTokens });
+      data = await callAnthropic({ apiKey, model, messages, withTools: true, temperature, maxTokens, system });
       usedWebSearch = true;
     } catch (firstErr) {
       try {
-        data = await callAnthropic({ apiKey, model, messages, withTools: false, temperature, maxTokens });
+        data = await callAnthropic({ apiKey, model, messages, withTools: false, temperature, maxTokens, system });
       } catch {
         throw firstErr;
       }
     }
   } else {
-    data = await callAnthropic({ apiKey, model, messages, withTools: false, temperature, maxTokens });
+    data = await callAnthropic({ apiKey, model, messages, withTools: false, temperature, maxTokens, system });
   }
   addUsage(data);
 
@@ -88,7 +89,7 @@ export async function callClaude({ apiKey, model, prompt, allowWebSearch = true,
       { role: 'assistant', content: data.content },
       { role: 'user', content: 'Output ONLY the final JSON object now.' },
     ];
-    data = await callAnthropic({ apiKey, model, messages, withTools: false, temperature, maxTokens });
+    data = await callAnthropic({ apiKey, model, messages, withTools: false, temperature, maxTokens, system });
     addUsage(data);
     text = extractText(data?.content);
   }

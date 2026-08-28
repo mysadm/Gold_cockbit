@@ -142,6 +142,31 @@ describe('runProviderAnalysis', () => {
     expect(callClaude).toHaveBeenCalledWith(expect.objectContaining({ expectJson: false }));
   });
 
+  it('defaults to the gold-market-analyst system prompt when the caller does not override it', async () => {
+    callOpenAICompatible.mockResolvedValue({ text: 'x', usedWebSearch: false });
+
+    await runProviderAnalysis(
+      { provider_type: 'openai', api_key: 'sk-test', model: 'gpt-4o', base_url: null },
+      'prompt text'
+    );
+
+    expect(callOpenAICompatible).toHaveBeenCalledWith(
+      expect.objectContaining({ system: expect.stringContaining('Gold Market Intelligence Analyst') })
+    );
+  });
+
+  it('lets the caller opt out of the default system prompt (e.g. the test-connection call)', async () => {
+    callOpenAICompatible.mockResolvedValue({ text: 'OK', usedWebSearch: false });
+
+    await runProviderAnalysis(
+      { provider_type: 'openai', api_key: 'sk-test', model: 'gpt-4o', base_url: null },
+      'Reply with only the single word: OK',
+      { expectJson: false, system: null }
+    );
+
+    expect(callOpenAICompatible).toHaveBeenCalledWith(expect.objectContaining({ system: null }));
+  });
+
   it('prefers a stored base_url over the default for openai/ollama when present', async () => {
     callOpenAICompatible.mockResolvedValue({ text: 'x', usedWebSearch: false });
 

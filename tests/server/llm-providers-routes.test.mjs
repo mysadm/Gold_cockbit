@@ -131,6 +131,53 @@ describe('llm-providers routes', () => {
     expect(res.body.error).toMatch(/label/i);
   });
 
+  it('rejects creating a provider with an unrecognized provider_type instead of letting the DB check constraint fail as a raw 500', async () => {
+    const res = await request(app)
+      .post('/api/llm-providers')
+      .send({ provider_type: 'gemini', label: 'Gemini', model: 'gemini-2.0-flash' });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/provider_type/i);
+  });
+
+  it('rejects updating a provider to an unrecognized provider_type', async () => {
+    const created = await request(app)
+      .post('/api/llm-providers')
+      .send({ provider_type: 'ollama', label: 'Home Ollama', base_url: 'http://localhost:11434/v1', model: 'llama3.1' });
+
+    const res = await request(app)
+      .put(`/api/llm-providers/${created.body.id}`)
+      .send({ provider_type: 'not-a-real-type', label: 'Home Ollama', model: 'llama3.1' });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/provider_type/i);
+  });
+
+  it('leaves the currently active provider untouched when activating a non-existent id', async () => {
+    const created = await request(app)
+      .post('/api/llm-providers')
+      .send({ provider_type: 'ollama', label: 'Home Ollama', base_url: 'http://localhost:11434/v1', model: 'llama3.1' });
+    await request(app).post(`/api/llm-providers/${created.body.id}/activate`).expect(200);
+
+    const res = await request(app).post('/api/llm-providers/999999/activate');
+    expect(res.status).toBe(404);
+
+    const list = await request(app).get('/api/llm-providers');
+    expect(list.body.find((p) => p.id === created.body.id).is_active).toBe(true);
+  });
+
+  it('leaves the currently active provider untouched when activation fails on a malformed id (regression: this used to deactivate everything with no replacement, since the deactivate-then-activate steps ran as two independent, non-transactional queries)', async () => {
+    const created = await request(app)
+      .post('/api/llm-providers')
+      .send({ provider_type: 'ollama', label: 'Home Ollama', base_url: 'http://localhost:11434/v1', model: 'llama3.1' });
+    await request(app).post(`/api/llm-providers/${created.body.id}/activate`).expect(200);
+
+    await request(app).post('/api/llm-providers/not-a-number/activate');
+
+    const list = await request(app).get('/api/llm-providers');
+    expect(list.body.find((p) => p.id === created.body.id).is_active).toBe(true);
+  });
+
   it('deletes a provider', async () => {
     const created = await request(app)
       .post('/api/llm-providers')
