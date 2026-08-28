@@ -10,7 +10,8 @@ import {
   type LlmProvider,
   type ProviderType,
 } from './api/llmProviders';
-import { fetchEgyptPrices, type EgyptGoldSnapshot } from './api/egyptPrices';
+import { fetchEgyptPrices, fetchEgyptPriceHistory, type EgyptGoldSnapshot, type EgyptGoldHistoryEntry } from './api/egyptPrices';
+import { recordInternationalPrice, fetchInternationalPriceHistory, type InternationalPriceEntry } from './api/internationalPrices';
 import { fetchDcaPlan, updateDcaPlan, type DcaPlan } from './api/dcaPlan';
 import {
   fetchWalletHoldings,
@@ -253,6 +254,12 @@ function loadState(): AppState {
     return {
       ...defaultState,
       ...saved,
+      // ai.loading is an in-flight flag, not durable state — it gets
+      // persisted mid-request by the blanket state-save effect below, so a
+      // page refresh/close while an analysis is running would otherwise
+      // load back in with loading:true forever, permanently disabling the
+      // Analyze button with no way to recover except clearing storage.
+      ai: { ...defaultState.ai, ...saved?.ai, loading: false },
       monitors: Array.isArray(monitors) && monitors.length ? monitors : DEFAULT_MONITORS.map((m) => ({ ...m })),
       aiLevel,
     };
@@ -290,6 +297,41 @@ function App() {
       loadEgyptPrices();
     }
   }, [activeTab]);
+
+  const MAX_HISTORY_READINGS = 20;
+  const [egyptHistory, setEgyptHistory] = useState<{ visible: boolean; loading: boolean; error: string | null; data: EgyptGoldHistoryEntry[] | null }>({
+    visible: false,
+    loading: false,
+    error: null,
+    data: null,
+  });
+  const toggleEgyptHistory = () => {
+    setEgyptHistory((prev) => {
+      if (prev.visible) return { ...prev, visible: false };
+      if (prev.data || prev.loading) return { ...prev, visible: true };
+      fetchEgyptPriceHistory()
+        .then((data) => setEgyptHistory({ visible: true, loading: false, error: null, data }))
+        .catch((error) => setEgyptHistory({ visible: true, loading: false, error: error instanceof Error ? error.message : 'failed', data: null }));
+      return { ...prev, visible: true, loading: true };
+    });
+  };
+
+  const [marketHistory, setMarketHistory] = useState<{ visible: boolean; loading: boolean; error: string | null; data: InternationalPriceEntry[] | null }>({
+    visible: false,
+    loading: false,
+    error: null,
+    data: null,
+  });
+  const toggleMarketHistory = () => {
+    setMarketHistory((prev) => {
+      if (prev.visible) return { ...prev, visible: false };
+      if (prev.data || prev.loading) return { ...prev, visible: true };
+      fetchInternationalPriceHistory()
+        .then((data) => setMarketHistory({ visible: true, loading: false, error: null, data }))
+        .catch((error) => setMarketHistory({ visible: true, loading: false, error: error instanceof Error ? error.message : 'failed', data: null }));
+      return { ...prev, visible: true, loading: true };
+    });
+  };
 
   const [dcaPlan, setDcaPlan] = useState<{ loading: boolean; error: string | null; data: DcaPlan | null }>({
     loading: false,
@@ -673,11 +715,48 @@ function App() {
     ? ((walletEgyptValue - walletLastEvaluation.egypt_value_egp) / walletLastEvaluation.egypt_value_egp) * 100
     : null;
 
+  const marketHistoryRows = useMemo(() => {
+    if (!marketHistory.data) return [];
+    const last = marketHistory.data.slice(-MAX_HISTORY_READINGS);
+    return last
+      .map((entry, i) => {
+        const spot = Number(entry.spot_usd);
+        const prevSpot = i > 0 ? Number(last[i - 1].spot_usd) : null;
+        const chg = prevSpot !== null ? spot - prevSpot : 0;
+        const pct = prevSpot ? (chg / prevSpot) * 100 : 0;
+        return { fetchedAt: entry.fetched_at, spot, chg, pct, hasPrev: prevSpot !== null };
+      })
+      .reverse();
+  }, [marketHistory.data]);
+
+  const egyptHistoryRows = useMemo(() => {
+    if (!egyptHistory.data) return [];
+    const last = egyptHistory.data.slice(-MAX_HISTORY_READINGS);
+    // 21k, not 24k: that's the standard the Egyptian retail market actually
+    // quotes and monitors (87.5% purity) — 24k is the bullion/international
+    // reference, not what a local buyer sees day to day.
+    const row21Of = (entry: EgyptGoldHistoryEntry) => entry.rows.find((r) => r.karat === '21k') || entry.rows[0];
+    return last
+      .map((entry, i) => {
+        const row21 = row21Of(entry);
+        const prevRow21 = i > 0 ? row21Of(last[i - 1]) : null;
+        const sell = row21?.sell ?? 0;
+        const prevSell = prevRow21?.sell ?? null;
+        const chg = prevSell !== null ? sell - prevSell : 0;
+        const pct = prevSell ? (chg / prevSell) * 100 : 0;
+        return { fetchedAt: entry.fetchedAt, sell, chg, pct, hasPrev: prevSell !== null };
+      })
+      .reverse();
+  }, [egyptHistory.data]);
+
   const walletTrendChart = useMemo(() => {
     const snaps = walletSnapshots.data;
     if (snaps.length < 2) return null;
-    const width = 600;
-    const height = 160;
+    const width = 640;
+    const height = 220;
+    const pad = { left: 78, right: 12, top: 12, bottom: 28 };
+    const plotW = width - pad.left - pad.right;
+    const plotH = height - pad.top - pad.bottom;
     const times = snaps.map((s) => new Date(s.recorded_at).getTime());
     const minTime = Math.min(...times);
     const maxTime = Math.max(...times);
@@ -686,14 +765,38 @@ function App() {
     const allValues = [...intlValues, ...egyptSnaps.map((s) => s.egypt_value_egp as number)];
     const minVal = Math.min(...allValues);
     const maxVal = Math.max(...allValues);
-    const xFor = (t: number) => (maxTime === minTime ? width / 2 : ((t - minTime) / (maxTime - minTime)) * (width - 20) + 10);
-    const yFor = (v: number) => (maxVal === minVal ? height / 2 : height - 10 - ((v - minVal) / (maxVal - minVal)) * (height - 20));
-    const intlPoints = snaps.map((s) => `${xFor(new Date(s.recorded_at).getTime())},${yFor(s.intl_value_egp)}`).join(' ');
-    const egyptPoints = egyptSnaps.length >= 2
-      ? egyptSnaps.map((s) => `${xFor(new Date(s.recorded_at).getTime())},${yFor(s.egypt_value_egp as number)}`).join(' ')
+    const xFor = (t: number) => (maxTime === minTime ? pad.left + plotW / 2 : pad.left + ((t - minTime) / (maxTime - minTime)) * plotW);
+    const yFor = (v: number) => (maxVal === minVal ? pad.top + plotH / 2 : pad.top + plotH - ((v - minVal) / (maxVal - minVal)) * plotH);
+    const intl = snaps.map((s) => ({
+      x: xFor(new Date(s.recorded_at).getTime()),
+      y: yFor(s.intl_value_egp),
+      value: s.intl_value_egp,
+      date: s.recorded_at,
+    }));
+    const egypt = egyptSnaps.length >= 2
+      ? egyptSnaps.map((s) => ({
+          x: xFor(new Date(s.recorded_at).getTime()),
+          y: yFor(s.egypt_value_egp as number),
+          value: s.egypt_value_egp as number,
+          date: s.recorded_at,
+        }))
       : null;
-    return { width, height, intlPoints, egyptPoints };
+    const Y_TICK_COUNT = 4;
+    const yTicks = Array.from({ length: Y_TICK_COUNT + 1 }, (_, i) => {
+      const value = minVal === maxVal ? minVal : minVal + ((maxVal - minVal) * i) / Y_TICK_COUNT;
+      return { value, y: yFor(value) };
+    });
+    const X_TICK_COUNT = Math.min(5, snaps.length) - 1;
+    const xTicks = Array.from({ length: X_TICK_COUNT + 1 }, (_, i) => {
+      const idx = X_TICK_COUNT === 0 ? 0 : Math.round((i * (snaps.length - 1)) / X_TICK_COUNT);
+      const snap = snaps[idx];
+      return { date: snap.recorded_at, x: xFor(new Date(snap.recorded_at).getTime()) };
+    });
+    return { width, height, pad, intl, egypt, yTicks, xTicks };
   }, [walletSnapshots.data]);
+  const [walletChartHover, setWalletChartHover] = useState<{ series: 'intl' | 'egypt'; x: number; y: number; value: number; date: string } | null>(null);
+  const [walletChartPinned, setWalletChartPinned] = useState<{ series: 'intl' | 'egypt'; x: number; y: number; value: number; date: string } | null>(null);
+  const walletChartActive = walletChartPinned ?? walletChartHover;
 
   const walletHedgeMetric = useMemo(() => {
     const baseline = walletSnapshots.data.find((s) => s.usd_egp_rate !== null && s.usd_egp_rate > 0);
@@ -892,6 +995,9 @@ function App() {
       stamp: goldValue && fxValue ? { cls: 'ok', txt: `Live via ${goldSource} · ${new Date().toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}` } : { cls: 'err', txt: 'Partial — feeds failed' },
       diag: diagArr.join('\n'),
     }));
+    if (goldValue) {
+      recordInternationalPrice({ spot_usd: goldValue, usd_egp: fxValue || null, source: goldSource }).catch(() => {});
+    }
   };
 
   const applyAI = () => {
@@ -1166,6 +1272,34 @@ The three suggested_weights values must sum to 100.`;
               </div>
               {state.diag ? <pre className="font-mono" style={{ fontSize: 12, color: 'var(--down)', marginTop: 12, whiteSpace: 'pre-wrap' }}>{state.diag}</pre> : null}
 
+              <div style={{ marginTop: 12 }}>
+                <button className="btn-outline" style={{ padding: '6px 14px', fontSize: 15 }} onClick={toggleMarketHistory}>
+                  {marketHistory.visible ? t.hideHistoryBtn : t.showHistoryBtn}
+                </button>
+              </div>
+              {marketHistory.visible ? (
+                <>
+                  <div style={{ height: 14 }} />
+                  <Card>
+                    <SectionLabel text={t.showHistoryBtn.toUpperCase()} />
+                    {marketHistory.loading ? <div className="soft-text" style={{ fontSize: 15 }}>{t.historyLoading}</div> : null}
+                    {marketHistory.error ? <div className="down-text" style={{ fontSize: 15 }}>{marketHistory.error}</div> : null}
+                    {!marketHistory.loading && marketHistoryRows.length === 0 ? (
+                      <div className="muted-text" style={{ fontSize: 15 }}>{t.historyEmpty}</div>
+                    ) : null}
+                    {marketHistoryRows.map((row, i) => (
+                      <div key={row.fetchedAt} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 0', borderTop: i > 0 ? '1px solid var(--border)' : 'none' }}>
+                        <span className="muted-text font-mono" style={{ fontSize: 14 }}>
+                          {new Date(row.fetchedAt).toLocaleDateString(state.lang === 'ar' ? 'ar-EG' : 'en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
+                        </span>
+                        <span className="font-mono" style={{ fontSize: 17, color: 'var(--text)' }}>${fmt(row.spot)}</span>
+                        {row.hasPrev ? <ChangeTag chg={row.chg} pct={row.pct} /> : <span className="muted-text" style={{ fontSize: 13 }}>{t.historyFirstReading}</span>}
+                      </div>
+                    ))}
+                  </Card>
+                </>
+              ) : null}
+
               <details className="legacy-ui" style={{ marginTop: 16 }}>
                 <summary>{t.expGramT}</summary>
                 <div className="exp">{t.expGram}</div>
@@ -1364,9 +1498,14 @@ The three suggested_weights values must sum to 100.`;
             <div>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14, flexWrap: 'wrap', gap: 10 }}>
                 <SectionLabel text={t.egyptHeading.toUpperCase()} />
-                <button className="btn-outline" onClick={loadEgyptPrices} disabled={egypt.loading} style={{ padding: '6px 14px', fontSize: 15 }}>
-                  {egypt.loading ? t.egyptLoading : t.pull}
-                </button>
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                  <button className="btn-outline" onClick={toggleEgyptHistory} style={{ padding: '6px 14px', fontSize: 15 }}>
+                    {egyptHistory.visible ? t.hideHistoryBtn : t.showHistoryBtn}
+                  </button>
+                  <button className="btn-outline" onClick={loadEgyptPrices} disabled={egypt.loading} style={{ padding: '6px 14px', fontSize: 15 }}>
+                    {egypt.loading ? t.egyptLoading : t.pull}
+                  </button>
+                </div>
               </div>
               <Card>
                 {egypt.error ? <div className="down-text" style={{ fontSize: 15, marginBottom: 10 }}>{t.egyptErr}{egypt.error}</div> : null}
@@ -1397,6 +1536,29 @@ The three suggested_weights values must sum to 100.`;
                 ) : null}
                 {!egypt.data && !egypt.error && egypt.loading ? <div className="soft-text" style={{ fontSize: 16 }}>{t.egyptLoading}</div> : null}
               </Card>
+
+              {egyptHistory.visible ? (
+                <>
+                  <div style={{ height: 14 }} />
+                  <Card>
+                    <SectionLabel text={`${t.showHistoryBtn.toUpperCase()} · ${t.k21.toUpperCase()}`} />
+                    {egyptHistory.loading ? <div className="soft-text" style={{ fontSize: 15 }}>{t.historyLoading}</div> : null}
+                    {egyptHistory.error ? <div className="down-text" style={{ fontSize: 15 }}>{egyptHistory.error}</div> : null}
+                    {!egyptHistory.loading && egyptHistoryRows.length === 0 ? (
+                      <div className="muted-text" style={{ fontSize: 15 }}>{t.historyEmpty}</div>
+                    ) : null}
+                    {egyptHistoryRows.map((row, i) => (
+                      <div key={row.fetchedAt} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 0', borderTop: i > 0 ? '1px solid var(--border)' : 'none' }}>
+                        <span className="muted-text font-mono" style={{ fontSize: 14 }}>
+                          {new Date(row.fetchedAt).toLocaleDateString(state.lang === 'ar' ? 'ar-EG' : 'en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
+                        </span>
+                        <span className="font-mono" style={{ fontSize: 17, color: 'var(--text)' }}>{fmt(row.sell)} EGP</span>
+                        {row.hasPrev ? <ChangeTag chg={row.chg} pct={row.pct} /> : <span className="muted-text" style={{ fontSize: 13 }}>{t.historyFirstReading}</span>}
+                      </div>
+                    ))}
+                  </Card>
+                </>
+              ) : null}
             </div>
           )}
 
@@ -2030,15 +2192,127 @@ The three suggested_weights values must sum to 100.`;
                     <SectionLabel text={t.walletTrendLbl.toUpperCase()} />
                     {walletTrendChart ? (
                       <>
-                        <svg viewBox={`0 0 ${walletTrendChart.width} ${walletTrendChart.height}`} style={{ width: '100%', height: 160 }}>
-                          <polyline points={walletTrendChart.intlPoints} fill="none" stroke="var(--gold)" strokeWidth="2" />
-                          {walletTrendChart.egyptPoints ? (
-                            <polyline points={walletTrendChart.egyptPoints} fill="none" stroke="var(--up)" strokeWidth="2" />
+                        <svg
+                          viewBox={`0 0 ${walletTrendChart.width} ${walletTrendChart.height}`}
+                          style={{ width: '100%', height: 220 }}
+                          onMouseLeave={() => setWalletChartHover(null)}
+                        >
+                          {walletTrendChart.yTicks.map((tick, i) => (
+                            <g key={`y-${i}`}>
+                              <line
+                                x1={walletTrendChart.pad.left}
+                                x2={walletTrendChart.width - walletTrendChart.pad.right}
+                                y1={tick.y}
+                                y2={tick.y}
+                                stroke="var(--border)"
+                                strokeWidth="1"
+                              />
+                              <text
+                                x={walletTrendChart.pad.left - 8}
+                                y={tick.y}
+                                textAnchor="end"
+                                dominantBaseline="middle"
+                                fontSize="11"
+                                fontFamily="var(--font-mono)"
+                                fill="var(--text-muted)"
+                              >
+                                {fmt(tick.value)}
+                              </text>
+                            </g>
+                          ))}
+                          {walletTrendChart.xTicks.map((tick, i) => (
+                            <text
+                              key={`x-${i}`}
+                              x={tick.x}
+                              y={walletTrendChart.height - walletTrendChart.pad.bottom + 18}
+                              textAnchor="middle"
+                              fontSize="11"
+                              fontFamily="var(--font-mono)"
+                              fill="var(--text-muted)"
+                            >
+                              {new Date(tick.date).toLocaleDateString(state.lang === 'ar' ? 'ar-EG' : 'en-GB', { day: 'numeric', month: 'short' })}
+                            </text>
+                          ))}
+                          <polyline points={walletTrendChart.intl.map((p) => `${p.x},${p.y}`).join(' ')} fill="none" stroke="var(--gold)" strokeWidth="2" />
+                          {walletTrendChart.egypt ? (
+                            <polyline points={walletTrendChart.egypt.map((p) => `${p.x},${p.y}`).join(' ')} fill="none" stroke="var(--up)" strokeWidth="2" />
                           ) : null}
+                          {walletTrendChart.intl.map((p, i) => (
+                            <circle
+                              key={`intl-${i}`}
+                              cx={p.x}
+                              cy={p.y}
+                              r={walletChartActive?.series === 'intl' && walletChartActive.date === p.date ? 5 : 3}
+                              fill="var(--gold)"
+                              stroke="var(--surface)"
+                              strokeWidth="1"
+                              style={{ cursor: 'pointer' }}
+                              onMouseEnter={() => setWalletChartHover({ series: 'intl', ...p })}
+                              onClick={() =>
+                                setWalletChartPinned((prev) =>
+                                  prev && prev.series === 'intl' && prev.date === p.date ? null : { series: 'intl', ...p }
+                                )
+                              }
+                            />
+                          ))}
+                          {walletTrendChart.egypt
+                            ? walletTrendChart.egypt.map((p, i) => (
+                                <circle
+                                  key={`egypt-${i}`}
+                                  cx={p.x}
+                                  cy={p.y}
+                                  r={walletChartActive?.series === 'egypt' && walletChartActive.date === p.date ? 5 : 3}
+                                  fill="var(--up)"
+                                  stroke="var(--surface)"
+                                  strokeWidth="1"
+                                  style={{ cursor: 'pointer' }}
+                                  onMouseEnter={() => setWalletChartHover({ series: 'egypt', ...p })}
+                                  onClick={() =>
+                                    setWalletChartPinned((prev) =>
+                                      prev && prev.series === 'egypt' && prev.date === p.date ? null : { series: 'egypt', ...p }
+                                    )
+                                  }
+                                />
+                              ))
+                            : null}
+                          {walletChartActive ? (() => {
+                            const boxW = 128;
+                            const boxH = 40;
+                            const boxX = walletChartActive.x + 10 + boxW > walletTrendChart.width
+                              ? walletChartActive.x - 10 - boxW
+                              : walletChartActive.x + 10;
+                            const boxY = Math.max(2, Math.min(walletChartActive.y - boxH / 2, walletTrendChart.height - boxH - 2));
+                            return (
+                              <g pointerEvents="none">
+                                <rect x={boxX} y={boxY} width={boxW} height={boxH} rx={4} fill="var(--elevated)" stroke="var(--border-solid)" strokeWidth="1" />
+                                <text x={boxX + 8} y={boxY + 16} fontSize="11" fontFamily="var(--font-mono)" fill="var(--text-muted)">
+                                  {new Date(walletChartActive.date).toLocaleDateString(state.lang === 'ar' ? 'ar-EG' : 'en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
+                                </text>
+                                <text
+                                  x={boxX + 8}
+                                  y={boxY + 30}
+                                  fontSize="13"
+                                  fontFamily="var(--font-mono)"
+                                  fill={walletChartActive.series === 'intl' ? 'var(--gold)' : 'var(--up)'}
+                                >
+                                  {fmt(walletChartActive.value)} EGP
+                                </text>
+                              </g>
+                            );
+                          })() : null}
                         </svg>
                         <div className="muted-text" style={{ fontSize: 13, marginTop: 6 }}>
                           <span className="gold-text">● {t.walletIntlLbl}</span>
-                          {walletTrendChart.egyptPoints ? <span className="up-text" style={{ marginInlineStart: 12 }}>● {t.walletEgyptLbl}</span> : null}
+                          {walletTrendChart.egypt ? <span className="up-text" style={{ marginInlineStart: 12 }}>● {t.walletEgyptLbl}</span> : null}
+                          {walletChartPinned ? (
+                            <button
+                              className="btn-outline"
+                              style={{ marginInlineStart: 12, padding: '2px 10px', fontSize: 12 }}
+                              onClick={() => setWalletChartPinned(null)}
+                            >
+                              {t.walletChartClear}
+                            </button>
+                          ) : null}
                         </div>
                       </>
                     ) : (
@@ -2087,24 +2361,24 @@ The three suggested_weights values must sum to 100.`;
 const T = {
   ar: {
     dir: 'rtl', langBtn: 'EN', eyebrow: 'خاص · مباشر', title: 'غرفة عمليات الذهب', homeTab: 'غرفة العمليات', marketTab: 'الأسعار المباشرة', calcTab: 'حاسبة الشراء بالأعيرة', targetTab: 'السعر المستهدف المرجّح', scenTab: 'سيناريوهات الأوزان', egyptTab: 'السوق المصري', aiTab: 'المحلل الذكي', dcaTab: 'خطة الدخول التدريجي', watchTab: 'قائمة المراقبة', walletTab: 'محفظتي', settingsTab: 'الإعدادات',
-    egyptHeading: 'أسعار السوق المصري المحلي', egyptSell: 'سعر البيع', egyptBuy: 'سعر الشراء', egyptLoading: 'بيجيب الأسعار من آي صاغة…', egyptErr: 'تعذر جلب أسعار آي صاغة — ', egyptSourceNote: 'المصدر: iSagha.com (آخر تحديث)', egyptStaleNote: 'تعذر سحب الأسعار الحية — دي آخر أسعار معروفة من',
+    egyptHeading: 'أسعار السوق المصري المحلي', egyptSell: 'سعر البيع', egyptBuy: 'سعر الشراء', egyptLoading: 'بيجيب الأسعار من آي صاغة…', egyptErr: 'تعذر جلب أسعار آي صاغة — ', egyptSourceNote: 'المصدر: iSagha.com (آخر تحديث)', egyptStaleNote: 'تعذر سحب الأسعار الحية — دي آخر أسعار معروفة من', showHistoryBtn: 'عرض سجل الأسعار', hideHistoryBtn: 'إخفاء سجل الأسعار', historyLoading: 'بيجيب السجل…', historyEmpty: 'لسه مفيش سجل — هيتسجل تلقائيًا كل ما تسحب الأسعار.', historyFirstReading: 'أول قراءة',
     inSpot: 'أونصة الذهب $', inEgp: 'دولار / جنيه', inPrem: 'مصنعية %', ounce: 'الأونصة', ounceU: 'التحويل المباشر بدون مصنعية',
     g24: 'جرام 24', g21: 'جرام 21', g18: 'جرام 18', gp: 'الجنيه الذهب', inclU: 'جنيه · شامل المصنعية', gpU: 'جنيه · 8 جرام عيار 21',
     pull: '⟳ تحديث الأسعار مباشرة', stampInit: 'بيتحدّث تلقائيًا مع الفتح', expGramT: 'إزاي بنحسب سعر الجرام؟', expGram: 'سعر الذهب عالميًا بيتسعّر بالدولار للأونصة. بناخد سعر الأونصة ÷ 31.1 × سعر الدولار بالجنيه = جرام 24 بالجنيه. عيار 21 = جرام 24 × 0.875، والجنيه الذهب = 8 جرام عيار 21.',
     calcT: 'حاسبة الشراء بالأعيرة', calcAmt: 'المبلغ', calcCur: 'جنيه — يجيبلك:', thK: 'العيار', thP: 'سعر الجرام', thQ: 'الكمية', k24: 'عيار 24 (سبائك)', k22: 'عيار 22', k21: 'عيار 21', k18: 'عيار 18 (مشغولات)', gpRow: 'جنيهات ذهب', change: 'فكة', expKaratT: 'إيه الفرق بين الأعيرة؟', expKarat: 'العيار = نسبة الذهب الخالص. 24 = 99.9% (سبائك)، 22 = 91.7%، 21 = 87.5% (الأشهر في مصر)، 18 = 75% (مشغولات).', calcSpreadNote: 'دي قيمة الذهب الخام بالسعر اللي حددته + الهامش بتاعك — التاجر هيضيف مصاريف بيع/شراء (سبريد)، والمشغولات (عيار 18) بتضاف عليها مصنعية ممكن تبقى نسبة كبيرة من السعر. السعر الفعلي عند البيع أو الشراء هيكون مختلف.',
     targetLbl: 'السعر المستهدف المرجّح بالاحتمالات', deltaVs: 'عن السعر الحالي', bandNote: 'السعر الحالي خارج نطاقات السيناريوهات التلاتة. السوق مختلف مع أوزانك — راجعها بالسحب تحت.', expWT: 'يعني إيه "مرجّح بالاحتمالات"؟', expW: 'بدل ما تراهن على سيناريو واحد، بنحسب متوسط مرجّح للسيناريوهات التلاتة — وكل ما تبقى واثق أكتر في سيناريو معين (يعني رفعت وزنه)، بيأثر أكتر في الناتج. طريقة الحساب: نضرب متوسط نطاق سعر كل سيناريو (أقل سعر + أعلى سعر ÷ 2) في وزنه، نجمع التلاتة، وبعدين نقسم على 100. لو رفعت وزن سيناريو، الهدف هيتحرك ناحية نطاقه.', formulaLbl: 'الحساب المباشر:', expWUse: 'إزاي تستخدمه: السعر ده مش توقّع لسعر الذهب — هو نقطة مرجعية مبنية على رؤيتك انت، وتقارنه بالسعر الحالي فوق عشان تعرف موقفك.', targetBuyHint: 'السعر الحالي أقل من هدفك، يعني الذهب رخيص نسبيًا مقارنة بأوزان السيناريوهات بتاعتك — غالبًا إشارة معقولة إنك تشتري أو تنفّذ الدفعة الجاية من خطة الدخول.', targetHoldHint: 'السعر الحالي مساوي أو أعلى من هدفك، يعني الذهب غالي نسبيًا مقارنة بأوزانك — غالبًا إشارة إنك تستنى فرصة دخول أحسن بدل ما تستعجل.', targetCaveat: 'ده مؤشر بسيط مبني على مدخلاتك انت مش نصيحة مالية — خد بالك من عوامل تانية قبل أي قرار.', alertTargetOnLbl: 'هتتنبّه لو السعر نزل تحت هدفك', alertTargetOffLbl: 'نبّهني لو السعر نزل تحت هدفك', alertDismissBtn: 'إخفاء', alertTargetNoteBelow: 'السعر الحالي أقل من هدفك بـ {pct}%. ده معناه إن الذهب حاليًا أرخص من القيمة اللي أوزان السيناريوهات بتاعتك بتقول عليها — غالبًا فرصة معقولة إنك تشتري أو تنفّذ دفعة من خطة الدخول التدريجي بدل ما تستنى. لو الزرار مفعّل، التنبيه ده هيبان دلوقتي فوق.', alertTargetNoteAbove: 'السعر الحالي أعلى من هدفك بـ {pct}%، يعني الذهب غالي شوية مقارنة برؤيتك انت — مفيش داعي تشتري دلوقتي. فعّل التنبيه عشان نقولك أول ما يرجع ينزل تحت الهدف، بدل ما تفضل تراجع بنفسك كل يوم.', scen: { deesc: { name: 'تغيرات جيوسياسية', sub: 'Geopolitical Changes', thesis: 'تهدئة عالمية في التوترات الجيوسياسية (مش بس إيران) + تحوّل الفيدرالي + عودة تدفقات الصناديق' }, base: { name: 'السيناريو الأساسي', sub: 'Base Case', thesis: 'شراء البنوك المركزية (~720 طن/سنة) في مواجهة الفايدة المرتفعة' }, stag: { name: 'فخ الركود التضخمي', sub: 'Stagflation', thesis: 'رفع فايدة وسط ضعف اقتصادي + ضغط دولاري + بيع اضطراري' } }, expScT: 'إيه هي السيناريوهات والأوزان دي؟', expSc: 'كل بطاقة هي سيناريو: نطاق سعر محتمل للذهب (الباند) وليه وزن (%) بيعبّر عن مدى ثقتك إن السيناريو ده هيحصل — كل ما الوزن أعلى، كل ما ثقتك فيه أكبر. مجموع الأوزان التلاتة لازم يفضل دايمًا 100%، فلو رفعت وزن سيناريو، الاتنين التانيين بينزلوا تلقائيًا. الأوزان دي هي اللي بتحدد السعر المستهدف المرجّح فوق مباشرة — والمحلل الذكي كمان ممكن يقترح أوزان جديدة بناءً على بحث لحظي، وتقدر تطبقها بضغطة واحدة.', watchImpliedLbl: 'الأوزان المقترحة من لوحة المتابعة', watchApplyBtn: 'طبّق أوزان لوحة المتابعة', aiT: 'المحلل الذكي', aiGo: '⚡ حلّل السوق بناءً على إطاري', aiLvl: 'مستوى الشرح', aiLvlBeg: 'مبتدئ', aiLvlExp: 'خبير', aiGoing: 'بيبحث في السوق ويحلل…', aiErr: 'فشل التحليل — ', aiTrendsH: 'اللي حرّك السوق', aiWeightsH: 'الأوزان المقترحة', aiApply: 'طبّق الأوزان دي على السيناريوهات', aiApplied: '✓ اتطبقت', aiTrancheH: 'قرار الدفعة الثانية', aiEgpH: 'قراءة الجنيه', aiWalletH: 'إعادة تقييم المحفظة', aiWatchH: 'قراءة لوحة المتابعة', aiDisc: 'تحليل آلي مبني على بحث لحظي — راجعه بعقلك قبل أي قرار.', expAiT: 'إزاي المحلل ده شغال؟', expAi: 'الزرار بيبعت حالة اللوحة كاملة — الأسعار الحية، أوزانك، السعر المرجّح، حالة الدفعات، ألوان المتابعة — لنموذج Claude ومعاه صلاحية بحث في الإنترنت.', dcaT: 'خطة الدخول التدريجي', startDateLbl: 'تاريخ البداية', budgetLbl: 'إجمالي مبلغ الاستثمار', budgetMonthlyLbl: 'مبلغ الاستثمار الشهري', spacingLbl: 'المسافة بين الدفعات', spacingUnitLbl: 'شهر', cur: 'جنيه', nowMark: '← دلوقتي', dcaModeFixed: 'دفعات محددة', dcaModeRecurring: 'شراء شهري مستمر', dcaSplitLbl: 'توزيع الدفعات', dcaSplitSumLbl: 'الإجمالي:', dcaSplitSumError: 'مجموع النسب لازم يكون 100% (دلوقتي {sum}%)', dcaAddTrancheBtn: 'أضف دفعة', dcaSaveSplitBtn: 'احفظ التوزيع', trancheLbl: 'الدفعة', deploymentLbl: 'دفعة شهرية', expDcaT: 'ليه الشراء على دفعات مش مرة واحدة؟', expDca: 'دي استراتيجية DCA: توزيع الشراء بدل توقيت السوق بدل ما تشتري كل حاجة مرة واحدة. اختار "دفعات محددة" لو عايز تقسّم مبلغ إجمالي على دفعات بنسب مختلفة، أو "شراء شهري مستمر" لو عايز تستثمر مبلغ ثابت كل فترة من غير نهاية محددة.', alertDcaOnLbl: 'هتتنبّه لما دفعة تفتح', alertDcaOffLbl: 'نبّهني لما دفعة تفتح', alertDcaOpenMsg: 'دفعة من خطة الدخول التدريجي فتحت. فكرة الـDCA إنك تشتري على دفعات ثابتة بدل ما تحاول تحزر أحسن توقيت — نفّذ الدفعة دي حتى لو السعر مش شكله مثالي، عشان تحافظ على انضباط الخطة.', alertDcaNoteOpen: 'في دفعة مفتوحة دلوقتي وجاهزة للتنفيذ. فعّل التنبيه عشان تتأكد إنك مش هتفوّت الالتزام بجدول الدخول التدريجي.', alertDcaNoteNext: 'الدفعة الجاية هتفتح في {date}. مفيش داعي تتصرف قبل كده — هدف الـDCA إنك توزّع الشراء بدل ما تحاول تدخل في التوقيت "المثالي".', alertDcaNoteDone: 'كل الدفعات خلصت. راجع لو لسه محتاج تزوّد استثمارك في الذهب، أو ابدأ خطة جديدة لو عايز تكمل الدخول التدريجي.', watchT: 'لوحة المتابعة — اضغط للتبديل · × للحذف', addMonPh: 'متغير جديد (مثلًا: أسعار النفط)…', addMonBtn: 'أضف', delMon: 'احذف المتغير', siglbl: ['داعم', 'مراقبة', 'خطر'] as const, expMonT: 'إيه المتغيرات دي وليه؟', expMon: 'الزر الأخضر = داعم، الأصفر = مراقبة، الأحمر = خطر على الأطروحة.',
-    walletT: 'قيمة محفظتي', walletKaratCol: 'العيار / الوحدة', walletAmountCol: 'الكمية اللي معاك', walletTotalLbl: 'الإجمالي', walletOzLbl: 'أونصة (عيار 24)', walletG24Lbl: 'دهب 24 (سبائك)', walletG21Lbl: 'دهب 21 (فكة/جرامات)', walletG18Lbl: 'دهب 18 (مشغولات)', walletPoundsLbl: 'جنيهات ذهب (كل جنيه = 8 جرام 21)', walletIntlLbl: 'القيمة بالسعر العالمي', walletEgyptLbl: 'القيمة بالسوق المصري (حي)', walletDeltaLbl: 'فرق عن السعر العالمي', walletNoEgyptData: 'اضغط "اسحب أسعار مصر" في تبويب السوق المصري الأول', walletEmptyHint: 'دخّل كمية الدهب اللي معاك في أي عيار عشان تشوف قيمة محفظتك.', walletSaveBtn: 'حفظ الكمية', walletSaving: 'بيتحفظ…', walletLockNote: 'بعد الحفظ، الكميات دي هتتقفل ومش هتتعدل غير عن طريق عمليات شراء/بيع، أو لو طلبت تصحيح.', walletFirstSaveNote: 'هنسجّل الكمية دي كعملية شراء بسعر السوق المحلي بتاريخ النهارده، عشان يبقى عندك سعر أساس تتابع منه الربح والخسارة. لو عندك سعر وتاريخ الشراء الحقيقي، تقدر تعدّل أو تحذف العملية دي بعد الحفظ وتسجّل العملية الحقيقية بدالها من قايمة العمليات تحت.', walletModifyBtn: 'طلب تصحيح / تعديل الكمية', walletCorrectingLbl: 'وضع التصحيح مفعّل', walletLockedNote: 'الكميات دي متقفلة عشان تفضل متزامنة مع سجل عمليات الشراء والبيع. لو فيه غلط، اطلب تصحيح.', walletChangeLbl: 'نسبة الربح/الخسارة من آخر تقييم', walletSinceLbl: 'مقارنةً بـ', walletTrendLbl: 'اتجاه قيمة المحفظة', walletTrendEmpty: 'لسه مفيش بيانات كفاية للرسم — ارجع تاني بكرة عشان تشوف الاتجاه.', walletHedgeLbl: 'فعالية التحوّط ضد الجنيه', walletHedgeAheadMsg: 'محفظتك زادت {gold}% بينما الدولار زاد {egp}% مقابل الجنيه — يعني الذهب حماك من تراجع الجنيه وكمان زوّد قيمتك الحقيقية.', walletHedgeBehindMsg: 'محفظتك زادت {gold}% بينما الدولار زاد {egp}% مقابل الجنيه — يعني الذهب مقدرش يواكب معدل تراجع الجنيه في الفترة دي.', walletTxT: 'سجّل عملية شراء أو بيع', walletTxUnitLbl: 'الوحدة', walletTxBuy: 'شراء', walletTxSell: 'بيع', walletTxAmountLbl: 'الكمية', walletTxPriceLbl: 'الإجمالي المدفوع/المستلم', walletTxPerUnitNote: '≈ للوحدة الواحدة:', walletTxPerUnitSuffix: '/ وحدة', walletTxSubmit: 'سجّل العملية', walletTxSubmitting: 'بيتسجل…', walletTxAmountError: 'أدخل كمية أكبر من صفر', walletTxEditingT: 'تعديل العملية', walletTxUpdate: 'حفظ التعديل', walletTxDateLbl: 'تاريخ العملية', walletTxLookupLbl: 'السعر المرجعي الحالي:', walletTxUseLookup: 'استخدم هذا السعر', walletTxDeleteConfirm: 'متأكد إنك عايز تحذف العملية دي؟ هيتم تعديل رصيد المحفظة تبعًا لذلك.', walletExportBtn: 'تحميل سجل العمليات (CSV)', walletCostBasisLbl: 'الربح والخسارة مقارنة بسعر الشراء', walletAvgCostLbl: 'متوسط سعر الشراء', walletUnrealizedLbl: 'ربح/خسارة غير محقق', walletRealizedLbl: 'إجمالي الربح المحقق من البيع', walletCostBasisNote: 'ده مقارنة بالسعر اللي فعلاً دفعته وقت الشراء (من سجل العمليات)، مش بآخر تقييم — عشان تعرف هل أنت رابح أو خسران فعليًا من أول ما اشتريت.', walletUntrackedNote: '{qty} من غير سعر شراء مسجّل', walletUntrackedGeneralNote: 'الكميات اللي اتضافت مباشرة (من غير عملية شراء مسجّلة) مفيهاش سعر شراء معروف، فمينفعش نحسبلها ربح أو خسارة. سجّل عملية شراء بتاريخ رجعي لو عايز تتبعها.', expWalletT: 'إزاي بتتحسب القيمة دي؟', expWallet: 'دخّل اللي معاك بكل عيار (بما فيها الأونصة)، وهنحسبلك قيمتين بالجنيه المصري: الأولى بالسعر العالمي (نفس السعر المحسوب في تبويب الحاسبة، بناءً على سعر الأونصة العالمي + سعر الدولار + الهامش اللي حددته)، والتانية بسعر السوق المصري الحي فعليًا (سعر الشراء اللي التاجر هيدفعهولك لو بعت النهارده، من نفس بيانات تبويب السوق المصري). الفرق بين الاتنين بيوريك هل السوق المحلي بيدفع زيادة أو ناقص عن القيمة العالمية النظرية.',
+    walletT: 'قيمة محفظتي', walletKaratCol: 'العيار / الوحدة', walletAmountCol: 'الكمية اللي معاك', walletTotalLbl: 'الإجمالي', walletOzLbl: 'أونصة (عيار 24)', walletG24Lbl: 'دهب 24 (سبائك)', walletG21Lbl: 'دهب 21 (فكة/جرامات)', walletG18Lbl: 'دهب 18 (مشغولات)', walletPoundsLbl: 'جنيهات ذهب (كل جنيه = 8 جرام 21)', walletIntlLbl: 'القيمة بالسعر العالمي', walletEgyptLbl: 'القيمة بالسوق المصري (حي)', walletDeltaLbl: 'فرق عن السعر العالمي', walletNoEgyptData: 'اضغط "اسحب أسعار مصر" في تبويب السوق المصري الأول', walletEmptyHint: 'دخّل كمية الدهب اللي معاك في أي عيار عشان تشوف قيمة محفظتك.', walletSaveBtn: 'حفظ الكمية', walletSaving: 'بيتحفظ…', walletLockNote: 'بعد الحفظ، الكميات دي هتتقفل ومش هتتعدل غير عن طريق عمليات شراء/بيع، أو لو طلبت تصحيح.', walletFirstSaveNote: 'هنسجّل الكمية دي كعملية شراء بسعر السوق المحلي بتاريخ النهارده، عشان يبقى عندك سعر أساس تتابع منه الربح والخسارة. لو عندك سعر وتاريخ الشراء الحقيقي، تقدر تعدّل أو تحذف العملية دي بعد الحفظ وتسجّل العملية الحقيقية بدالها من قايمة العمليات تحت.', walletModifyBtn: 'طلب تصحيح / تعديل الكمية', walletCorrectingLbl: 'وضع التصحيح مفعّل', walletLockedNote: 'الكميات دي متقفلة عشان تفضل متزامنة مع سجل عمليات الشراء والبيع. لو فيه غلط، اطلب تصحيح.', walletChangeLbl: 'نسبة الربح/الخسارة من آخر تقييم', walletSinceLbl: 'مقارنةً بـ', walletTrendLbl: 'اتجاه قيمة المحفظة', walletTrendEmpty: 'لسه مفيش بيانات كفاية للرسم — ارجع تاني بكرة عشان تشوف الاتجاه.', walletChartClear: 'إلغاء التحديد', walletHedgeLbl: 'فعالية التحوّط ضد الجنيه', walletHedgeAheadMsg: 'محفظتك زادت {gold}% بينما الدولار زاد {egp}% مقابل الجنيه — يعني الذهب حماك من تراجع الجنيه وكمان زوّد قيمتك الحقيقية.', walletHedgeBehindMsg: 'محفظتك زادت {gold}% بينما الدولار زاد {egp}% مقابل الجنيه — يعني الذهب مقدرش يواكب معدل تراجع الجنيه في الفترة دي.', walletTxT: 'سجّل عملية شراء أو بيع', walletTxUnitLbl: 'الوحدة', walletTxBuy: 'شراء', walletTxSell: 'بيع', walletTxAmountLbl: 'الكمية', walletTxPriceLbl: 'الإجمالي المدفوع/المستلم', walletTxPerUnitNote: '≈ للوحدة الواحدة:', walletTxPerUnitSuffix: '/ وحدة', walletTxSubmit: 'سجّل العملية', walletTxSubmitting: 'بيتسجل…', walletTxAmountError: 'أدخل كمية أكبر من صفر', walletTxEditingT: 'تعديل العملية', walletTxUpdate: 'حفظ التعديل', walletTxDateLbl: 'تاريخ العملية', walletTxLookupLbl: 'السعر المرجعي الحالي:', walletTxUseLookup: 'استخدم هذا السعر', walletTxDeleteConfirm: 'متأكد إنك عايز تحذف العملية دي؟ هيتم تعديل رصيد المحفظة تبعًا لذلك.', walletExportBtn: 'تحميل سجل العمليات (CSV)', walletCostBasisLbl: 'الربح والخسارة مقارنة بسعر الشراء', walletAvgCostLbl: 'متوسط سعر الشراء', walletUnrealizedLbl: 'ربح/خسارة غير محقق', walletRealizedLbl: 'إجمالي الربح المحقق من البيع', walletCostBasisNote: 'ده مقارنة بالسعر اللي فعلاً دفعته وقت الشراء (من سجل العمليات)، مش بآخر تقييم — عشان تعرف هل أنت رابح أو خسران فعليًا من أول ما اشتريت.', walletUntrackedNote: '{qty} من غير سعر شراء مسجّل', walletUntrackedGeneralNote: 'الكميات اللي اتضافت مباشرة (من غير عملية شراء مسجّلة) مفيهاش سعر شراء معروف، فمينفعش نحسبلها ربح أو خسارة. سجّل عملية شراء بتاريخ رجعي لو عايز تتبعها.', expWalletT: 'إزاي بتتحسب القيمة دي؟', expWallet: 'دخّل اللي معاك بكل عيار (بما فيها الأونصة)، وهنحسبلك قيمتين بالجنيه المصري: الأولى بالسعر العالمي (نفس السعر المحسوب في تبويب الحاسبة، بناءً على سعر الأونصة العالمي + سعر الدولار + الهامش اللي حددته)، والتانية بسعر السوق المصري الحي فعليًا (سعر الشراء اللي التاجر هيدفعهولك لو بعت النهارده، من نفس بيانات تبويب السوق المصري). الفرق بين الاتنين بيوريك هل السوق المحلي بيدفع زيادة أو ناقص عن القيمة العالمية النظرية.',
     aiUsingProvider: 'المزوّد المستخدم', aiNoProvider: 'مفيش مزوّد مُفعّل — روح الإعدادات', aiQuotaLabel: 'التحليلات المجانية المتبقية اليوم', settingsHeading: 'إعدادات نموذج الذكاء الاصطناعي', settingsAddHeading: 'إضافة / تعديل مزوّد', settingsEmpty: 'لسه مفيش مزوّدين متضافين.', settingsTypeLabel: 'النوع', settingsLabelLabel: 'الاسم', settingsBaseUrlLabel: 'رابط الخادم', settingsApiKeyLabel: 'مفتاح API', settingsApiKeyUnchangedPh: 'اتركه فاضي عشان يفضل زي ما هو', settingsModelLabel: 'الموديل', settingsSaveBtn: 'حفظ', settingsCancelBtn: 'إلغاء', settingsActivateBtn: 'تفعيل', settingsActiveBadge: 'مُفعّل', settingsEditBtn: 'تعديل', settingsDeleteBtn: 'حذف', settingsTypeOllama: 'Ollama (محلي)', settingsTypeShared: 'مشترك (Claude Haiku، تحليلين/يوم مجانًا)', settingsSharedNote: 'خدمة مُدارة من الخادم — الموديل والاتصال مُعدّين مسبقًا، مفيش إعدادات مطلوبة.', settingsTypeOpenAI: 'OpenAI', settingsTypeClaude: 'Claude', settingsTypeOpenRouter: 'OpenRouter', settingsTypeCustom: 'مخصص', settingsTestBtn: 'اختبار الاتصال', settingsTesting: 'بيتم الاختبار…', settingsTestSuccess: '✓ نجح الاتصال —', settingsTestError: '✗ فشل الاتصال —', settingsValidationError: 'الاسم والموديل مطلوبين',
     foot: 'الأسعار من مصادر مجانية بدون مفاتيح. أداة تحليل شخصية — مش نصيحة استثمارية.', footFramework: 'الإطار: {date}.' },
   en: {
     dir: 'ltr', langBtn: 'عربي', eyebrow: 'PRIVATE · LIVE', title: 'Gold Hedge Cockpit', homeTab: 'Operations Room', marketTab: 'Live Market', calcTab: 'Karat Purchase Calculator', targetTab: 'Probability-Weighted Target', scenTab: 'Scenario Weights', egyptTab: 'Egypt Market', aiTab: 'AI Analyst', dcaTab: 'DCA Plan', watchTab: 'Watchlist', walletTab: 'My Wallet', settingsTab: 'Settings',
-    egyptHeading: 'LOCAL EGYPTIAN MARKET PRICES', egyptSell: 'Sell', egyptBuy: 'Buy', egyptLoading: 'Fetching prices from iSagha…', egyptErr: 'Could not reach iSagha — ', egyptSourceNote: 'Source: iSagha.com (last updated)', egyptStaleNote: 'Live pull failed — showing last known prices from',
+    egyptHeading: 'LOCAL EGYPTIAN MARKET PRICES', egyptSell: 'Sell', egyptBuy: 'Buy', egyptLoading: 'Fetching prices from iSagha…', egyptErr: 'Could not reach iSagha — ', egyptSourceNote: 'Source: iSagha.com (last updated)', egyptStaleNote: 'Live pull failed — showing last known prices from', showHistoryBtn: 'Show price history', hideHistoryBtn: 'Hide price history', historyLoading: 'Loading history…', historyEmpty: 'No history yet — it will start recording the next time you pull prices.', historyFirstReading: 'First reading',
     inSpot: 'XAU/USD', inEgp: 'USD/EGP', inPrem: 'PREMIUM %', ounce: 'Ounce', ounceU: 'direct conversion, no premium',
     g24: '24k gram', g21: '21k gram', g18: '18k gram', gp: 'Gold pound', inclU: 'EGP · incl. premium', gpU: 'EGP · 8g of 21k',
     pull: '⟳ PULL LIVE MARKET', stampInit: 'Auto-pulls on open', expGramT: 'How is the gram price computed?', expGram: 'Gold is priced globally in USD per troy ounce. Ounce ÷ 31.1 × USD/EGP = 24k gram in EGP. 21k = 24k × 0.875; a gold pound = 8g of 21k.',
     calcT: 'KARAT PURCHASE CALCULATOR', calcAmt: 'Amount', calcCur: 'EGP buys you:', thK: 'Karat', thP: 'Per gram', thQ: 'Quantity', k24: '24k (bullion)', k22: '22k', k21: '21k', k18: '18k (jewelry)', gpRow: 'Gold pounds', change: 'change', expKaratT: "What's the difference between karats?", expKarat: 'Karat = purity. 24 = 99.9% (bullion), 22 = 91.7%, 21 = 87.5% (Egypt\'s standard), 18 = 75% (jewelry).', calcSpreadNote: 'This is raw metal value at your set price + premium — dealers add their own buy/sell spread, and jewelry (18k) usually adds a manufacturing charge that can be a large share of the price. The price you actually pay or receive will differ from this figure.',
     targetLbl: 'PROBABILITY-WEIGHTED TARGET', deltaVs: 'vs. spot', bandNote: 'Spot sits outside all three bands. The market disagrees with your weights — drag below.', expWT: 'What does "probability-weighted" mean?', expW: 'Instead of betting on one scenario, we take a weighted average of the three scenario targets — the more likely you think a scenario is (the higher its weight), the more it counts. How it\'s calculated: multiply each scenario\'s price-band midpoint (low + high ÷ 2) by its weight, add the three together, then divide by 100. Raise a scenario\'s weight and the target shifts toward its band.', formulaLbl: 'Live calculation:', expWUse: 'How to use it: this isn\'t a price prediction — it\'s a reference point built from your own view. Compare it against the live spot price above to see where you stand.', targetBuyHint: 'Spot is trading below your target, which means gold looks relatively cheap against your own scenario weights — often a reasonable signal to buy or deploy your next DCA tranche.', targetHoldHint: 'Spot is trading at or above your target, which means gold looks relatively expensive against your own scenario weights — often a reasonable signal to hold off and wait for a better entry.', targetCaveat: 'This is a simple heuristic based on your own inputs, not financial advice — weigh other factors before deciding.', alertTargetOnLbl: "You'll be notified when spot drops below your target", alertTargetOffLbl: 'Notify me when spot drops below my target', alertDismissBtn: 'Dismiss', alertTargetNoteBelow: 'Spot is {pct}% below your target, which means gold is currently trading cheaper than what your own scenario weights say it should be worth — often a reasonable moment to buy, or to run your next DCA tranche instead of waiting. With this on, that would show as a notice above right now.', alertTargetNoteAbove: "Spot is {pct}% above your target, so gold looks a bit expensive against your own view — no strong reason to buy at this price. Turn this on and we'll flag it the moment it drops back below your target, instead of you having to check manually every day.", scen: { deesc: { name: 'Geopolitical Changes', sub: 'تغيرات جيوسياسية', thesis: 'Global geopolitical tensions ease broadly (not just Iran), Fed pivots, ETF inflows return' }, base: { name: 'Base Case', sub: 'الأساسي', thesis: 'CB buying ~720t/yr vs. elevated rates — grind higher' }, stag: { name: 'Stagflation Trap', sub: 'فخ الركود', thesis: 'Fed hikes into weakness, dollar squeeze, forced selling' } }, expScT: 'What are these scenarios and weights?', expSc: 'Each panel is a scenario: a possible price range for gold (the band) with a weight (%) showing how confident you are it plays out — the higher the weight, the more confident. The three weights always add up to 100%, so raising one scenario\'s weight automatically lowers the other two. These weights directly drive the probability-weighted target above — the AI Analyst can also suggest new weights based on live research, which you can apply with one tap.', watchImpliedLbl: 'Watchlist-implied weights', watchApplyBtn: 'Apply watchlist weights', aiT: 'AI ANALYST', aiGo: '⚡ Analyze the market against my framework', aiLvl: 'Explanation level', aiLvlBeg: 'Beginner', aiLvlExp: 'Expert', aiGoing: 'Searching & analyzing…', aiErr: 'Analysis failed — ', aiTrendsH: 'WHAT MOVED THE MARKET', aiWeightsH: 'SUGGESTED WEIGHTS', aiApply: 'Apply these weights to the scenarios', aiApplied: '✓ Applied', aiTrancheH: 'TRANCHE 2 CALL', aiEgpH: 'EGP READ', aiWalletH: 'WALLET RE-EVALUATION', aiWatchH: 'WATCHLIST READ', aiDisc: 'Machine analysis on live search — apply your own judgment before acting.', expAiT: 'How does this analyst work?', expAi: 'The button sends your full cockpit state — live prices, your weights, the weighted target, tranche status, watchlist colors — to Claude with web-search access.', dcaT: 'DCA PLAN', startDateLbl: 'Start date', budgetLbl: 'Total investment', budgetMonthlyLbl: 'Monthly investment', spacingLbl: 'Spacing between tranches', spacingUnitLbl: 'month(s)', cur: 'EGP', nowMark: '← now', dcaModeFixed: 'Fixed tranches', dcaModeRecurring: 'Recurring monthly', dcaSplitLbl: 'Tranche split', dcaSplitSumLbl: 'Total:', dcaSplitSumError: 'Percentages must sum to 100% (currently {sum}%)', dcaAddTrancheBtn: 'Add tranche', dcaSaveSplitBtn: 'Save split', trancheLbl: 'Tranche', deploymentLbl: 'Monthly deployment', expDcaT: 'Why staged entry instead of one buy?', expDca: 'This is DCA: staged entry instead of timing the market or buying it all at once. Choose "Fixed tranches" to split a total amount across a set number of tranches at your own ratio, or "Recurring monthly" to invest a fixed amount on a repeating schedule with no fixed end date.', alertDcaOnLbl: "You'll be notified when a tranche window opens", alertDcaOffLbl: 'Notify me when a tranche window opens', alertDcaOpenMsg: "A DCA tranche window is open. The point of dollar-cost averaging is to buy on a fixed schedule instead of trying to guess the best moment — go ahead and execute this tranche even if the price doesn't feel perfect, to keep the plan disciplined.", alertDcaNoteOpen: "A tranche window is open and ready to execute. Turn this on so you don't miss staying on schedule with your staged entry plan.", alertDcaNoteNext: 'Your next tranche opens {date}. No action needed before then — DCA works by spreading purchases out rather than trying to time the "perfect" entry.', alertDcaNoteDone: 'All tranches are complete. Review whether you want to add more to your gold position, or start a new plan to keep dollar-cost averaging.', watchT: 'WATCHLIST — TAP TO CYCLE · × TO DELETE', addMonPh: 'New variable (e.g. oil prices)…', addMonBtn: 'Add', delMon: 'Delete variable', siglbl: ['OK', 'Watch', 'Risk'] as const, expMonT: 'What are these variables?', expMon: 'Green = supportive, amber = watch, red = thesis risk.',
-    walletT: 'My Wallet Value', walletKaratCol: 'Karat / unit', walletAmountCol: 'Amount you own', walletTotalLbl: 'Total', walletOzLbl: 'Ounces (24k)', walletG24Lbl: '24k gold (bullion)', walletG21Lbl: '21k gold (loose grams)', walletG18Lbl: '18k gold (jewelry)', walletPoundsLbl: 'Gold pounds (each = 8g of 21k)', walletIntlLbl: 'Value at international price', walletEgyptLbl: 'Value at Egyptian market (live)', walletDeltaLbl: 'vs. international value', walletNoEgyptData: 'Hit "Pull Egypt prices" on the Egypt Market tab first', walletEmptyHint: 'Enter how much gold you own in any karat to see your wallet\'s value.', walletSaveBtn: 'Save amounts', walletSaving: 'Saving…', walletLockNote: "Once saved, these amounts lock and can only change through buy/sell transactions, or by requesting a correction.", walletFirstSaveNote: "We'll record this as a buy at today's local market price, so you have a base cost to track profit/loss from. If you know your real purchase price and date, you can edit or delete that transaction after saving and log the real one instead, from the transaction list below.", walletModifyBtn: 'Request a correction / edit amounts', walletCorrectingLbl: 'Correction mode on', walletLockedNote: 'These amounts are locked so they stay in sync with your buy/sell transaction history. If something is wrong, request a correction.', walletChangeLbl: 'Profit/loss since last evaluation', walletSinceLbl: 'vs.', walletTrendLbl: 'Wallet value trend', walletTrendEmpty: 'Not enough data yet to plot a trend — check back tomorrow to see it build up.', walletHedgeLbl: 'Hedge effectiveness vs. the pound', walletHedgeAheadMsg: 'Your wallet is up {gold}% while the dollar is up {egp}% against the pound — gold protected you from the pound\'s slide and added real value on top.', walletHedgeBehindMsg: "Your wallet is up {gold}% while the dollar is up {egp}% against the pound — gold hasn't kept pace with the pound's decline over this period.", walletTxT: 'Record a buy or sell', walletTxUnitLbl: 'Unit', walletTxBuy: 'Buy', walletTxSell: 'Sell', walletTxAmountLbl: 'Amount', walletTxPriceLbl: 'Total paid/received', walletTxPerUnitNote: '≈ per unit:', walletTxPerUnitSuffix: '/ unit', walletTxSubmit: 'Record transaction', walletTxSubmitting: 'Recording…', walletTxAmountError: 'Enter an amount greater than zero', walletTxEditingT: 'Edit transaction', walletTxUpdate: 'Save changes', walletTxDateLbl: 'Transaction date', walletTxLookupLbl: 'Current reference price:', walletTxUseLookup: 'Use this price', walletTxDeleteConfirm: 'Delete this transaction? Your wallet balance will be adjusted accordingly.', walletExportBtn: 'Download transaction history (CSV)', walletCostBasisLbl: 'Profit/loss vs. what you paid', walletAvgCostLbl: 'Average buy price', walletUnrealizedLbl: 'Unrealized P&L', walletRealizedLbl: 'Total realized profit from sales', walletCostBasisNote: "This compares against what you actually paid at purchase (from your transaction history), not the last evaluation snapshot — so you know if you're really ahead or behind since you bought.", walletUntrackedNote: '{qty} has no purchase price on record', walletUntrackedGeneralNote: "Amounts added directly (without a recorded buy transaction) have no known purchase price, so profit/loss can't be calculated for them. Log a backdated buy transaction if you want to track them.", expWalletT: 'How is this value calculated?', expWallet: 'Enter what you own per karat (including ounces), and we compute two values in Egyptian Pounds: one at the international price (the same rate as the Calculator tab — global ounce price + USD/EGP rate + your set premium), and one at the actual live Egyptian market price (the dealer buy-back price for today, from the same data as the Egypt Market tab). The difference between the two shows whether the local market is paying more or less than the theoretical international value.',
+    walletT: 'My Wallet Value', walletKaratCol: 'Karat / unit', walletAmountCol: 'Amount you own', walletTotalLbl: 'Total', walletOzLbl: 'Ounces (24k)', walletG24Lbl: '24k gold (bullion)', walletG21Lbl: '21k gold (loose grams)', walletG18Lbl: '18k gold (jewelry)', walletPoundsLbl: 'Gold pounds (each = 8g of 21k)', walletIntlLbl: 'Value at international price', walletEgyptLbl: 'Value at Egyptian market (live)', walletDeltaLbl: 'vs. international value', walletNoEgyptData: 'Hit "Pull Egypt prices" on the Egypt Market tab first', walletEmptyHint: 'Enter how much gold you own in any karat to see your wallet\'s value.', walletSaveBtn: 'Save amounts', walletSaving: 'Saving…', walletLockNote: "Once saved, these amounts lock and can only change through buy/sell transactions, or by requesting a correction.", walletFirstSaveNote: "We'll record this as a buy at today's local market price, so you have a base cost to track profit/loss from. If you know your real purchase price and date, you can edit or delete that transaction after saving and log the real one instead, from the transaction list below.", walletModifyBtn: 'Request a correction / edit amounts', walletCorrectingLbl: 'Correction mode on', walletLockedNote: 'These amounts are locked so they stay in sync with your buy/sell transaction history. If something is wrong, request a correction.', walletChangeLbl: 'Profit/loss since last evaluation', walletSinceLbl: 'vs.', walletTrendLbl: 'Wallet value trend', walletTrendEmpty: 'Not enough data yet to plot a trend — check back tomorrow to see it build up.', walletChartClear: 'Clear selection', walletHedgeLbl: 'Hedge effectiveness vs. the pound', walletHedgeAheadMsg: 'Your wallet is up {gold}% while the dollar is up {egp}% against the pound — gold protected you from the pound\'s slide and added real value on top.', walletHedgeBehindMsg: "Your wallet is up {gold}% while the dollar is up {egp}% against the pound — gold hasn't kept pace with the pound's decline over this period.", walletTxT: 'Record a buy or sell', walletTxUnitLbl: 'Unit', walletTxBuy: 'Buy', walletTxSell: 'Sell', walletTxAmountLbl: 'Amount', walletTxPriceLbl: 'Total paid/received', walletTxPerUnitNote: '≈ per unit:', walletTxPerUnitSuffix: '/ unit', walletTxSubmit: 'Record transaction', walletTxSubmitting: 'Recording…', walletTxAmountError: 'Enter an amount greater than zero', walletTxEditingT: 'Edit transaction', walletTxUpdate: 'Save changes', walletTxDateLbl: 'Transaction date', walletTxLookupLbl: 'Current reference price:', walletTxUseLookup: 'Use this price', walletTxDeleteConfirm: 'Delete this transaction? Your wallet balance will be adjusted accordingly.', walletExportBtn: 'Download transaction history (CSV)', walletCostBasisLbl: 'Profit/loss vs. what you paid', walletAvgCostLbl: 'Average buy price', walletUnrealizedLbl: 'Unrealized P&L', walletRealizedLbl: 'Total realized profit from sales', walletCostBasisNote: "This compares against what you actually paid at purchase (from your transaction history), not the last evaluation snapshot — so you know if you're really ahead or behind since you bought.", walletUntrackedNote: '{qty} has no purchase price on record', walletUntrackedGeneralNote: "Amounts added directly (without a recorded buy transaction) have no known purchase price, so profit/loss can't be calculated for them. Log a backdated buy transaction if you want to track them.", expWalletT: 'How is this value calculated?', expWallet: 'Enter what you own per karat (including ounces), and we compute two values in Egyptian Pounds: one at the international price (the same rate as the Calculator tab — global ounce price + USD/EGP rate + your set premium), and one at the actual live Egyptian market price (the dealer buy-back price for today, from the same data as the Egypt Market tab). The difference between the two shows whether the local market is paying more or less than the theoretical international value.',
     aiUsingProvider: 'Using provider', aiNoProvider: 'No active provider — go to Settings', aiQuotaLabel: 'Free analyses left today', settingsHeading: 'AI Model Settings', settingsAddHeading: 'Add / Edit Provider', settingsEmpty: 'No providers configured yet.', settingsTypeLabel: 'Type', settingsLabelLabel: 'Label', settingsBaseUrlLabel: 'Base URL', settingsApiKeyLabel: 'API key', settingsApiKeyUnchangedPh: 'Leave blank to keep unchanged', settingsModelLabel: 'Model', settingsSaveBtn: 'Save', settingsCancelBtn: 'Cancel', settingsActivateBtn: 'Set active', settingsActiveBadge: 'Active', settingsEditBtn: 'Edit', settingsDeleteBtn: 'Delete', settingsTypeOllama: 'Ollama (local)', settingsTypeShared: 'Shared (Claude Haiku, 2 free/day)', settingsSharedNote: 'Server-managed tier — model and connection are pre-configured, no setup needed.', settingsTypeOpenAI: 'OpenAI', settingsTypeClaude: 'Claude', settingsTypeOpenRouter: 'OpenRouter', settingsTypeCustom: 'Custom', settingsTestBtn: 'Test connection', settingsTesting: 'Testing…', settingsTestSuccess: '✓ Connection worked —', settingsTestError: '✗ Connection failed —', settingsValidationError: 'Label and Model are required',
     foot: 'Live prices from free keyless feeds. Personal analysis tool — not financial advice.', footFramework: 'Framework: {date}.' },
 };

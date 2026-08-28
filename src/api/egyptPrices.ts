@@ -21,3 +21,12 @@ export async function fetchEgyptPrices(): Promise<EgyptGoldSnapshot> {
   if (!response.ok) throw new Error(data?.error || `HTTP ${response.status}`);
   return data;
 }
+
+export type EgyptGoldHistoryEntry = { rows: EgyptGoldRow[]; fetchedAt: string };
+
+export async function fetchEgyptPriceHistory(): Promise<EgyptGoldHistoryEntry[]> {
+  const response = await fetch('/api/egypt-prices/history');
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(data?.error || `HTTP ${response.status}`);
+  return data;
+}
