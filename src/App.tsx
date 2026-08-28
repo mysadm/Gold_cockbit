@@ -1,16 +1,13 @@
 import { useEffect, useMemo, useState } from 'preact/hooks';
+import { AIModelSettingsManager } from 'ai-settings-ui';
+import 'ai-settings-ui/styles.css';
+import { createGoldCockpitAiAdapter } from './lib/aiSettingsAdapter';
 import {
-  activateProvider,
   analyzeViaBackend,
-  createProvider,
-  deleteProvider,
   fetchAnalyzeQuota,
   listProviders,
-  testProvider,
-  updateProvider,
   type AnalyzeQuota,
   type LlmProvider,
-  type LlmProviderInput,
   type ProviderType,
 } from './api/llmProviders';
 import { fetchEgyptPrices, type EgyptGoldSnapshot } from './api/egyptPrices';
@@ -578,20 +575,6 @@ function App() {
   };
 
   const [providers, setProviders] = useState<LlmProvider[]>([]);
-  const [providerError, setProviderError] = useState<string | null>(null);
-  const [testStatus, setTestStatus] = useState<{ loading: boolean; ok: boolean | null; message: string }>({
-    loading: false,
-    ok: null,
-    message: '',
-  });
-  const [providerForm, setProviderForm] = useState<LlmProviderInput & { id: number | null }>({
-    id: null,
-    provider_type: 'ollama',
-    label: '',
-    base_url: 'http://localhost:11434/v1',
-    api_key: '',
-    model: '',
-  });
 
   const refreshProviders = () => {
     listProviders().then(setProviders).catch(() => {});
@@ -601,87 +584,7 @@ function App() {
     refreshProviders();
   }, []);
 
-  const resetProviderForm = () => {
-    setProviderForm({ id: null, provider_type: 'ollama', label: '', base_url: 'http://localhost:11434/v1', api_key: '', model: '' });
-    setTestStatus({ loading: false, ok: null, message: '' });
-  };
-
-  const editProvider = (provider: LlmProvider) => {
-    setProviderForm({
-      id: provider.id,
-      provider_type: provider.provider_type,
-      label: provider.label,
-      base_url: provider.base_url ?? '',
-      api_key: '',
-      model: provider.model,
-    });
-    setTestStatus({ loading: false, ok: null, message: '' });
-  };
-
-  const normalizedProviderFields = () => ({
-    provider_type: providerForm.provider_type,
-    base_url: (providerForm.provider_type === 'ollama' || providerForm.provider_type === 'custom')
-      ? (providerForm.base_url || null)
-      : null,
-    api_key: (providerForm.provider_type === 'ollama' || providerForm.provider_type === 'shared')
-      ? null
-      : (providerForm.api_key || null),
-    model: providerForm.provider_type === 'shared' ? 'shared' : providerForm.model,
-  });
-
-  const testConnection = async () => {
-    setTestStatus({ loading: true, ok: null, message: '' });
-    try {
-      const result = await testProvider(normalizedProviderFields());
-      setTestStatus({ loading: false, ok: true, message: result.text.slice(0, 200) });
-    } catch (err) {
-      setTestStatus({ loading: false, ok: false, message: err instanceof Error ? err.message : String(err) });
-    }
-  };
-
-  const saveProvider = async () => {
-    setProviderError(null);
-    const modelRequired = providerForm.provider_type !== 'shared';
-    if (!providerForm.label.trim() || (modelRequired && !providerForm.model.trim())) {
-      setProviderError(t.settingsValidationError);
-      return;
-    }
-    const input: LlmProviderInput = {
-      ...normalizedProviderFields(),
-      label: providerForm.label,
-    };
-    try {
-      if (providerForm.id === null) {
-        await createProvider(input);
-      } else {
-        await updateProvider(providerForm.id, input);
-      }
-      resetProviderForm();
-      refreshProviders();
-    } catch (err) {
-      setProviderError(err instanceof Error ? err.message : String(err));
-    }
-  };
-
-  const removeProvider = async (id: number) => {
-    setProviderError(null);
-    try {
-      await deleteProvider(id);
-      refreshProviders();
-    } catch (err) {
-      setProviderError(err instanceof Error ? err.message : String(err));
-    }
-  };
-
-  const activate = async (id: number) => {
-    setProviderError(null);
-    try {
-      await activateProvider(id);
-      refreshProviders();
-    } catch (err) {
-      setProviderError(err instanceof Error ? err.message : String(err));
-    }
-  };
+  const aiSettingsAdapter = useMemo(() => createGoldCockpitAiAdapter(refreshProviders), []);
 
   const activeProvider = providers.find((p) => p.is_active) || null;
   const providerTypeLabel = (type: ProviderType) =>
@@ -1085,7 +988,8 @@ Use your live web search to check whether real current events (e.g. shifts in gl
 WATCHLIST — treat this as a primary input alongside your own research, not background color. Weigh supportive items toward the scenario they favor and risk items away from it; let them materially move both suggested_weights and the tranche2 verdict: ${watch}. Write watchlist_read as an explicit, named walk-through of these specific variables — call out which ones are currently supportive vs. risk, whether your live research still backs the user's current signal on each, and flag any where you think the user's own color-coding looks stale or wrong given what you found.
 ${egyptContext ? `LOCAL EGYPTIAN MARKET (live retail prices from iSagha.com, EGP per gram): ${egyptContext}. Use this to ground your egp_read specifically in what a buyer/seller sees in the Egyptian market right now, not just the theoretical USD/EGP conversion.` : ''}
 ${walletContext ? `HIS PHYSICAL WALLET (what he actually owns today): ${walletContext}. Current value: ~${fmt(walletIntlValue)} EGP at the international price${walletEgyptValue !== null ? `, ~${fmt(walletEgyptValue)} EGP at the live Egyptian market price` : ''}. Write wallet_read as a fresh re-evaluation of THIS SPECIFIC holding given today's read — is it well-positioned given the scenario reassessment above, should he add, hold, or trim, and note if the international and Egyptian-market valuations of it diverge meaningfully.` : ''}
-${state.aiLevel === 'beginner' ? 'Use simple everyday language.' : 'Apply institutional-grade discipline: treat only what you verified via search as fact, mark anything else as background. Weigh central-bank buying and the full breadth of active geopolitical risk (not one conflict) as structural drivers, not just headlines. Prioritize the Egyptian-market angle throughout — the local premium over the international price and the implied "souq-dollar" vs. the official EGP rate — since that\'s the layer the user actually holds. Be concise: short, dense sentences, no filler, no restated caveats, state only what changes the call.'} Write every string VALUE in ${langName} — the whole analysis, every sentence, must be in ${langName}, no English mixed in unless it's a ticker/number. Respond with ONLY a single JSON object, no markdown code fences, matching EXACTLY this schema and these key names in English (the KEYS stay in English exactly as shown, only the VALUES are translated, no other keys, no nested wrapper object):
+ANALYSIS DEPTH — this is a hard requirement, not a style suggestion: every field below must cite specific facts you found in this search (named events, exact figures, dates, levels) — never a vague, generic statement like "geopolitical tensions" or "Fed policy uncertainty" with nothing concrete backing it. If your search returned specifics, use them. ${state.aiLevel === 'beginner' ? 'Explain those specifics in simple everyday language a non-expert can follow — plain words, no jargon — but still name the actual events and numbers, don\'t just gesture at them.' : 'Apply institutional-grade discipline: treat only what you verified via search as fact, mark anything else as background. Weigh central-bank buying and the full breadth of active geopolitical risk (not one conflict) as structural drivers, not just headlines. Prioritize the Egyptian-market angle throughout — the local premium over the international price and the implied "souq-dollar" vs. the official EGP rate — since that\'s the layer the user actually holds. Dense, no filler, no restated caveats — every sentence should carry a fact or a call, not padding.'}
+Write every string VALUE in ${langName} — the whole analysis, every sentence, must be in ${langName}, no English mixed in unless it's a ticker/number. Respond with ONLY a single JSON object, no markdown code fences, matching EXACTLY this schema and these key names in English (the KEYS stay in English exactly as shown, only the VALUES are translated, no other keys, no nested wrapper object):
 {
   "one_liner": "<one-sentence summary of the current read, in ${langName}>",
   "trends": ["<what's moving the market right now, 2-3 short items grounded in your search and the watchlist, in ${langName}>"],
@@ -2166,93 +2070,7 @@ The three suggested_weights values must sum to 100.`;
           {activeTab === 'settings' && (
             <div>
               <SectionLabel text={t.settingsHeading.toUpperCase()} />
-
-              <Card>
-                {providers.length === 0 ? <div className="soft-text" style={{ fontSize: 16 }}>{t.settingsEmpty}</div> : null}
-                {providers.map((provider) => (
-                  <div
-                    key={provider.id}
-                    style={{
-                      display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10,
-                      padding: '10px 12px', marginBottom: 8, borderRadius: 8,
-                      background: provider.is_active ? 'var(--gold-glow)' : 'var(--elevated)',
-                    }}
-                  >
-                    <div>
-                      <div style={{ fontWeight: 700, fontSize: 16, color: 'var(--text)' }}>{provider.label}</div>
-                      <div className="muted-text" style={{ fontSize: 14, marginTop: 2 }}>{providerTypeLabel(provider.provider_type)} · {provider.model}</div>
-                    </div>
-                    <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-                      {provider.is_active ? (
-                        <span style={{ background: 'var(--gold)', color: '#0e1210', fontSize: 12, fontWeight: 700, padding: '4px 10px', borderRadius: 999 }}>{t.settingsActiveBadge}</span>
-                      ) : (
-                        <button className="btn-outline" style={{ padding: '5px 10px', fontSize: 13 }} onClick={() => void activate(provider.id)}>{t.settingsActivateBtn}</button>
-                      )}
-                      <button className="btn-outline" style={{ padding: '5px 10px', fontSize: 13 }} onClick={() => editProvider(provider)}>{t.settingsEditBtn}</button>
-                      <button className="btn-outline" style={{ padding: '5px 10px', fontSize: 13 }} onClick={() => void removeProvider(provider.id)}>{t.settingsDeleteBtn}</button>
-                    </div>
-                  </div>
-                ))}
-              </Card>
-
-              <div style={{ height: 14 }} />
-
-              <Card>
-                {providerError ? <div className="down-text" style={{ fontSize: 14, marginBottom: 10 }}>{providerError}</div> : null}
-                <SectionLabel text={t.settingsAddHeading.toUpperCase()} />
-
-                <div style={{ marginBottom: 12 }}>
-                  <div className="section-label" style={{ marginBottom: 6, fontSize: 13 }}>{t.settingsTypeLabel}</div>
-                  <select
-                    value={providerForm.provider_type}
-                    onChange={(event) => setProviderForm((prev) => ({ ...prev, provider_type: (event.target as HTMLSelectElement).value as ProviderType }))}
-                    style={{ width: '100%' }}
-                  >
-                    <option value="ollama">{t.settingsTypeOllama}</option>
-                    <option value="shared">{t.settingsTypeShared}</option>
-                    <option value="openai">{t.settingsTypeOpenAI}</option>
-                    <option value="claude">{t.settingsTypeClaude}</option>
-                    <option value="openrouter">{t.settingsTypeOpenRouter}</option>
-                    <option value="custom">{t.settingsTypeCustom}</option>
-                  </select>
-                </div>
-
-                <div style={{ marginBottom: 12 }}>
-                  <div className="section-label" style={{ marginBottom: 6, fontSize: 13 }}>{t.settingsLabelLabel}</div>
-                  <input type="text" value={providerForm.label} onInput={(event) => setProviderForm((prev) => ({ ...prev, label: (event.target as HTMLInputElement).value }))} style={{ width: '100%' }} />
-                </div>
-
-                {providerForm.provider_type === 'ollama' || providerForm.provider_type === 'custom' ? (
-                  <div style={{ marginBottom: 12 }}>
-                    <div className="section-label" style={{ marginBottom: 6, fontSize: 13 }}>{t.settingsBaseUrlLabel}</div>
-                    <input type="text" value={providerForm.base_url ?? ''} onInput={(event) => setProviderForm((prev) => ({ ...prev, base_url: (event.target as HTMLInputElement).value }))} style={{ width: '100%' }} />
-                  </div>
-                ) : null}
-
-                {providerForm.provider_type !== 'ollama' && providerForm.provider_type !== 'shared' ? (
-                  <div style={{ marginBottom: 12 }}>
-                    <div className="section-label" style={{ marginBottom: 6, fontSize: 13 }}>{t.settingsApiKeyLabel}</div>
-                    <input type="password" value={providerForm.api_key ?? ''} placeholder={providerForm.id !== null ? t.settingsApiKeyUnchangedPh : ''} onInput={(event) => setProviderForm((prev) => ({ ...prev, api_key: (event.target as HTMLInputElement).value }))} style={{ width: '100%' }} />
-                  </div>
-                ) : null}
-
-                {providerForm.provider_type === 'shared' ? (
-                  <div className="soft-text" style={{ fontSize: 15, marginBottom: 12 }}>{t.settingsSharedNote}</div>
-                ) : (
-                  <div style={{ marginBottom: 12 }}>
-                    <div className="section-label" style={{ marginBottom: 6, fontSize: 13 }}>{t.settingsModelLabel}</div>
-                    <input type="text" value={providerForm.model} onInput={(event) => setProviderForm((prev) => ({ ...prev, model: (event.target as HTMLInputElement).value }))} style={{ width: '100%' }} />
-                  </div>
-                )}
-
-                <div style={{ display: 'flex', gap: 8 }}>
-                  <button className="btn-primary" onClick={() => void saveProvider()}>{t.settingsSaveBtn}</button>
-                  <button className="btn-outline" onClick={() => void testConnection()} disabled={testStatus.loading}>{testStatus.loading ? t.settingsTesting : t.settingsTestBtn}</button>
-                  {providerForm.id !== null ? <button className="btn-outline" onClick={resetProviderForm}>{t.settingsCancelBtn}</button> : null}
-                </div>
-                {testStatus.ok === true ? <div className="up-text" style={{ fontSize: 14, marginTop: 10 }}>{t.settingsTestSuccess} {testStatus.message}</div> : null}
-                {testStatus.ok === false ? <div className="down-text" style={{ fontSize: 14, marginTop: 10 }}>{t.settingsTestError} {testStatus.message}</div> : null}
-              </Card>
+              <AIModelSettingsManager adapter={aiSettingsAdapter} />
             </div>
           )}
 

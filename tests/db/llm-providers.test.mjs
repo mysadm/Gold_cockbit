@@ -38,6 +38,7 @@ describe('llm_providers table', () => {
       'is_active',
       'created_at',
       'updated_at',
+      'settings',
     ]);
 
     const isActive = columns.find((c) => c.column_name === 'is_active');

@@ -29,7 +29,8 @@ describe('POST /api/llm-providers/test', () => {
     expect(res.body).toEqual({ text: 'OK' });
     expect(runProviderAnalysis).toHaveBeenCalledWith(
       { provider_type: 'ollama', base_url: 'http://localhost:11434/v1', api_key: null, model: 'llama3.1' },
-      'Reply with only the single word: OK'
+      'Reply with only the single word: OK',
+      { expectJson: false }
     );
   });
 

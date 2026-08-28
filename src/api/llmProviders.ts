@@ -1,11 +1,19 @@
 export type ProviderType = 'ollama' | 'openai' | 'claude' | 'custom' | 'shared' | 'openrouter';
 
+export type LlmProviderSettings = {
+  temperature?: number;
+  maxTokens?: number;
+  language?: string;
+  extra?: Record<string, unknown>;
+};
+
 export type LlmProvider = {
   id: number;
   provider_type: ProviderType;
   label: string;
   base_url: string | null;
   model: string;
+  settings: LlmProviderSettings;
   is_active: boolean;
   created_at: string;
   updated_at: string;
@@ -17,6 +25,7 @@ export type LlmProviderInput = {
   base_url?: string | null;
   api_key?: string | null;
   model: string;
+  settings?: LlmProviderSettings;
 };
 
 async function parseJsonOrThrow(response: Response) {
@@ -63,6 +72,7 @@ export type TestProviderInput = {
   base_url?: string | null;
   api_key?: string | null;
   model: string;
+  settings?: LlmProviderSettings;
 };
 
 export async function testProvider(input: TestProviderInput): Promise<{ text: string }> {
@@ -71,6 +81,11 @@ export async function testProvider(input: TestProviderInput): Promise<{ text: st
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(input),
   });
+  return parseJsonOrThrow(response);
+}
+
+export async function testProviderById(id: number): Promise<{ text: string }> {
+  const response = await fetch(`/api/llm-providers/${id}/test`, { method: 'POST' });
   return parseJsonOrThrow(response);
 }
 

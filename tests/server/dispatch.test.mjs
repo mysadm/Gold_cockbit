@@ -25,7 +25,7 @@ describe('runProviderAnalysis', () => {
     );
 
     expect(result).toEqual({ text: 'claude-result', usedWebSearch: true });
-    expect(callClaude).toHaveBeenCalledWith({ apiKey: 'sk-ant', model: 'claude-sonnet-4-6', prompt: 'prompt text' });
+    expect(callClaude).toHaveBeenCalledWith(expect.objectContaining({ apiKey: 'sk-ant', model: 'claude-sonnet-4-6', prompt: 'prompt text', expectJson: true }));
     expect(callOpenAICompatible).not.toHaveBeenCalled();
   });
 
@@ -37,12 +37,13 @@ describe('runProviderAnalysis', () => {
       'prompt text'
     );
 
-    expect(callOpenAICompatible).toHaveBeenCalledWith({
+    expect(callOpenAICompatible).toHaveBeenCalledWith(expect.objectContaining({
       baseUrl: 'https://api.openai.com/v1',
       apiKey: 'sk-test',
       model: 'gpt-4o',
       prompt: 'prompt text',
-    });
+      expectJson: true,
+    }));
   });
 
   it('dispatches ollama provider_type to callOpenAICompatible with the default local base URL when none is stored', async () => {
@@ -53,12 +54,13 @@ describe('runProviderAnalysis', () => {
       'prompt text'
     );
 
-    expect(callOpenAICompatible).toHaveBeenCalledWith({
+    expect(callOpenAICompatible).toHaveBeenCalledWith(expect.objectContaining({
       baseUrl: 'http://localhost:11434/v1',
       apiKey: null,
       model: 'llama3.1',
       prompt: 'prompt text',
-    });
+      expectJson: true,
+    }));
   });
 
   it('dispatches custom provider_type to callOpenAICompatible using the stored base_url', async () => {
@@ -69,12 +71,13 @@ describe('runProviderAnalysis', () => {
       'prompt text'
     );
 
-    expect(callOpenAICompatible).toHaveBeenCalledWith({
+    expect(callOpenAICompatible).toHaveBeenCalledWith(expect.objectContaining({
       baseUrl: 'https://my-router.example.com/v1',
       apiKey: 'k',
       model: 'm',
       prompt: 'prompt text',
-    });
+      expectJson: true,
+    }));
   });
 
   it('dispatches shared provider_type to callClaude with the server-side key, Haiku, and web search disabled', async () => {
@@ -89,12 +92,13 @@ describe('runProviderAnalysis', () => {
       );
 
       expect(result).toEqual({ text: 'shared-result', usedWebSearch: false, usage: { input_tokens: 1, output_tokens: 1 } });
-      expect(callClaude).toHaveBeenCalledWith({
+      expect(callClaude).toHaveBeenCalledWith(expect.objectContaining({
         apiKey: 'sk-ant-shared-test',
         model: 'claude-haiku-4-5',
         prompt: 'prompt text',
         allowWebSearch: false,
-      });
+        expectJson: true,
+      }));
       expect(callOpenAICompatible).not.toHaveBeenCalled();
     } finally {
       if (previousKey === undefined) delete process.env.SHARED_AI_API_KEY;
@@ -112,6 +116,30 @@ describe('runProviderAnalysis', () => {
     } finally {
       if (previousKey !== undefined) process.env.SHARED_AI_API_KEY = previousKey;
     }
+  });
+
+  it('passes expectJson:false through to callOpenAICompatible when the caller opts out (e.g. the test-connection prompt, which never asks for JSON)', async () => {
+    callOpenAICompatible.mockResolvedValue({ text: 'OK', usedWebSearch: false });
+
+    await runProviderAnalysis(
+      { provider_type: 'openai', api_key: 'sk-test', model: 'gpt-4o', base_url: null },
+      'Reply with only the single word: OK',
+      { expectJson: false }
+    );
+
+    expect(callOpenAICompatible).toHaveBeenCalledWith(expect.objectContaining({ expectJson: false }));
+  });
+
+  it('passes expectJson:false through to callClaude when the caller opts out', async () => {
+    callClaude.mockResolvedValue({ text: 'OK', usedWebSearch: false });
+
+    await runProviderAnalysis(
+      { provider_type: 'claude', api_key: 'sk-ant', model: 'claude-sonnet-4-6', base_url: null },
+      'Reply with only the single word: OK',
+      { expectJson: false }
+    );
+
+    expect(callClaude).toHaveBeenCalledWith(expect.objectContaining({ expectJson: false }));
   });
 
   it('prefers a stored base_url over the default for openai/ollama when present', async () => {

@@ -203,7 +203,7 @@ describe('POST /api/analyze — shared tier quota', () => {
   });
 });
 
-describe('POST /api/analyze — ollama web search augmentation', () => {
+describe('POST /api/analyze — web search augmentation for non-native-search providers', () => {
   const previousKey = process.env.SERPAPI_API_KEY;
 
   afterEach(() => {
@@ -268,7 +268,7 @@ describe('POST /api/analyze — ollama web search augmentation', () => {
     expect(runProviderAnalysis).toHaveBeenCalledWith(expect.anything(), 'analyze this');
   });
 
-  it('does not search for non-ollama providers', async () => {
+  it('does not search for providers with native web search (claude, shared)', async () => {
     process.env.SERPAPI_API_KEY = 'serp-test-key';
     await client.query(
       `INSERT INTO llm_providers (user_id, provider_type, label, model, is_active)
@@ -282,4 +282,28 @@ describe('POST /api/analyze — ollama web search augmentation', () => {
     expect(res.status).toBe(200);
     expect(searchWeb).not.toHaveBeenCalled();
   });
+
+  it.each(['openai', 'openrouter', 'custom'])(
+    'augments the prompt with search results for %s, the same as ollama, since none of them have native search',
+    async (providerType) => {
+      process.env.SERPAPI_API_KEY = 'serp-test-key';
+      await client.query(
+        `INSERT INTO llm_providers (user_id, provider_type, label, model, is_active)
+         VALUES ($1, $2, 'Provider', 'some-model', true)`,
+        [userId, providerType]
+      );
+      searchWeb.mockResolvedValue([
+        { title: 'Gold hits record high', snippet: 'Prices surged on Fed cut bets', link: 'https://example.com/1' },
+      ]);
+      runProviderAnalysis.mockResolvedValue({ text: '{"one_liner":"ok"}', usedWebSearch: false });
+
+      const res = await request(app).post('/api/analyze').send({ prompt: 'analyze this' });
+
+      expect(res.status).toBe(200);
+      expect(res.body.usedWebSearch).toBe(true);
+      const [, augmentedPrompt] = runProviderAnalysis.mock.calls[0];
+      expect(augmentedPrompt).toContain('Gold hits record high');
+      expect(augmentedPrompt).toContain('analyze this');
+    }
+  );
 });

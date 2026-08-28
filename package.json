@@ -12,6 +12,7 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "ai-settings-ui": "file:../AI_settings_card/packages/ai-settings-ui",
     "dotenv": "^17.4.2",
     "express": "^5.2.1",
     "pg": "^8.22.0",

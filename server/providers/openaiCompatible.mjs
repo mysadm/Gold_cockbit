@@ -55,12 +55,17 @@ async function validateBaseUrl(baseUrl) {
   return parsedUrl.toString();
 }
 
-async function postChatCompletion(baseUrl, headers, model, messages, signal) {
+async function postChatCompletion(baseUrl, headers, model, messages, signal, temperature, maxTokens) {
+  // 16000 is a floor, not a default: it's sized for this app's fixed multi-field
+  // analysis JSON schema (see claude.mjs for the full rationale). A user-configured
+  // maxTokens can only raise it, never shrink it below that.
+  const body = { model, messages, max_tokens: Math.max(maxTokens || 0, 16000) };
+  if (typeof temperature === 'number') body.temperature = temperature;
   const response = await fetch(`${baseUrl}/chat/completions`, {
     method: 'POST',
     signal,
     headers,
-    body: JSON.stringify({ model, messages, max_tokens: 16000 }),
+    body: JSON.stringify(body),
   });
 
   const data = await response.json();
@@ -71,7 +76,7 @@ async function postChatCompletion(baseUrl, headers, model, messages, signal) {
   return data?.choices?.[0]?.message?.content || '';
 }
 
-export async function callOpenAICompatible({ baseUrl, apiKey, model, prompt }) {
+export async function callOpenAICompatible({ baseUrl, apiKey, model, prompt, temperature, maxTokens, expectJson = true }) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
   try {
@@ -80,15 +85,15 @@ export async function callOpenAICompatible({ baseUrl, apiKey, model, prompt }) {
     if (apiKey) headers.Authorization = `Bearer ${apiKey}`;
 
     let messages = [{ role: 'user', content: prompt }];
-    let text = await postChatCompletion(safeBaseUrl, headers, model, messages, controller.signal);
+    let text = await postChatCompletion(safeBaseUrl, headers, model, messages, controller.signal, temperature, maxTokens);
 
-    if (!text.includes('{')) {
+    if (expectJson && !text.includes('{')) {
       messages = [
         ...messages,
         { role: 'assistant', content: text },
         { role: 'user', content: 'Output ONLY the final JSON object now.' },
       ];
-      text = await postChatCompletion(safeBaseUrl, headers, model, messages, controller.signal);
+      text = await postChatCompletion(safeBaseUrl, headers, model, messages, controller.signal, temperature, maxTokens);
     }
 
     return { text, usedWebSearch: false };

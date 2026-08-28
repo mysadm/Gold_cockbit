@@ -11,7 +11,7 @@ function extractText(content) {
     .trim();
 }
 
-async function callAnthropic({ apiKey, model, messages, withTools }) {
+async function callAnthropic({ apiKey, model, messages, withTools, temperature, maxTokens }) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
   try {
@@ -20,8 +20,10 @@ async function callAnthropic({ apiKey, model, messages, withTools }) {
     // text, and the response schema now spans up to 7 written fields
     // (one_liner, trends, weights_reasoning, tranche2, egp_read, wallet_read,
     // watchlist_read) — 8000 was getting exhausted by search activity before
-    // the JSON was fully written, truncating it mid-string.
-    const body = { model, max_tokens: 16000, messages };
+    // the JSON was fully written, truncating it mid-string. A user-configured
+    // maxTokens can only raise this floor, never lower it.
+    const body = { model, max_tokens: Math.max(maxTokens || 0, 16000), messages };
+    if (typeof temperature === 'number') body.temperature = temperature;
     if (withTools) body.tools = [{ type: 'web_search_20250305', name: 'web_search' }];
 
     const response = await fetch(ANTHROPIC_ENDPOINT, {
@@ -52,7 +54,7 @@ async function callAnthropic({ apiKey, model, messages, withTools }) {
   }
 }
 
-export async function callClaude({ apiKey, model, prompt, allowWebSearch = true }) {
+export async function callClaude({ apiKey, model, prompt, allowWebSearch = true, temperature, maxTokens, expectJson = true }) {
   let messages = [{ role: 'user', content: prompt }];
   let data;
   let usedWebSearch = false;
@@ -65,28 +67,28 @@ export async function callClaude({ apiKey, model, prompt, allowWebSearch = true 
 
   if (allowWebSearch) {
     try {
-      data = await callAnthropic({ apiKey, model, messages, withTools: true });
+      data = await callAnthropic({ apiKey, model, messages, withTools: true, temperature, maxTokens });
       usedWebSearch = true;
     } catch (firstErr) {
       try {
-        data = await callAnthropic({ apiKey, model, messages, withTools: false });
+        data = await callAnthropic({ apiKey, model, messages, withTools: false, temperature, maxTokens });
       } catch {
         throw firstErr;
       }
     }
   } else {
-    data = await callAnthropic({ apiKey, model, messages, withTools: false });
+    data = await callAnthropic({ apiKey, model, messages, withTools: false, temperature, maxTokens });
   }
   addUsage(data);
 
   let text = extractText(data?.content);
-  if (!text.includes('{')) {
+  if (expectJson && !text.includes('{')) {
     messages = [
       ...messages,
       { role: 'assistant', content: data.content },
       { role: 'user', content: 'Output ONLY the final JSON object now.' },
     ];
-    data = await callAnthropic({ apiKey, model, messages, withTools: false });
+    data = await callAnthropic({ apiKey, model, messages, withTools: false, temperature, maxTokens });
     addUsage(data);
     text = extractText(data?.content);
   }

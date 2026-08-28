@@ -55,6 +55,25 @@ describe('callOpenAICompatible', () => {
     ]);
   });
 
+  it('does not send a continuation turn when expectJson:false, even if the reply has no braces (e.g. a plain-text test-connection reply like "OK")', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ choices: [{ message: { content: 'OK' } }] }),
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const result = await callOpenAICompatible({
+      baseUrl: 'https://api.openai.com/v1',
+      apiKey: 'sk-test',
+      model: 'gpt-4o',
+      prompt: 'Reply with only the single word: OK',
+      expectJson: false,
+    });
+
+    expect(result).toEqual({ text: 'OK', usedWebSearch: false });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
   it('does not send a continuation turn when the first reply already has JSON', async () => {
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true,

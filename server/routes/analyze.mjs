@@ -4,10 +4,26 @@ import { runProviderAnalysis } from '../providers/dispatch.mjs';
 import { repairAnalysisJson } from './repairAnalysisJson.mjs';
 import { searchWeb } from '../webSearch.mjs';
 
-// Ollama has no native web-search tool (unlike Claude's built-in web_search),
-// so for the local model we run a search ourselves and inject the results
-// into the prompt. Fixed query since this app only ever analyzes one topic.
-const OLLAMA_SEARCH_QUERY = 'gold price today news geopolitical tensions Fed policy central bank gold buying Egypt EGP';
+// Only Claude (and the shared tier, which runs on Claude) has a native
+// web-search tool, and Claude's version is agentic — it runs several
+// searches of its own choosing, can read further into a result, and
+// iterates. Every other provider_type — ollama, openai, openrouter, custom —
+// has zero real-time access, yet the prompt tells the model to "use your
+// live web search". So for all of them we run real searches ourselves and
+// inject the results into the prompt. A single 5-result snippet-only search
+// still reads as thin and generic next to Claude's multi-query research, so
+// this runs several targeted queries (one per facet the prompt actually asks
+// about) in parallel and merges/dedupes the results — closer in breadth to
+// what Claude gathers on its own, though still one static pass rather than
+// an iterative one.
+const WEB_SEARCH_QUERIES = [
+  'gold price today news drivers',
+  'Fed interest rate policy decision 2026',
+  'central bank gold buying reserves 2026',
+  'geopolitical tensions news today Iran Russia Ukraine',
+  'Egypt EGP exchange rate gold price today',
+];
+const NATIVE_SEARCH_PROVIDER_TYPES = new Set(['claude', 'shared']);
 
 function formatSearchResults(results) {
   return results
@@ -20,7 +36,15 @@ async function augmentPromptWithSearch(prompt) {
   if (!apiKey) return { prompt, usedWebSearch: false };
 
   try {
-    const results = await searchWeb(OLLAMA_SEARCH_QUERY, apiKey);
+    const resultsPerQuery = await Promise.all(
+      WEB_SEARCH_QUERIES.map((query) => searchWeb(query, apiKey).catch(() => []))
+    );
+    const seenLinks = new Set();
+    const results = resultsPerQuery.flat().filter((r) => {
+      if (!r.link || seenLinks.has(r.link)) return false;
+      seenLinks.add(r.link);
+      return true;
+    });
     if (results.length === 0) return { prompt, usedWebSearch: false };
     const augmented = `LIVE WEB SEARCH RESULTS (use these as your source of current market/news context):\n${formatSearchResults(results)}\n\n${prompt}`;
     return { prompt: augmented, usedWebSearch: true };
@@ -109,16 +133,16 @@ export function createAnalyzeRouter(db, userId) {
 
     try {
       let effectivePrompt = prompt;
-      let ollamaUsedWebSearch = false;
-      if (provider.provider_type === 'ollama') {
+      let injectedWebSearch = false;
+      if (!NATIVE_SEARCH_PROVIDER_TYPES.has(provider.provider_type)) {
         const augmented = await augmentPromptWithSearch(prompt);
         effectivePrompt = augmented.prompt;
-        ollamaUsedWebSearch = augmented.usedWebSearch;
+        injectedWebSearch = augmented.usedWebSearch;
       }
 
       const result = await runProviderAnalysis(provider, effectivePrompt);
-      if (provider.provider_type === 'ollama') {
-        result.usedWebSearch = ollamaUsedWebSearch;
+      if (!NATIVE_SEARCH_PROVIDER_TYPES.has(provider.provider_type)) {
+        result.usedWebSearch = injectedWebSearch;
       }
       let { text } = result;
 

@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { createApiKeyAuthMiddleware } from '../auth.mjs';
 import { runProviderAnalysis } from '../providers/dispatch.mjs';
 
-const PUBLIC_COLUMNS = 'id, user_id, provider_type, label, base_url, model, is_active, created_at, updated_at';
+const PUBLIC_COLUMNS = 'id, user_id, provider_type, label, base_url, model, settings, is_active, created_at, updated_at';
 const TEST_PROMPT = 'Reply with only the single word: OK';
 
 function validationError(label, model) {
@@ -24,21 +24,21 @@ export function createLlmProvidersRouter(db, userId) {
   });
 
   router.post('/', async (req, res) => {
-    const { provider_type, label, base_url, api_key, model } = req.body;
+    const { provider_type, label, base_url, api_key, model, settings } = req.body;
     const error = validationError(label, model);
     if (error) return res.status(400).json({ error });
     const { rows } = await db.query(
-      `INSERT INTO llm_providers (user_id, provider_type, label, base_url, api_key, model)
-       VALUES ($1, $2, $3, $4, $5, $6) RETURNING ${PUBLIC_COLUMNS}`,
-      [userId, provider_type, label, base_url ?? null, api_key ?? null, model]
+      `INSERT INTO llm_providers (user_id, provider_type, label, base_url, api_key, model, settings)
+       VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING ${PUBLIC_COLUMNS}`,
+      [userId, provider_type, label, base_url ?? null, api_key ?? null, model, JSON.stringify(settings ?? {})]
     );
     res.status(201).json(rows[0]);
   });
 
   router.post('/test', async (req, res) => {
-    const { provider_type, base_url, api_key, model } = req.body;
+    const { provider_type, base_url, api_key, model, settings } = req.body;
     try {
-      const result = await runProviderAnalysis({ provider_type, base_url, api_key, model }, TEST_PROMPT);
+      const result = await runProviderAnalysis({ provider_type, base_url, api_key, model, settings }, TEST_PROMPT, { expectJson: false });
       res.json({ text: result.text });
     } catch (err) {
       res.status(502).json({ error: err.message });
@@ -46,17 +46,17 @@ export function createLlmProvidersRouter(db, userId) {
   });
 
   router.put('/:id', async (req, res) => {
-    const { provider_type, label, base_url, api_key, model } = req.body;
+    const { provider_type, label, base_url, api_key, model, settings } = req.body;
     const error = validationError(label, model);
     if (error) return res.status(400).json({ error });
     const { rows } = await db.query(
       `UPDATE llm_providers
        SET provider_type = $1, label = $2, base_url = $3,
            api_key = COALESCE(NULLIF($4, ''), api_key),
-           model = $5
-       WHERE id = $6 AND user_id = $7
+           model = $5, settings = $6
+       WHERE id = $7 AND user_id = $8
        RETURNING ${PUBLIC_COLUMNS}`,
-      [provider_type, label, base_url ?? null, api_key ?? '', model, req.params.id, userId]
+      [provider_type, label, base_url ?? null, api_key ?? '', model, JSON.stringify(settings ?? {}), req.params.id, userId]
     );
     if (rows.length === 0) return res.status(404).json({ error: 'Provider not found' });
     res.json(rows[0]);
@@ -65,6 +65,20 @@ export function createLlmProvidersRouter(db, userId) {
   router.delete('/:id', async (req, res) => {
     await db.query('DELETE FROM llm_providers WHERE id = $1 AND user_id = $2', [req.params.id, userId]);
     res.status(204).end();
+  });
+
+  router.post('/:id/test', async (req, res) => {
+    const { rows } = await db.query(
+      'SELECT provider_type, base_url, api_key, model, settings FROM llm_providers WHERE id = $1 AND user_id = $2',
+      [req.params.id, userId]
+    );
+    if (rows.length === 0) return res.status(404).json({ error: 'Provider not found' });
+    try {
+      const result = await runProviderAnalysis(rows[0], TEST_PROMPT, { expectJson: false });
+      res.json({ text: result.text });
+    } catch (err) {
+      res.status(502).json({ error: err.message });
+    }
   });
 
   router.post('/:id/activate', async (req, res) => {

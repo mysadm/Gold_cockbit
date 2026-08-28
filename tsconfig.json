@@ -16,7 +16,10 @@
     "noEmit": true,
     "types": ["vite/client"],
     "jsx": "react-jsx",
-    "jsxImportSource": "preact"
+    "jsxImportSource": "preact",
+    "paths": {
+      "ai-settings-ui": ["./src/types/ai-settings-ui-shim.d.ts"]
+    }
   },
   "include": ["src"],
   "references": [{ "path": "./tsconfig.node.json" }]

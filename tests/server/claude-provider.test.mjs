@@ -80,4 +80,22 @@ describe('callClaude', () => {
     expect(result.text).toBe('{"one_liner":"continued"}');
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
+
+  it('does not send a continuation turn when expectJson:false, even for a brace-free reply like "OK"', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      text: async () => JSON.stringify({ content: [{ type: 'text', text: 'OK' }] }),
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const result = await callClaude({
+      apiKey: 'sk-ant-test',
+      model: 'claude-sonnet-4-6',
+      prompt: 'Reply with only the single word: OK',
+      expectJson: false,
+    });
+
+    expect(result.text).toBe('OK');
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
 });
