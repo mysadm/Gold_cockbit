@@ -55,6 +55,16 @@ async function validateBaseUrl(baseUrl) {
   return parsedUrl.toString();
 }
 
+// Most OpenAI-compatible providers return errors as { error: { message } },
+// but Google's Gemini OpenAI-compat layer wraps it in an array instead:
+// [{ error: { message } }]. Without this, a Gemini error (bad API key, wrong
+// model name, etc.) silently falls through to the generic "HTTP 404"/"HTTP
+// 400" fallback below, hiding the actual reason from the user.
+function extractErrorMessage(data) {
+  if (Array.isArray(data)) return data[0]?.error?.message;
+  return data?.error?.message;
+}
+
 async function postChatCompletion(baseUrl, headers, model, messages, signal, temperature, maxTokens) {
   // 16000 is a floor, not a default: it's sized for this app's fixed multi-field
   // analysis JSON schema (see claude.mjs for the full rationale). A user-configured
@@ -68,9 +78,13 @@ async function postChatCompletion(baseUrl, headers, model, messages, signal, tem
     body: JSON.stringify(body),
   });
 
-  const data = await response.json();
+  // A malformed base URL (e.g. a trailing slash producing a double slash
+  // before /chat/completions) can route to a 404 with an empty/non-JSON
+  // body — .json() would throw "Unexpected end of JSON input" and mask the
+  // actual HTTP status, so parse defensively instead of letting that escape.
+  const data = await response.json().catch(() => null);
   if (!response.ok) {
-    throw new Error(data?.error?.message || `HTTP ${response.status}`);
+    throw new Error(extractErrorMessage(data) || `HTTP ${response.status}`);
   }
 
   return data?.choices?.[0]?.message?.content || '';

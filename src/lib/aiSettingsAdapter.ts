@@ -42,7 +42,11 @@ const PRESET_BASE_URLS: Record<string, string> = {
 const SAMPLE_MODELS: Record<string, string[]> = {
   openai: ['gpt-4o-mini', 'gpt-4o', 'gpt-4.1', 'o4-mini'],
   anthropic: ['claude-haiku-4-5', 'claude-sonnet-4-6', 'claude-opus-4-6'],
-  gemini: ['gemini-2.0-flash', 'gemini-1.5-pro'],
+  // gemini-2.0-flash and gemini-1.5-pro were retired by Google — confirmed
+  // via the API's own deprecation error, which named gemini-3.6-flash as the
+  // replacement. Only listing the one Google explicitly confirmed still
+  // works, since this dropdown has no free-text fallback.
+  gemini: ['gemini-3.6-flash'],
   openrouter: ['openai/gpt-4o-mini', 'anthropic/claude-haiku-4.5', 'deepseek/deepseek-chat'],
   deepseek: ['deepseek-chat', 'deepseek-reasoner'],
   mistral: ['mistral-large-latest', 'mistral-small-latest'],

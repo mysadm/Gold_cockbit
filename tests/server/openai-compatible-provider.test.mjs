@@ -145,4 +145,32 @@ describe('callOpenAICompatible', () => {
       callOpenAICompatible({ baseUrl: 'http://localhost:11434/v1', apiKey: null, model: 'llama3.1', prompt: 'x' })
     ).rejects.toThrow('HTTP 503');
   });
+
+  it('extracts the error message from an array-wrapped error body (Gemini\'s OpenAI-compat layer returns [{error:{message}}] instead of {error:{message}})', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: false,
+      status: 400,
+      json: async () => [{ error: { code: 400, message: 'Please pass a valid API key', status: 'INVALID_ARGUMENT' } }],
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(
+      callOpenAICompatible({ baseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai', apiKey: 'bad', model: 'gemini-2.0-flash', prompt: 'x' })
+    ).rejects.toThrow('Please pass a valid API key');
+  });
+
+  it('falls back to an HTTP status message instead of throwing a JSON-parse error when the error response body is not valid JSON (e.g. an empty 404 from a misconfigured base URL)', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: false,
+      status: 404,
+      json: async () => {
+        throw new SyntaxError('Unexpected end of JSON input');
+      },
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(
+      callOpenAICompatible({ baseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai/', apiKey: 'bad', model: 'gemini-2.0-flash', prompt: 'x' })
+    ).rejects.toThrow('HTTP 404');
+  });
 });
