@@ -23,7 +23,7 @@ function isBlockedAddress(address) {
   return false;
 }
 
-async function validateBaseUrl(baseUrl) {
+export async function validateBaseUrl(baseUrl) {
   let parsedUrl;
   try {
     parsedUrl = new URL(baseUrl);

@@ -1,6 +1,6 @@
 # Plan: Dynamic Model Discovery for AI Providers
 
-**Status:** Not started — saved for later implementation.
+**Status:** Implemented.
 
 **Goal:** Replace the hardcoded `SAMPLE_MODELS` list in `src/lib/aiSettingsAdapter.ts`
 with live queries to each provider's actual "list models" API, so the model

@@ -1,5 +1,5 @@
 const ANTHROPIC_ENDPOINT = 'https://api.anthropic.com/v1/messages';
-const ANTHROPIC_VERSION = '2023-06-01';
+export const ANTHROPIC_VERSION = '2023-06-01';
 const REQUEST_TIMEOUT_MS = 180000;
 
 function extractText(content) {

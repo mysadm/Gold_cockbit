@@ -2,7 +2,7 @@ import { callClaude } from './claude.mjs';
 import { callOpenAICompatible } from './openaiCompatible.mjs';
 import { GOLD_MARKET_ANALYST_SYSTEM_PROMPT } from '../prompts/goldMarketAnalyst.mjs';
 
-const DEFAULT_BASE_URLS = {
+export const DEFAULT_BASE_URLS = {
   openai: 'https://api.openai.com/v1',
   ollama: 'http://localhost:11434/v1',
   openrouter: 'https://openrouter.ai/api/v1',

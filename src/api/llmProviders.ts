@@ -89,6 +89,28 @@ export async function testProviderById(id: number): Promise<{ text: string }> {
   return parseJsonOrThrow(response);
 }
 
+export type ListModelsInput = {
+  provider_type: ProviderType;
+  base_url?: string | null;
+  api_key?: string | null;
+};
+
+export async function listModelsForDraft(input: ListModelsInput): Promise<string[]> {
+  const response = await fetch('/api/llm-providers/models', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(input),
+  });
+  const data = await parseJsonOrThrow(response);
+  return data.models;
+}
+
+export async function listModelsById(id: number): Promise<string[]> {
+  const response = await fetch(`/api/llm-providers/${id}/models`);
+  const data = await parseJsonOrThrow(response);
+  return data.models;
+}
+
 export async function analyzeViaBackend(prompt: string): Promise<{ text: string; usedWebSearch: boolean }> {
   const response = await fetch('/api/analyze', {
     method: 'POST',

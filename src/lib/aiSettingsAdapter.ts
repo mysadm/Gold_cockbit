@@ -10,6 +10,8 @@ import {
   activateProvider,
   createProvider,
   deleteProvider,
+  listModelsById,
+  listModelsForDraft,
   listProviders,
   testProvider,
   testProviderById,
@@ -39,19 +41,19 @@ const PRESET_BASE_URLS: Record<string, string> = {
   ollama: 'http://localhost:11434/v1',
 };
 
-const SAMPLE_MODELS: Record<string, string[]> = {
-  openai: ['gpt-4o-mini', 'gpt-4o', 'gpt-4.1', 'o4-mini'],
-  anthropic: ['claude-haiku-4-5', 'claude-sonnet-4-6', 'claude-opus-4-6'],
-  // gemini-2.0-flash and gemini-1.5-pro were retired by Google — confirmed
-  // via the API's own deprecation error, which named gemini-3.6-flash as the
-  // replacement. Only listing the one Google explicitly confirmed still
-  // works, since this dropdown has no free-text fallback.
+// Last-known-good fallback, used only when the live models call (below) fails
+// or returns nothing — not the primary source of truth. gemini-2.0-flash and
+// gemini-1.5-pro were retired by Google — confirmed via the API's own
+// deprecation error, which named gemini-3.6-flash as the replacement.
+const FALLBACK_MODELS: Record<string, string[]> = {
+  openai: ['gpt-4o-mini'],
+  anthropic: ['claude-sonnet-4-6'],
   gemini: ['gemini-3.6-flash'],
-  openrouter: ['openai/gpt-4o-mini', 'anthropic/claude-haiku-4.5', 'deepseek/deepseek-chat'],
-  deepseek: ['deepseek-chat', 'deepseek-reasoner'],
-  mistral: ['mistral-large-latest', 'mistral-small-latest'],
-  groq: ['llama-3.3-70b-versatile', 'llama-3.1-8b-instant'],
-  ollama: ['llama3.1', 'qwen2.5', 'mistral'],
+  openrouter: ['openai/gpt-4o-mini'],
+  deepseek: ['deepseek-chat'],
+  mistral: ['mistral-large-latest'],
+  groq: ['llama-3.3-70b-versatile'],
+  ollama: ['llama3.1'],
   shared: ['shared'],
 };
 
@@ -90,7 +92,7 @@ function providerIdFromRow(row: LlmProvider, customProviders: CustomProviderMeta
   for (const [id, presetUrl] of Object.entries(PRESET_BASE_URLS)) {
     if (id !== 'ollama' && url === presetUrl) return id;
   }
-  const known = customProviders.find((p) => url === row.base_url && SAMPLE_MODELS[p.id]?.includes(row.model));
+  const known = customProviders.find((p) => url === row.base_url && FALLBACK_MODELS[p.id]?.includes(row.model));
   if (known) return known.id;
   const byUrl = customProviders.find((p) => p.id === url);
   return byUrl?.id ?? 'custom';
@@ -155,7 +157,7 @@ export function createGoldCockpitAiAdapter(onChange?: () => void): AIProviderAda
       const entry: CustomProviderMeta = { id, displayName: def.displayName, models: def.models ?? [] };
       const current = loadCustomProviders();
       saveCustomProviders([...current, entry]);
-      if (entry.models.length > 0) SAMPLE_MODELS[id] = entry.models;
+      if (entry.models.length > 0) FALLBACK_MODELS[id] = entry.models;
       return { id, displayName: def.displayName, kind: 'cloud', extraFields: [BASE_URL_LABEL] };
     },
 
@@ -196,8 +198,20 @@ export function createGoldCockpitAiAdapter(onChange?: () => void): AIProviderAda
       }
     },
 
-    async listModels(providerId: string): Promise<string[]> {
-      return SAMPLE_MODELS[providerId] ?? [];
+    async listModels(providerId: string, context: { connectionId?: string; apiKey?: string }): Promise<string[]> {
+      const fallback = FALLBACK_MODELS[providerId] ?? [];
+      try {
+        const models = context.connectionId
+          ? await listModelsById(Number(context.connectionId))
+          : await listModelsForDraft({
+              provider_type: catalogToProviderType(providerId),
+              base_url: PRESET_BASE_URLS[providerId] ?? null,
+              api_key: context.apiKey || null,
+            });
+        return models.length > 0 ? models : fallback;
+      } catch {
+        return fallback;
+      }
     },
   };
 }

@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { createApiKeyAuthMiddleware } from '../auth.mjs';
 import { runProviderAnalysis } from '../providers/dispatch.mjs';
+import { listProviderModels } from '../providers/listModels.mjs';
 import { withTransactionClient } from '../withTransactionClient.mjs';
 
 const PUBLIC_COLUMNS = 'id, user_id, provider_type, label, base_url, model, settings, is_active, created_at, updated_at';
@@ -47,6 +48,30 @@ export function createLlmProvidersRouter(db, userId) {
     try {
       const result = await runProviderAnalysis({ provider_type, base_url, api_key, model, settings }, TEST_PROMPT, { expectJson: false, system: null });
       res.json({ text: result.text });
+    } catch (err) {
+      res.status(502).json({ error: err.message });
+    }
+  });
+
+  router.post('/models', async (req, res) => {
+    const { provider_type, base_url, api_key } = req.body;
+    try {
+      const models = await listProviderModels({ provider_type, base_url, api_key });
+      res.json({ models });
+    } catch (err) {
+      res.status(502).json({ error: err.message });
+    }
+  });
+
+  router.get('/:id/models', async (req, res) => {
+    const { rows } = await db.query(
+      'SELECT provider_type, base_url, api_key, model, settings FROM llm_providers WHERE id = $1 AND user_id = $2',
+      [req.params.id, userId]
+    );
+    if (rows.length === 0) return res.status(404).json({ error: 'Provider not found' });
+    try {
+      const models = await listProviderModels(rows[0]);
+      res.json({ models });
     } catch (err) {
       res.status(502).json({ error: err.message });
     }
