@@ -1,0 +1,40 @@
+Gold Cockpit — Technology Stack Versions
+Generated: 2026-09-13T07:38:23Z
+==========================================
+
+## System tools
+node:        v24.14.1
+npm:         11.11.0
+git:         git version 2.50.1 (Apple Git-155)
+psql:        psql (PostgreSQL) 15.18 (Homebrew)
+docker:      Docker version 29.4.3, build 055a478
+flutter:     Flutter 3.44.7 • channel stable • https://github.com/flutter/flutter.git
+dart:        Dart SDK version: 3.12.2 (stable) (Tue Jun 9 01:11:39 2026 -0700) on "macos_arm64"
+
+## Node/npm packages (resolved from package-lock.json)
+express:                 5.2.1
+preact:                  10.29.7
+pg:                      8.22.0
+dotenv:                  17.4.2
+vite:                    5.4.21
+vitest:                  4.1.10
+typescript:              5.9.3
+tailwindcss:             4.3.3
+@tailwindcss/vite:       4.3.3
+@preact/preset-vite:     2.10.5
+supertest:               7.2.2
+ai-settings-ui (local):  0.1.0
+
+## Docker / database (from Dockerfile & docker-compose.yml)
+base image: FROM node:20-slim
+postgres image: postgres:16-alpine
+
+## Flutter app (flutter_app/pubspec.yaml)
+  sdk: ^3.12.2
+  flutter_riverpod: ^2.6.1
+  dio: ^5.7.0
+  flutter_secure_storage: ^9.2.2
+  shared_preferences: ^2.3.3
+  intl: ^0.19.0
+  cupertino_icons: ^1.0.8
+  google_fonts: ^8.2.1
