@@ -38,6 +38,12 @@ function evidenceIdFor(index) {
   return `EV-${String(index + 1).padStart(3, '0')}`;
 }
 
+// Off only when the user explicitly unchecked the "Web search" toggle in the
+// AI settings card — unset (older rows, never-saved settings) defaults on.
+function isWebSearchEnabled(providerRow) {
+  return providerRow.settings?.webSearch !== false;
+}
+
 function formatSearchResults(results) {
   return results
     .map((r, i) => `[${evidenceIdFor(i)}] ${r.title}${r.date ? ` [${r.date}]` : ''} — ${r.snippet} (${r.link})`)
@@ -149,7 +155,9 @@ export function createAnalyzeRouter(db, userId) {
       let effectivePrompt = prompt;
       let injectedWebSearch = false;
       let evidenceIds = [];
-      if (!NATIVE_SEARCH_PROVIDER_TYPES.has(provider.provider_type)) {
+      const usesNativeSearch = NATIVE_SEARCH_PROVIDER_TYPES.has(provider.provider_type);
+      const webSearchEnabled = isWebSearchEnabled(provider);
+      if (!usesNativeSearch && webSearchEnabled) {
         const augmented = await augmentPromptWithSearch(prompt);
         effectivePrompt = augmented.prompt;
         injectedWebSearch = augmented.usedWebSearch;
@@ -157,7 +165,7 @@ export function createAnalyzeRouter(db, userId) {
       }
 
       const result = await runProviderAnalysis(provider, effectivePrompt);
-      if (!NATIVE_SEARCH_PROVIDER_TYPES.has(provider.provider_type)) {
+      if (!usesNativeSearch) {
         result.usedWebSearch = injectedWebSearch;
       }
       let { text } = result;

@@ -31,6 +31,7 @@ export interface ProviderConnection {
   temperature: number;
   maxTokens?: number;
   language?: string;
+  webSearch?: boolean;
   extra?: Record<string, unknown>;
   apiKeyRef: string | null;
   isActive: boolean;
@@ -45,6 +46,7 @@ export interface ConnectionDraft {
   temperature: number;
   maxTokens?: number;
   language?: string;
+  webSearch?: boolean;
   extra?: Record<string, unknown>;
   apiKey?: string;
 }

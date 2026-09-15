@@ -4,6 +4,7 @@ export type LlmProviderSettings = {
   temperature?: number;
   maxTokens?: number;
   language?: string;
+  webSearch?: boolean;
   extra?: Record<string, unknown>;
 };
 

@@ -107,6 +107,7 @@ function connectionFromRow(row: LlmProvider, customProviders: CustomProviderMeta
     temperature: typeof row.settings?.temperature === 'number' ? row.settings.temperature : 0.3,
     maxTokens: row.settings?.maxTokens,
     language: row.settings?.language,
+    webSearch: row.settings?.webSearch !== false,
     extra: row.base_url ? { base_url: row.base_url } : {},
     apiKeyRef: row.provider_type === 'ollama' || row.provider_type === 'shared' ? null : '••••••••',
     isActive: row.is_active,
@@ -132,6 +133,7 @@ function draftToInput(draft: ConnectionDraft) {
       temperature: draft.temperature,
       maxTokens: draft.maxTokens,
       language: draft.language,
+      webSearch: draft.webSearch !== false,
       extra: draft.extra,
     },
   };
