@@ -113,6 +113,17 @@ describe('repairAnalysisJson', () => {
     expect(repairAnalysisJson('not json at all, just plain text')).toBeNull();
   });
 
+  it('repairs a response truncated mid-way through confidence_reasons, recovering the fields before it', () => {
+    // Missing the closing ']' for confidence_reasons before trends starts.
+    const broken = '{"one_liner": "x", "confidence": "medium", "confidence_reasons": ["fresh evidence", "trends": ["a"], "suggested_weights": {"deesc": 33, "base": 34, "stag": 33}, "weights_reasoning": "y", "tranche2": {"verdict": "wait", "reasoning": "z"}, "egp_read": "w"}';
+
+    const repaired = repairAnalysisJson(broken);
+
+    expect(repaired.one_liner).toBe('x');
+    expect(repaired.confidence).toBe('medium');
+    expect(repaired.suggested_weights).toEqual({ deesc: 33, base: 34, stag: 33 });
+  });
+
   it('extracts JSON wrapped in markdown code fences', () => {
     const fenced = '```json\n{"one_liner": "x", "trends": ["a"], "suggested_weights": {"deesc": 33, "base": 34, "stag": 33}, "weights_reasoning": "y", "tranche2": {"verdict": "wait", "reasoning": "z"}, "egp_read": "w"}\n```';
 
