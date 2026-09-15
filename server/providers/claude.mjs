@@ -11,21 +11,18 @@ function extractText(content) {
     .trim();
 }
 
-async function callAnthropic({ apiKey, model, messages, withTools, temperature, maxTokens, system }) {
+async function callAnthropic({ apiKey, model, messages, temperature, maxTokens, system }) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
   try {
-    // 16000 (not 8000): when web_search is enabled, the tool-call and
-    // tool-result blocks share this same output budget with the final JSON
-    // text, and the response schema now spans up to 7 written fields
+    // 16000 (not 8000): the response schema spans up to 7 written fields
     // (one_liner, trends, weights_reasoning, tranche2, egp_read, wallet_read,
-    // watchlist_read) — 8000 was getting exhausted by search activity before
-    // the JSON was fully written, truncating it mid-string. A user-configured
-    // maxTokens can only raise this floor, never lower it.
+    // watchlist_read), and 8000 was getting exhausted before the JSON was
+    // fully written, truncating it mid-string. A user-configured maxTokens
+    // can only raise this floor, never lower it.
     const body = { model, max_tokens: Math.max(maxTokens || 0, 16000), messages };
     if (typeof temperature === 'number') body.temperature = temperature;
     if (system) body.system = system;
-    if (withTools) body.tools = [{ type: 'web_search_20250305', name: 'web_search' }];
 
     const response = await fetch(ANTHROPIC_ENDPOINT, {
       method: 'POST',
@@ -55,10 +52,8 @@ async function callAnthropic({ apiKey, model, messages, withTools, temperature, 
   }
 }
 
-export async function callClaude({ apiKey, model, prompt, allowWebSearch = true, temperature, maxTokens, expectJson = true, system }) {
+export async function callClaude({ apiKey, model, prompt, temperature, maxTokens, expectJson = true, system }) {
   let messages = [{ role: 'user', content: prompt }];
-  let data;
-  let usedWebSearch = false;
   const usage = { input_tokens: 0, output_tokens: 0 };
   const addUsage = (d) => {
     if (!d?.usage) return;
@@ -66,22 +61,12 @@ export async function callClaude({ apiKey, model, prompt, allowWebSearch = true,
     usage.output_tokens += d.usage.output_tokens || 0;
   };
 
-  if (allowWebSearch) {
-    try {
-      data = await callAnthropic({ apiKey, model, messages, withTools: true, temperature, maxTokens, system });
-      usedWebSearch = true;
-    } catch (firstErr) {
-      try {
-        data = await callAnthropic({ apiKey, model, messages, withTools: false, temperature, maxTokens, system });
-      } catch {
-        throw firstErr;
-      }
-    }
-  } else {
-    data = await callAnthropic({ apiKey, model, messages, withTools: false, temperature, maxTokens, system });
-  }
+  let data = await callAnthropic({ apiKey, model, messages, temperature, maxTokens, system });
   addUsage(data);
 
+  // A model can front-load commentary before its JSON regardless of whether
+  // tools are involved, so this retry is independent of web search and
+  // stays even though the search-tool machinery above does not.
   let text = extractText(data?.content);
   if (expectJson && !text.includes('{')) {
     messages = [
@@ -89,10 +74,10 @@ export async function callClaude({ apiKey, model, prompt, allowWebSearch = true,
       { role: 'assistant', content: data.content },
       { role: 'user', content: 'Output ONLY the final JSON object now.' },
     ];
-    data = await callAnthropic({ apiKey, model, messages, withTools: false, temperature, maxTokens, system });
+    data = await callAnthropic({ apiKey, model, messages, temperature, maxTokens, system });
     addUsage(data);
     text = extractText(data?.content);
   }
 
-  return { text, usedWebSearch, usage };
+  return { text, usedWebSearch: false, usage };
 }

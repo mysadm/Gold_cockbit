@@ -5,21 +5,17 @@ import { repairAnalysisJson } from './repairAnalysisJson.mjs';
 import { validateAnalysis } from './validateAnalysis.mjs';
 import { searchWeb } from '../webSearch.mjs';
 
-// Only real Claude (provider_type 'claude') gets the native, agentic
-// web-search tool — it runs several searches of its own choosing, can read
-// further into a result, and iterates. The shared tier also runs on Claude
-// under the hood, but dispatch.mjs deliberately disables that native tool
-// for it to stay under its ~1-cent-per-analysis cost cap (agentic tool use
-// is not cost-bounded the way a single search call is). Every other
-// provider_type — shared, ollama, openai, openrouter, custom — therefore has
-// zero real-time access of its own, yet the prompt tells the model to "use
-// your live web search". So for all of them we run real searches ourselves
-// and inject the results into the prompt. A single 5-result snippet-only
-// search still reads as thin and generic next to Claude's multi-query
-// research, so this runs several targeted queries (one per facet the prompt
-// actually asks about) in parallel and merges/dedupes the results — closer
-// in breadth to what Claude gathers on its own, though still one static pass
-// rather than an iterative one.
+// No provider_type has any real-time access of its own — Claude's native
+// agentic web_search tool was retired (it could run several searches inside
+// a single open-ended HTTP call with no evidence IDs and no bound on
+// latency), so every provider_type — claude, shared, ollama, openai,
+// openrouter, custom — is on equal footing even though the prompt tells the
+// model to "use your live web search". So for all of them we run real
+// searches ourselves and inject the results into the prompt. A single
+// 5-result snippet-only search still reads as thin and generic, so this
+// runs several targeted queries (one per facet the prompt actually asks
+// about) in parallel and merges/dedupes the results — broader than a single
+// query, though still one static pass rather than an iterative one.
 // No year is hardcoded into these — searchWeb() already restricts results to
 // the past 24 hours (see webSearch.mjs), so a literal year in the query text
 // would just be redundant at best and, come next year, a silent staleness
@@ -32,7 +28,6 @@ const WEB_SEARCH_QUERIES = [
   'geopolitical tensions news today Iran Russia Ukraine',
   'Egypt EGP exchange rate gold price today',
 ];
-const NATIVE_SEARCH_PROVIDER_TYPES = new Set(['claude']);
 
 function evidenceIdFor(index) {
   return `EV-${String(index + 1).padStart(3, '0')}`;
@@ -155,9 +150,8 @@ export function createAnalyzeRouter(db, userId) {
       let effectivePrompt = prompt;
       let injectedWebSearch = false;
       let evidenceIds = [];
-      const usesNativeSearch = NATIVE_SEARCH_PROVIDER_TYPES.has(provider.provider_type);
       const webSearchEnabled = isWebSearchEnabled(provider);
-      if (!usesNativeSearch && webSearchEnabled) {
+      if (webSearchEnabled) {
         const augmented = await augmentPromptWithSearch(prompt);
         effectivePrompt = augmented.prompt;
         injectedWebSearch = augmented.usedWebSearch;
@@ -165,9 +159,7 @@ export function createAnalyzeRouter(db, userId) {
       }
 
       const result = await runProviderAnalysis(provider, effectivePrompt);
-      if (!usesNativeSearch) {
-        result.usedWebSearch = injectedWebSearch;
-      }
+      result.usedWebSearch = injectedWebSearch;
       let { text } = result;
 
       // Weaker/local models sometimes forget to close a JSON array or object

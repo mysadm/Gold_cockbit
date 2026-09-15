@@ -31,7 +31,6 @@ export async function runProviderAnalysis(providerRow, prompt, { expectJson = tr
       apiKey: providerRow.api_key,
       model: providerRow.model,
       prompt,
-      allowWebSearch: isWebSearchEnabled(providerRow),
       temperature,
       maxTokens,
       expectJson,
@@ -42,7 +41,7 @@ export async function runProviderAnalysis(providerRow, prompt, { expectJson = tr
   if (providerRow.provider_type === 'shared') {
     const apiKey = process.env.SHARED_AI_API_KEY;
     if (!apiKey) throw new Error('Shared AI tier is not configured on this server');
-    return callClaude({ apiKey, model: SHARED_TIER_MODEL, prompt, allowWebSearch: false, expectJson, system });
+    return callClaude({ apiKey, model: SHARED_TIER_MODEL, prompt, expectJson, system });
   }
 
   const baseUrl = providerRow.base_url || DEFAULT_BASE_URLS[providerRow.provider_type];

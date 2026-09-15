@@ -49,12 +49,16 @@ describe('POST /api/analyze', () => {
        VALUES ($1, 'claude', 'Claude', 'claude-sonnet-4-6', true) RETURNING *`,
       [userId]
     );
+    // runProviderAnalysis's own usedWebSearch is always overwritten by
+    // whether the evidence pack actually ran (see analyze.mjs) — no
+    // SERPAPI_API_KEY is set in this test, so the pack does not run and the
+    // response reports false regardless of what the provider call returns.
     runProviderAnalysis.mockResolvedValue({ text: '{"one_liner":"ok"}', usedWebSearch: true });
 
     const res = await request(app).post('/api/analyze').send({ prompt: 'analyze this' });
 
     expect(res.status).toBe(200);
-    expect(res.body).toEqual({ text: '{"one_liner":"ok"}', usedWebSearch: true, validationWarnings: [] });
+    expect(res.body).toEqual({ text: '{"one_liner":"ok"}', usedWebSearch: false, validationWarnings: [] });
     expect(runProviderAnalysis).toHaveBeenCalledWith(
       expect.objectContaining({ id: rows[0].id, provider_type: 'claude' }),
       'analyze this'
@@ -234,7 +238,7 @@ describe('POST /api/analyze — shared tier quota', () => {
   });
 });
 
-describe('POST /api/analyze — web search augmentation for non-native-search providers', () => {
+describe('POST /api/analyze — web search augmentation', () => {
   const previousKey = process.env.SERPAPI_API_KEY;
 
   afterEach(() => {
@@ -324,23 +328,29 @@ describe('POST /api/analyze — web search augmentation for non-native-search pr
     expect(runProviderAnalysis).toHaveBeenCalledWith(expect.anything(), 'analyze this');
   });
 
-  it('does not search for providers with native web search (claude only — the shared tier runs on Claude but has its native tool disabled to protect its cost cap, so it still needs the injected search)', async () => {
+  it('searches for claude providers too, now that native web search has been retired — evidence gathering is uniform across provider types', async () => {
     process.env.SERPAPI_API_KEY = 'serp-test-key';
     await client.query(
       `INSERT INTO llm_providers (user_id, provider_type, label, model, is_active)
        VALUES ($1, 'claude', 'Claude', 'claude-sonnet-4-6', true)`,
       [userId]
     );
-    runProviderAnalysis.mockResolvedValue({ text: '{"one_liner":"ok"}', usedWebSearch: true });
+    searchWeb.mockResolvedValue([
+      { title: 'Gold hits record high', snippet: 'Prices surged on Fed cut bets', link: 'https://example.com/1' },
+    ]);
+    runProviderAnalysis.mockResolvedValue({ text: '{"one_liner":"ok"}', usedWebSearch: false });
 
     const res = await request(app).post('/api/analyze').send({ prompt: 'analyze this' });
 
     expect(res.status).toBe(200);
-    expect(searchWeb).not.toHaveBeenCalled();
+    expect(res.body.usedWebSearch).toBe(true);
+    expect(searchWeb).toHaveBeenCalled();
+    const [, augmentedPrompt] = runProviderAnalysis.mock.calls[0];
+    expect(augmentedPrompt).toContain('Gold hits record high');
   });
 
   it.each(['shared', 'openai', 'openrouter', 'custom'])(
-    'augments the prompt with search results for %s, the same as ollama, since none of them have a working native search',
+    'augments the prompt with search results for %s, the same as ollama, since no provider type has a working native search anymore',
     async (providerType) => {
       process.env.SERPAPI_API_KEY = 'serp-test-key';
       await client.query(

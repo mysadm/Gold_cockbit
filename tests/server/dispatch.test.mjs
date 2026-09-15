@@ -26,6 +26,7 @@ describe('runProviderAnalysis', () => {
 
     expect(result).toEqual({ text: 'claude-result', usedWebSearch: true });
     expect(callClaude).toHaveBeenCalledWith(expect.objectContaining({ apiKey: 'sk-ant', model: 'claude-sonnet-4-6', prompt: 'prompt text', expectJson: true }));
+    expect(callClaude.mock.calls[0][0]).not.toHaveProperty('allowWebSearch');
     expect(callOpenAICompatible).not.toHaveBeenCalled();
   });
 
@@ -80,7 +81,7 @@ describe('runProviderAnalysis', () => {
     }));
   });
 
-  it('dispatches shared provider_type to callClaude with the server-side key, Haiku, and web search disabled', async () => {
+  it('dispatches shared provider_type to callClaude with the server-side key and Haiku', async () => {
     const previousKey = process.env.SHARED_AI_API_KEY;
     process.env.SHARED_AI_API_KEY = 'sk-ant-shared-test';
     try {
@@ -96,9 +97,9 @@ describe('runProviderAnalysis', () => {
         apiKey: 'sk-ant-shared-test',
         model: 'claude-haiku-4-5',
         prompt: 'prompt text',
-        allowWebSearch: false,
         expectJson: true,
       }));
+      expect(callClaude.mock.calls[0][0]).not.toHaveProperty('allowWebSearch');
       expect(callOpenAICompatible).not.toHaveBeenCalled();
     } finally {
       if (previousKey === undefined) delete process.env.SHARED_AI_API_KEY;
