@@ -1135,7 +1135,12 @@ function App() {
       if (costBasisParts.length) parts.push(`cost_basis=[${costBasisParts.join('; ')}]`);
       return parts.join(', ');
     })();
-    const prompt = `You are a senior precious-metals strategist advising a Cairo-based CIO. LIVE COCKPIT STATE - XAU/USD: ${state.spot}; USD/EGP: ${state.egp}; weighted target: ${Math.round(weightedTarget)}.
+    const cockpitState = {
+      xau_usd: state.spot,
+      usd_egp: state.egp,
+      weighted_target_usd: Math.round(weightedTarget),
+    };
+    const prompt = `You are a senior precious-metals strategist advising a Cairo-based CIO. LIVE COCKPIT STATE (JSON): ${JSON.stringify(cockpitState)}.
 CURRENT SCENARIO FRAMEWORK (the user's existing weights and theses — these may be stale): ${scenarioContext}.
 Use your live web search to check whether real current events still support these theses as weighted, or whether the balance between the three scenarios has genuinely shifted. Specifically verify, don't assume from memory: the current status of any active armed conflict or military strikes (not just diplomatic tension) involving Iran, Russia/Ukraine, or any other major flashpoint; whether oil/gas shipping chokepoints (Strait of Hormuz, Red Sea/Bab-el-Mandeb) are open, restricted, or under attack right now; any new sanctions; Fed policy moves; central-bank gold buying; and EGP moves. A ceasefire, deal, or truce you remember from training may have already collapsed — search for its current state rather than assuming it held. Your suggested_weights must reflect this reassessment, not just restate the current weights.
 WATCHLIST — treat this as a primary input alongside your own research, not background color. Weigh supportive items toward the scenario they favor and risk items away from it; let them materially move both suggested_weights and the tranche2 verdict: ${watch}. Write watchlist_read as an explicit, named walk-through of these specific variables — call out which ones are currently supportive vs. risk, whether your live research still backs the user's current signal on each, and flag any where you think the user's own color-coding looks stale or wrong given what you found.
