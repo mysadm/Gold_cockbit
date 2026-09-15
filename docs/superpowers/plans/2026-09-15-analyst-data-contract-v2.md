@@ -93,11 +93,11 @@
   }): AIResult;
   ```
 
-- [ ] **Step 1: Move the four functions and the `AIResult`/`AIConfidenceLevel` types verbatim into `src/lib/analyst.ts`**, adjusting only `buildFallbackAnalysis`'s signature as specified above (its internal logic — the `deltaPct` calculation, the bilingual strings, the `dca_read` conditional — is unchanged; only how it receives its inputs changes from closure-capture to parameters).
+- [x] **Step 1: Move the four functions and the `AIResult`/`AIConfidenceLevel` types verbatim into `src/lib/analyst.ts`**, adjusting only `buildFallbackAnalysis`'s signature as specified above (its internal logic — the `deltaPct` calculation, the bilingual strings, the `dca_read` conditional — is unchanged; only how it receives its inputs changes from closure-capture to parameters).
 
-- [ ] **Step 2: Update `src/App.tsx`'s call site.** Replace `buildFallbackAnalysis(weightedTarget)` with `buildFallbackAnalysis({ lang: state.lang, weights: state.weights, spot: state.spot, weightedTarget, walletHasHoldings, walletIntlValue, walletEgyptValue, monitors: state.monitors, dcaPlanData: dcaPlan.data })`, and add the import: `import { normalizeAIResult, buildFallbackAnalysis, extractFieldsFromBrokenJson, tryParseJson, stripJsonFences, type AIResult, type AIConfidenceLevel } from './lib/analyst';` — remove the old in-file definitions of all of these.
+- [x] **Step 2: Update `src/App.tsx`'s call site.** Replace `buildFallbackAnalysis(weightedTarget)` with `buildFallbackAnalysis({ lang: state.lang, weights: state.weights, spot: state.spot, weightedTarget, walletHasHoldings, walletIntlValue, walletEgyptValue, monitors: state.monitors, dcaPlanData: dcaPlan.data })`, and add the import: `import { normalizeAIResult, buildFallbackAnalysis, extractFieldsFromBrokenJson, tryParseJson, stripJsonFences, type AIResult, type AIConfidenceLevel } from './lib/analyst';` — remove the old in-file definitions of all of these.
 
-- [ ] **Step 3: Verify no behavior changed.**
+- [x] **Step 3: Verify no behavior changed.**
 
 Run: `npx tsc -b && npx vite build`
 Expected: clean, no errors.
@@ -105,7 +105,7 @@ Expected: clean, no errors.
 Run: `npm test`
 Expected: unchanged pass count from before this task (this touches no server file).
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add src/lib/analyst.ts src/App.tsx
@@ -126,7 +126,7 @@ git commit -m "refactor: extract analyst response handling out of App.tsx into s
 
 This is items 1 and 2 of the recommendation: every number the model would otherwise have to compute or infer — local premium, the implied "gold-market dollar," wallet totals, DCA window status — is computed here, once, in application code, and handed to the model as a fact, not a homework problem.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Create `tests/client/analysisSnapshot.test.ts`:
 
@@ -250,12 +250,12 @@ describe('buildAnalysisSnapshot', () => {
 });
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run: `npx vitest run tests/client/analysisSnapshot.test.ts`
 Expected: FAIL — "Cannot find module '../../src/lib/analysisSnapshot'".
 
-- [ ] **Step 3: Implement `src/lib/analysisSnapshot.ts`**
+- [x] **Step 3: Implement `src/lib/analysisSnapshot.ts`**
 
 ```ts
 const OZ_GRAMS = 31.1035;
@@ -414,12 +414,12 @@ export function buildAnalysisSnapshot(input: BuildSnapshotInput): AnalysisSnapsh
 }
 ```
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 Run: `npx vitest run tests/client/analysisSnapshot.test.ts`
 Expected: PASS, all 7 tests.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/lib/analysisSnapshot.ts tests/client/analysisSnapshot.test.ts
@@ -441,7 +441,7 @@ git commit -m "feat: compute the analyst's data snapshot entirely in application
 
 This is the fix for item 9's timeout requirement and closes the gap the last review surfaced ("the evidence machinery is inert for `provider_type: claude`") in one move: Claude's native agentic `web_search` tool can run several searches inside a single open-ended HTTP call with no evidence IDs and no bound on latency. After this task, every provider — Claude included — gets its evidence from the same bounded, ID-tagged SerpAPI pack `analyze.mjs` already builds for non-Claude providers.
 
-- [ ] **Step 1: Simplify `callClaude` in `server/providers/claude.mjs`**
+- [x] **Step 1: Simplify `callClaude` in `server/providers/claude.mjs`**
 
 Read the current file first — it has an `allowWebSearch` parameter, a `withTools`-conditional `tools: [{ type: 'web_search_20250305', name: 'web_search' }]` body field, and a try/catch that retries without tools if the tool-enabled call fails. Remove all of it. The function should always call `callAnthropic` with no tools, keeping only the pre-existing "if the response has no `{`, ask for JSON only" retry (that retry is unrelated to search — it exists because a model can respond with commentary before its JSON regardless of tools). The simplified function:
 
@@ -478,13 +478,13 @@ export async function callClaude({ apiKey, model, prompt, temperature, maxTokens
 
 Also remove the now-unused `withTools` parameter handling inside `callAnthropic` if `withTools` is never passed as `true` anywhere after this change — check whether any other caller still passes `withTools: true`; if not, simplify `callAnthropic`'s signature too (drop `withTools`, drop the `if (withTools) body.tools = ...` line).
 
-- [ ] **Step 2: Update `server/providers/dispatch.mjs`**
+- [x] **Step 2: Update `server/providers/dispatch.mjs`**
 
 Find the `if (providerRow.provider_type === 'claude')` block calling `callClaude`. Remove the `allowWebSearch: isWebSearchEnabled(providerRow),` line — `callClaude` no longer accepts that parameter. The `isWebSearchEnabled` export itself stays (it's still consumed by `analyze.mjs` to decide whether to run the SerpAPI evidence pack at all — see Step 3).
 
 The `shared` tier's call site already passes no `allowWebSearch` after `callClaude`'s signature change (it previously passed `allowWebSearch: false` explicitly) — remove that now-nonexistent parameter from that call site too.
 
-- [ ] **Step 3: Update `server/routes/analyze.mjs` — evidence-pack generation for every provider**
+- [x] **Step 3: Update `server/routes/analyze.mjs` — evidence-pack generation for every provider**
 
 Find `NATIVE_SEARCH_PROVIDER_TYPES` and the `usesNativeSearch` variable in the POST handler. Remove `NATIVE_SEARCH_PROVIDER_TYPES` entirely (dead constant after this change) and simplify the condition that decides whether to run `augmentPromptWithSearch`:
 
@@ -513,7 +513,7 @@ if (webSearchEnabled) {
 
 And the line setting `result.usedWebSearch` — currently conditioned on `if (!usesNativeSearch)` — becomes unconditional (`result.usedWebSearch = injectedWebSearch;` with no `if` around it), since every provider now goes through the same injected-search path.
 
-- [ ] **Step 4: Update tests**
+- [x] **Step 4: Update tests**
 
 `tests/server/claude-provider.test.mjs`: remove/update any test asserting `allowWebSearch`/tool-use behavior — replace with tests confirming `callClaude` never sends a `tools` field and never retries with tools. Follow the existing file's mocking pattern (search for how `fetch` is stubbed in that file already).
 
@@ -521,12 +521,12 @@ And the line setting `result.usedWebSearch` — currently conditioned on `if (!u
 
 `tests/server/analyze-route.test.mjs`: find the test at `describe('POST /api/analyze — web search augmentation for non-native-search providers', ...)` (its own name is now stale — this task makes search augmentation apply to *every* provider, native or not). Update its describe block name to drop "non-native-search", and find/update the test `'does not search for providers with native web search (claude only...)'` — this test's premise no longer holds; replace it with a test asserting `augmentPromptWithSearch` (and thus `searchWeb`) **is** called for a `claude` provider too, the same as any other provider type, gated only by `isWebSearchEnabled`.
 
-- [ ] **Step 5: Run the full server suite**
+- [x] **Step 5: Run the full server suite**
 
 Run: `npm test`
 Expected: PASS, all tests (count will differ slightly from before this task due to the test changes in Step 4 — confirm 0 failures, not a specific count).
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add server/providers/claude.mjs server/providers/dispatch.mjs server/routes/analyze.mjs tests/server/claude-provider.test.mjs tests/server/dispatch.test.mjs tests/server/analyze-route.test.mjs
@@ -576,18 +576,17 @@ export type AIResultV2 = {
   watchlist_read?: ClaimField;
   assumptions: string[];
   missing_inputs: string[];
-  validation?: { ok: boolean; errors: string[] }; // attached by the app after validation, never by the model — see Task 8
 };
 ```
 
-- [ ] **Step 1: Add these types to `src/lib/analyst.ts`**, alongside the v1 `AIResult`/`AIConfidenceLevel` types added in Task 1. Do not delete `AIResult` (v1) yet — Task 6 handles the render-tree migration in the same commit as the parser, so both types briefly coexist only within Task 6's own diff, not across commits.
+- [x] **Step 1: Add these types to `src/lib/analyst.ts`**, alongside the v1 `AIResult`/`AIConfidenceLevel` types added in Task 1. Do not delete `AIResult` (v1) yet — Task 6 handles the render-tree migration in the same commit as the parser, so both types briefly coexist only within Task 6's own diff, not across commits.
 
-- [ ] **Step 2: Verify typecheck**
+- [x] **Step 2: Verify typecheck**
 
 Run: `npx tsc -b`
 Expected: clean (these are additive type declarations with no consumers yet, so nothing can fail to typecheck against them).
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add src/lib/analyst.ts
@@ -608,7 +607,7 @@ git commit -m "feat: add schema v2 types — claim fields with evidence IDs, per
 
 This replaces the current hand-assembled template literal (the one Task 5 of the prior plan partially JSON-ified) with a version built entirely around the snapshot object, and rewrites the schema instructions for the v2 shape.
 
-- [ ] **Step 1: Write `buildAnalysisPrompt` in `src/lib/analyst.ts`**
+- [x] **Step 1: Write `buildAnalysisPrompt` in `src/lib/analyst.ts`**
 
 The function takes the already-computed `AnalysisSnapshot` and produces the prompt string. Structure it in two parts: a fixed instructions block, then the snapshot as JSON. Follow the existing prompt's voice and the localization/beginner-vs-expert branching already present in the current `analyze()` (read it before removing it — the "senior precious-metals strategist" framing, the beginner/expert style paragraph, and the watchlist walk-through instruction are all still correct and should carry over near-verbatim). What changes structurally:
 
@@ -623,13 +622,13 @@ The function takes the already-computed `AnalysisSnapshot` and produces the prom
   `horizon_actions` gets its own explicit instruction: "If your action differs across the `now`/`next_event`/`strategic` horizons, list each differing horizon here with its own action and the condition that would trigger a shift; if they don't differ, this array may be empty or contain one entry restating the primary decision — never contradict `primary_decision` without explaining why in `weights_reasoning` or a `horizon_actions` entry's `condition`."
   `assumptions` and `missing_inputs`: "List anything you assumed because the snapshot didn't specify it, and anything you'd need to know to be more confident — an empty array for either is fine and expected when nothing is missing."
 
-- [ ] **Step 2: Update `analyze()` in `src/App.tsx`** to build the `AnalysisSnapshot` (via `buildAnalysisSnapshot` from Task 2, assembling its `BuildSnapshotInput` from the same component state currently scattered across the existing prompt-building code — `state.spot`, `state.egp`, `weightedTarget`, `SCEN_META`/`state.weights`, `egyptSnapshot`, wallet state, `dcaPlan.data`/`tranchePct`/`dcaWindows`/`trancheStatus`, `state.monitors`) and pass it to `buildAnalysisPrompt`. Remove the old inline template-literal prompt construction entirely.
+- [x] **Step 2: Update `analyze()` in `src/App.tsx`** to build the `AnalysisSnapshot` (via `buildAnalysisSnapshot` from Task 2, assembling its `BuildSnapshotInput` from the same component state currently scattered across the existing prompt-building code — `state.spot`, `state.egp`, `weightedTarget`, `SCEN_META`/`state.weights`, `egyptSnapshot`, wallet state, `dcaPlan.data`/`tranchePct`/`dcaWindows`/`trancheStatus`, `state.monitors`) and pass it to `buildAnalysisPrompt`. Remove the old inline template-literal prompt construction entirely.
 
-- [ ] **Step 3: Manual verification**
+- [x] **Step 3: Manual verification**
 
 Run: `npm run dev`, open the AI Analyst tab, trigger an analysis, and inspect the outgoing `/api/analyze` request body's `prompt` field in the Network tab — confirm it contains a `DATA SNAPSHOT` line with valid JSON matching the `AnalysisSnapshot` shape, and that the schema block asks for the v2 fields.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add src/lib/analyst.ts src/App.tsx
@@ -650,33 +649,33 @@ git commit -m "feat: build the analyst prompt from a computed data snapshot with
 
 This is the task where the v1 flat-string schema is fully retired in favor of v2. It's the largest single UI task in this plan — size it as one task because splitting the type rewrite from its only consumer (the render tree) would leave an intermediate commit that doesn't typecheck.
 
-- [ ] **Step 1: Rewrite `normalizeAIResult`** to validate and coerce a raw parsed payload into `AIResultV2`, following the exact defensive pattern the current v1 version already uses (check `typeof`/array-ness per field, fall back to the `fallback` parameter's value when a field is missing or malformed) — extend that same pattern to the nested `ClaimField` shape: a `ClaimField` is valid only if `text` is a non-empty string; `evidence_ids` defaults to `[]` if missing or not an array of strings, never fails the whole field. `primary_decision` requires at least `action` (fall back to `'insufficient_evidence'` if the model sent something outside the 6 allowed literals) and `headline`; `confidence` on `primary_decision` is read but — critically — **is not trusted as the rendered value**; Task 9 overwrites it after validation, so `normalizeAIResult` should still parse whatever the model sent (needed as an input to `computeConfidence`) but callers must not render `primary_decision.confidence` directly without passing it through validation first (Task 9 makes this the only path).
+- [x] **Step 1: Rewrite `normalizeAIResult`** to validate and coerce a raw parsed payload into `AIResultV2`, following the exact defensive pattern the current v1 version already uses (check `typeof`/array-ness per field, fall back to the `fallback` parameter's value when a field is missing or malformed) — extend that same pattern to the nested `ClaimField` shape: a `ClaimField` is valid only if `text` is a non-empty string; `evidence_ids` defaults to `[]` if missing or not an array of strings, never fails the whole field. `primary_decision` requires at least `action` (fall back to `'insufficient_evidence'` if the model sent something outside the 6 allowed literals) and `headline`; `confidence` on `primary_decision` is read but — critically — **is not trusted as the rendered value**; Task 9 overwrites it after validation, so `normalizeAIResult` should still parse whatever the model sent (needed as an input to `computeConfidence`) but callers must not render `primary_decision.confidence` directly without passing it through validation first (Task 9 makes this the only path).
 
-- [ ] **Step 2: Rewrite `buildFallbackAnalysis`** to return an `AIResultV2`-shaped fallback: `primary_decision.action = 'insufficient_evidence'`, `horizon: 'now'`, a `headline` and `reasons` carrying today's existing bilingual fallback prose (as a single `ClaimField` with `evidence_ids: []`), `confidence: 'low'`. Preserve the existing `deltaPct`-driven weight-adjustment heuristic for `suggested_weights` — that logic is unrelated to the schema shape and should carry over unchanged.
+- [x] **Step 2: Rewrite `buildFallbackAnalysis`** to return an `AIResultV2`-shaped fallback: `primary_decision.action = 'insufficient_evidence'`, `horizon: 'now'`, a `headline` and `reasons` carrying today's existing bilingual fallback prose (as a single `ClaimField` with `evidence_ids: []`), `confidence: 'low'`. Preserve the existing `deltaPct`-driven weight-adjustment heuristic for `suggested_weights` — that logic is unrelated to the schema shape and should carry over unchanged.
 
-- [ ] **Step 3: Update `extractFieldsFromBrokenJson`** for the new field names — it now needs to salvage `primary_decision.headline`/`primary_decision.action` (via a nested regex, following the existing pattern already used for `tranche2.verdict`/`tranche2.reasoning` in this function — model that pattern) rather than `one_liner`, and the claim-field text (not the `evidence_ids`, which can't be reliably salvaged from broken JSON — a salvaged claim field should get `evidence_ids: []`, which downstream validation will then correctly treat as unsupported if it contains a number/claim, degrading confidence rather than pretending the salvage was clean).
+- [x] **Step 3: Update `extractFieldsFromBrokenJson`** for the new field names — it now needs to salvage `primary_decision.headline`/`primary_decision.action` (via a nested regex, following the existing pattern already used for `tranche2.verdict`/`tranche2.reasoning` in this function — model that pattern) rather than `one_liner`, and the claim-field text (not the `evidence_ids`, which can't be reliably salvaged from broken JSON — a salvaged claim field should get `evidence_ids: []`, which downstream validation will then correctly treat as unsupported if it contains a number/claim, degrading confidence rather than pretending the salvage was clean).
 
-- [ ] **Step 4: Update `AppState['ai'].data`'s type** (in `src/App.tsx`) from `AIResult | null` to `AIResultV2 | null`.
+- [x] **Step 4: Update `AppState['ai'].data`'s type** (in `src/App.tsx`) from `AIResult | null` to `AIResultV2 | null`.
 
-- [ ] **Step 5: Rewrite the render tree.** Follow the existing render block's structure and CSS class usage (`section-label gold-text`, `soft-text`, the existing conditional-block pattern per field) but adapt to the new shape:
+- [x] **Step 5: Rewrite the render tree.** Follow the existing render block's structure and CSS class usage (`section-label gold-text`, `soft-text`, the existing conditional-block pattern per field) but adapt to the new shape:
   - Replace the "Quick read" `one_liner` block with `primary_decision.headline`, plus a small `primary_decision.action`/`horizon` badge pair (follow the confidence-badge pattern already in the file for styling — `var(--up)`/`var(--down)`/`var(--text)` color-coding, this time keyed on `action` rather than `confidence`: e.g. `buy`/`reduce` as attention colors, `hold`/`wait` as neutral, `review`/`insufficient_evidence` as the down/warning color).
   - Replace the `trends` list with `primary_decision.reasons` — each item renders `.text`, and in Expert mode only, its `evidence_ids` as small inline chips (e.g. `[EV-001]` as a `muted-text font-mono` span) — Beginner mode renders just the text, matching the existing beginner/expert differentiation pattern.
   - Add a `horizon_actions` block (Expert mode only, following the recommendation's item 10) rendering each entry's `horizon`/`action`/`condition` as a small table or list.
   - Every remaining `ClaimField`-typed section (`weights_reasoning`, `egp_read`, `wallet_read`, `dca_read`, `watchlist_read`) renders `.text` the same way as before, with the same Expert-mode evidence-chip treatment as `reasons`.
   - Add `assumptions`/`missing_inputs` rendering, Expert mode only (bulleted lists, following the existing list-rendering pattern used for `trends` before this task removed it).
 
-- [ ] **Step 6: Delete the v1 `AIResult` type** from `src/lib/analyst.ts` once `tsc -b` confirms nothing references it.
+- [x] **Step 6: Delete the v1 `AIResult` type** from `src/lib/analyst.ts` once `tsc -b` confirms nothing references it.
 
-- [ ] **Step 7: Verify**
+- [x] **Step 7: Verify**
 
 Run: `npx tsc -b && npx vite build`
 Expected: clean.
 
-- [ ] **Step 8: Manual verification**
+- [x] **Step 8: Manual verification**
 
 Run: `npm run dev`, trigger an analysis with a working provider, confirm: the primary decision renders with an action/horizon badge, reasons show as a list, Expert mode reveals evidence chips/horizon actions/assumptions, Beginner mode hides them, and the fallback path (disconnect the provider) still renders a sensible `insufficient_evidence` card.
 
-- [ ] **Step 9: Commit**
+- [x] **Step 9: Commit**
 
 ```bash
 git add src/lib/analyst.ts src/App.tsx
@@ -697,7 +696,7 @@ git commit -m "feat: render the v2 schema — primary decision, horizon actions,
 
 This is item 5 of the recommendation, made real: weights, unlinked numeric claims, and DCA amounts that don't match the snapshot are no longer warnings — they're `ok: false`.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Add to `tests/server/validate-analysis.test.mjs` (the v1 tests for `checkWeightsSum`'s warning behavior are superseded — update them to assert `ok`/`errors` instead of a bare warnings array; the file's existing test names and scenarios are a reasonable starting point, adapted to the new return shape):
 
@@ -805,12 +804,12 @@ describe('computeConfidence', () => {
 });
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run: `npx vitest run tests/server/validate-analysis.test.mjs`
 Expected: FAIL — current `validateAnalysis` returns a bare array, not `{ok, errors}`, and `computeConfidence` doesn't exist yet.
 
-- [ ] **Step 3: Rewrite `server/routes/validateAnalysis.mjs`**
+- [x] **Step 3: Rewrite `server/routes/validateAnalysis.mjs`**
 
 ```js
 // Deterministic validation over an analysis response. Unlike v1, hard
@@ -821,7 +820,15 @@ Expected: FAIL — current `validateAnalysis` returns a bare array, not `{ok, er
 // this file implements: reject on conflict, don't just flag it).
 
 const WEIGHTS_SUM_TOLERANCE = 1; // absorbs Math.round() rounding, not real drift
-const CLAIM_FIELD_KEYS = ['weights_reasoning', 'egp_read', 'wallet_read', 'dca_read', 'watchlist_read'];
+// dca_read is deliberately excluded here: its numeric content is the user's
+// own plan data (from the snapshot), not an external market claim needing
+// evidence-ID citation — it's validated instead by checkDcaAmountWithinSnapshot
+// below, which is the correct, more specific gate for that field. Folding it
+// into the generic evidence-citation rule too would reject a legitimate
+// "12000 EGP into this tranche, within your 30000 EGP cap" statement for
+// carrying no evidence_ids, when none is expected or needed for the user's
+// own numbers.
+const CLAIM_FIELD_KEYS = ['weights_reasoning', 'egp_read', 'wallet_read', 'watchlist_read'];
 const NUMBER_OR_PERCENT_RE = /(\d{1,3}(?:[.,]\d+)?\s?%)|(\$\s?\d[\d,]*(?:\.\d+)?)|(\b\d[\d,]{2,}(?:\.\d+)?\s?(?:EGP|جنيه)\b)/;
 
 function checkWeightsSum(parsed) {
@@ -906,12 +913,12 @@ export function computeConfidence({ modelConfidence, errors, evidenceCoverageRat
 }
 ```
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 Run: `npx vitest run tests/server/validate-analysis.test.mjs`
 Expected: PASS, all tests.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add server/routes/validateAnalysis.mjs tests/server/validate-analysis.test.mjs
@@ -932,9 +939,9 @@ git commit -m "feat: validator v2 — hard-fail on weight/evidence/DCA-amount vi
 
 This is items 5 and 6 made concrete: one corrective re-prompt on hard failure, then a forced downgrade — never a silent pass-through of an invalid response.
 
-- [ ] **Step 1: Accept `snapshot` in the request body.** `router.post('/', ...)` currently destructures `{ prompt }` from `req.body`. Change to `{ prompt, snapshot }`. Update `src/App.tsx`'s `analyzeViaBackend` call site (and its type in `src/api/llmProviders.ts`) to send `{ prompt, snapshot }` instead of `{ prompt }` — the snapshot was already built in Task 5's `analyze()` changes; this just threads it to the request body too, alongside the prompt (which already contains the same snapshot serialized inline — sending it separately as structured data is what lets the server validate against it without re-parsing the prompt string).
+- [x] **Step 1: Accept `snapshot` in the request body.** `router.post('/', ...)` currently destructures `{ prompt }` from `req.body`. Change to `{ prompt, snapshot }`. Update `src/App.tsx`'s `analyzeViaBackend` call site (and its type in `src/api/llmProviders.ts`) to send `{ prompt, snapshot }` instead of `{ prompt }` — the snapshot was already built in Task 5's `analyze()` changes; this just threads it to the request body too, alongside the prompt (which already contains the same snapshot serialized inline — sending it separately as structured data is what lets the server validate against it without re-parsing the prompt string).
 
-- [ ] **Step 2: Add the retry-then-downgrade loop.** Find where `validationWarnings` is currently computed (search for `validateAnalysis(` in the file) and replace that block:
+- [x] **Step 2: Add the retry-then-downgrade loop.** Find where `validationWarnings` is currently computed (search for `validateAnalysis(` in the file) and replace that block:
 
 ```js
       let parsedForValidation = (() => {
@@ -985,7 +992,13 @@ This is items 5 and 6 made concrete: one corrective re-prompt on hard failure, t
       }
 
       const modelConfidence = parsedForValidation?.primary_decision?.confidence;
-      const claimFields = [parsedForValidation?.weights_reasoning, parsedForValidation?.egp_read, parsedForValidation?.wallet_read, parsedForValidation?.dca_read, parsedForValidation?.watchlist_read, ...(Array.isArray(parsedForValidation?.primary_decision?.reasons) ? parsedForValidation.primary_decision.reasons : [])].filter(Boolean);
+      // dca_read is deliberately excluded here, mirroring validateAnalysis.mjs's
+      // CLAIM_FIELD_KEYS (see Task 7) — its numbers are the user's own plan data,
+      // validated by checkDcaAmountWithinSnapshot, not evidence-citation coverage.
+      // Including it would count a compliant dca_read (an EGP amount with no
+      // evidence_ids, which is correct for that field) as "uncited," silently
+      // capping confidence at medium even for a fully valid response.
+      const claimFields = [parsedForValidation?.weights_reasoning, parsedForValidation?.egp_read, parsedForValidation?.wallet_read, parsedForValidation?.watchlist_read, ...(Array.isArray(parsedForValidation?.primary_decision?.reasons) ? parsedForValidation.primary_decision.reasons : [])].filter(Boolean);
       const fieldsWithClaims = claimFields.filter((f) => NUMBER_OR_PERCENT_RE_FOR_COVERAGE.test(f?.text || ''));
       const fieldsWithEvidence = fieldsWithClaims.filter((f) => Array.isArray(f?.evidence_ids) && f.evidence_ids.length > 0);
       const evidenceCoverageRatio = fieldsWithClaims.length === 0 ? 1 : fieldsWithEvidence.length / fieldsWithClaims.length;
@@ -998,16 +1011,16 @@ This is items 5 and 6 made concrete: one corrective re-prompt on hard failure, t
 
 Add the import: `import { validateAnalysis, computeConfidence } from './validateAnalysis.mjs';` (replacing the v1 `validateAnalysis`-only import), and export a `NUMBER_OR_PERCENT_RE` from `validateAnalysis.mjs` for reuse here rather than redefining the pattern in two files — add `export` to that constant in Task 7's file and import it here as `NUMBER_OR_PERCENT_RE_FOR_COVERAGE` (or just name it consistently and import it directly; avoid a second, possibly-drifting copy of the same regex).
 
-- [ ] **Step 3: Update the response** — the `res.json({ ...result, text, validationWarnings })` line becomes `res.json({ ...result, text, validation })`.
+- [x] **Step 3: Update the response** — the `res.json({ ...result, text, validationWarnings })` line becomes `res.json({ ...result, text, validation })`.
 
-- [ ] **Step 4: Update tests.** `tests/server/analyze-route.test.mjs`'s `validationWarnings`-asserting tests (from the prior plan) need updating to the new `validation: { ok, errors }` shape. Add new tests: (a) a hard-validation-failure response where the mocked `runProviderAnalysis` is set up (via `mockResolvedValueOnce`/`mockResolvedValueOnce` sequencing) to return an invalid response first and a corrected valid one on the retry call — assert the route returns the corrected text and `validation.ok === true`, and assert `runProviderAnalysis` was called twice; (b) a response that fails validation on both the original and the retry — assert `primary_decision.action` in the returned `text` is forced to `'insufficient_evidence'` and `validation.ok === false`; (c) a clean response that never needed a retry — assert `runProviderAnalysis` was called exactly once.
+- [x] **Step 4: Update tests.** `tests/server/analyze-route.test.mjs`'s `validationWarnings`-asserting tests (from the prior plan) need updating to the new `validation: { ok, errors }` shape. Add new tests: (a) a hard-validation-failure response where the mocked `runProviderAnalysis` is set up (via `mockResolvedValueOnce`/`mockResolvedValueOnce` sequencing) to return an invalid response first and a corrected valid one on the retry call — assert the route returns the corrected text and `validation.ok === true`, and assert `runProviderAnalysis` was called twice; (b) a response that fails validation on both the original and the retry — assert `primary_decision.action` in the returned `text` is forced to `'insufficient_evidence'` and `validation.ok === false`; (c) a clean response that never needed a retry — assert `runProviderAnalysis` was called exactly once.
 
-- [ ] **Step 5: Run the full server suite**
+- [x] **Step 5: Run the full server suite**
 
 Run: `npm test`
 Expected: PASS.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add server/routes/analyze.mjs server/routes/validateAnalysis.mjs tests/server/analyze-route.test.mjs src/App.tsx src/api/llmProviders.ts
@@ -1026,13 +1039,13 @@ git commit -m "feat: retry once on hard validation failure, then force insuffici
 
 Item 7 of the recommendation.
 
-- [ ] **Step 1: Thread `validation` through `analyze()`'s destructuring and both `setState` calls**, the same way the prior plan threaded `validationWarnings` (find that prior work in `git log` for the exact pattern — destructure from `analyzeViaBackend`'s result, set on success, set to a safe default `{ ok: true, errors: [] }`... no — on the catch path there is no server validation to report, so use `null` there, matching how `providerLabel`/`usedWebSearch` already distinguish "no data" from "known-bad data").
+- [x] **Step 1: Thread `validation` through `analyze()`'s destructuring and both `setState` calls**, the same way the prior plan threaded `validationWarnings` (find that prior work in `git log` for the exact pattern — destructure from `analyzeViaBackend`'s result, set on success, set to a safe default `{ ok: true, errors: [] }`... no — on the catch path there is no server validation to report, so use `null` there, matching how `providerLabel`/`usedWebSearch` already distinguish "no data" from "known-bad data").
 
-- [ ] **Step 2: Gate the Apply button.** Find `applyAI()` and its calling `<button>` element. Change the button's `disabled` condition from its current state (disabled only while `state.ai.loading`) to also disable when `state.ai.data?.validation?.ok === false` or `state.ai.data?.primary_decision?.action === 'insufficient_evidence'`. Add a short inline explanation next to the disabled button (bilingual, following the existing `down-text`-class warning pattern) stating why it's disabled — e.g. "Disabled: this analysis failed validation" / "معطّل: التحليل ده فشل في التحقق".
+- [x] **Step 2: Gate the Apply button.** Find `applyAI()` and its calling `<button>` element. Change the button's `disabled` condition from its current state (disabled only while `state.ai.loading`) to also disable when `state.ai.validation?.ok === false` (the top-level response field threaded in Task 8, mirroring how `validationWarnings` was threaded in the prior plan — NOT a field on `state.ai.data`, since the server never merges `validation` into the parsed JSON payload) or `state.ai.data?.primary_decision?.action === 'insufficient_evidence'`. Add a short inline explanation next to the disabled button (bilingual, following the existing `down-text`-class warning pattern) stating why it's disabled — e.g. "Disabled: this analysis failed validation" / "معطّل: التحليل ده فشل في التحقق".
 
-- [ ] **Step 3: Manual verification.** Temporarily force `validateAnalysis` to always return `ok: false` (a local, uncommitted edit), run `npm run dev`, trigger an analysis, confirm the Apply button is disabled with the explanation visible, then revert the temporary edit.
+- [x] **Step 3: Manual verification.** Temporarily force `validateAnalysis` to always return `ok: false` (a local, uncommitted edit), run `npm run dev`, trigger an analysis, confirm the Apply button is disabled with the explanation visible, then revert the temporary edit.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add src/App.tsx
@@ -1052,19 +1065,19 @@ git commit -m "feat: disable Apply weights when the analysis fails validation"
 
 Item 9. The 45s budget is realistic after Task 3 (no more open-ended native search); this task adds the user-facing controls around it.
 
-- [ ] **Step 1: Add `signal` support to `analyzeViaBackend`.** Pass it straight through to the underlying `fetch` call's `options.signal`.
+- [x] **Step 1: Add `signal` support to `analyzeViaBackend`.** Pass it straight through to the underlying `fetch` call's `options.signal`.
 
-- [ ] **Step 2: Add timeout + cancel + progress state to `AppState['ai']`.** Add `elapsedMs: number` (or derive it from a `startedAt: number | null` timestamp instead of polling — prefer storing `startedAt` and computing elapsed at render time via a `setInterval`-driven tick, to avoid a state field that needs updating every render frame).
+- [x] **Step 2: Add timeout + cancel + progress state to `AppState['ai']`.** Add `elapsedMs: number` (or derive it from a `startedAt: number | null` timestamp instead of polling — prefer storing `startedAt` and computing elapsed at render time via a `setInterval`-driven tick, to avoid a state field that needs updating every render frame).
 
-- [ ] **Step 3: In `analyze()`,** create an `AbortController`, store it (component-level `let` or a ref-equivalent — Preact hooks: use `useRef` if not already imported, following how other mutable-across-renders values are handled elsewhere in this file), start a `setTimeout(() => controller.abort(), 45000)`, and pass `controller.signal` to `analyzeViaBackend`. On abort (catch a `DOMException` named `AbortError` specifically, distinct from other fetch failures), set a distinct error state ("Analysis timed out after 45s" / bilingual) with a visible "Retry" action rather than the generic error message path.
+- [x] **Step 3: In `analyze()`,** create an `AbortController`, store it (component-level `let` or a ref-equivalent — Preact hooks: use `useRef` if not already imported, following how other mutable-across-renders values are handled elsewhere in this file), start a `setTimeout(() => controller.abort(), 45000)`, and pass `controller.signal` to `analyzeViaBackend`. On abort (catch a `DOMException` named `AbortError` specifically, distinct from other fetch failures), set a distinct error state ("Analysis timed out after 45s" / bilingual) with a visible "Retry" action rather than the generic error message path.
 
-- [ ] **Step 4: Add a visible Cancel button** while `state.ai.loading` is true, calling `controller.abort()` directly (reachable from the same scope `analyze()` runs in — if `analyze()` is re-entrant/re-invoked per click, the controller needs to live somewhere that survives across the function's async boundary but is reachable by a button rendered during the pending state; a `useRef<AbortController | null>` on the component is the standard fit here).
+- [x] **Step 4: Add a visible Cancel button** while `state.ai.loading` is true, calling `controller.abort()` directly (reachable from the same scope `analyze()` runs in — if `analyze()` is re-entrant/re-invoked per click, the controller needs to live somewhere that survives across the function's async boundary but is reachable by a button rendered during the pending state; a `useRef<AbortController | null>` on the component is the standard fit here).
 
-- [ ] **Step 5: Add elapsed-time-driven progress-stage labels.** A small pure function, e.g. `progressStageLabel(elapsedMs: number, lang: 'ar'|'en'): string`, mapping bucketed elapsed time to a label — `0-5000` → "Preparing context" / "بيحضّر السياق", `5000-20000` → "Gathering evidence" / "بيجمع الأدلة", `20000-40000` → "Analyzing" / "بيحلل", `40000+` → "Finalizing" / "بيخلّص". Render this label next to the loading spinner while `state.ai.loading` is true, driven by a `setInterval` tick (500ms is enough resolution) that re-renders only while loading, cleared on completion/cancel/unmount.
+- [x] **Step 5: Add elapsed-time-driven progress-stage labels.** A small pure function, e.g. `progressStageLabel(elapsedMs: number, lang: 'ar'|'en'): string`, mapping bucketed elapsed time to a label — `0-5000` → "Preparing context" / "بيحضّر السياق", `5000-20000` → "Gathering evidence" / "بيجمع الأدلة", `20000-40000` → "Analyzing" / "بيحلل", `40000+` → "Finalizing" / "بيخلّص". Render this label next to the loading spinner while `state.ai.loading` is true, driven by a `setInterval` tick (500ms is enough resolution) that re-renders only while loading, cleared on completion/cancel/unmount.
 
-- [ ] **Step 6: Manual verification.** Run `npm run dev`, trigger an analysis, confirm the progress label changes over time, confirm Cancel actually aborts the in-flight request (Network tab shows the request cancelled), and confirm a forced short timeout (temporarily lower `45000` to `2000` for this check only, then revert) surfaces the distinct timeout error with a working Retry action.
+- [x] **Step 6: Manual verification.** Run `npm run dev`, trigger an analysis, confirm the progress label changes over time, confirm Cancel actually aborts the in-flight request (Network tab shows the request cancelled), and confirm a forced short timeout (temporarily lower `45000` to `2000` for this check only, then revert) surfaces the distinct timeout error with a working Retry action.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add src/api/llmProviders.ts src/App.tsx
@@ -1085,7 +1098,7 @@ git commit -m "feat: add a 45s timeout, cancellation, retry, and progress-stage 
 
 Item 10, completed: Expert mode differentiates through a real computed table, not more prose.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 ```ts
 import { describe, it, expect } from 'vitest';
@@ -1112,12 +1125,12 @@ describe('computeSensitivityTable', () => {
 });
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run: `npx vitest run tests/client/sensitivity.test.ts`
 Expected: FAIL — module doesn't exist.
 
-- [ ] **Step 3: Implement `src/lib/sensitivity.ts`**
+- [x] **Step 3: Implement `src/lib/sensitivity.ts`**
 
 ```ts
 const OZ_GRAMS = 31.1035;
@@ -1143,14 +1156,14 @@ export function computeSensitivityTable(
 
 Check how the existing Wallet tab already normalizes mixed holdings (oz/g24/g21/g18/pounds) into a single 24k-gram-equivalent figure before computing `walletIntlValue` — reuse that exact conversion logic (do not reimplement karat-fraction math here; import or replicate the established constants from wherever `WalletHoldings`/`fmt`/the karat fractions live in `App.tsx`, matching the file's existing `f: 1 | 22/24 | 0.875 | 0.75` pattern seen in the karat table).
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 Run: `npx vitest run tests/client/sensitivity.test.ts`
 Expected: PASS.
 
-- [ ] **Step 5: Render the sensitivity table, Expert mode only, alongside `assumptions`/`missing_inputs`** (added to the render tree in Task 6; if that task rendered them as plain lists already, this task adds the sensitivity table as a small grid/table component near them, using the existing table-styling patterns already present elsewhere in the file, e.g. the wallet cost-basis table).
+- [x] **Step 5: Render the sensitivity table, Expert mode only, alongside `assumptions`/`missing_inputs`** (added to the render tree in Task 6; if that task rendered them as plain lists already, this task adds the sensitivity table as a small grid/table component near them, using the existing table-styling patterns already present elsewhere in the file, e.g. the wallet cost-basis table).
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/lib/sensitivity.ts tests/client/sensitivity.test.ts src/App.tsx
