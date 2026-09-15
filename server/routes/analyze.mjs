@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { createApiKeyAuthMiddleware } from '../auth.mjs';
 import { runProviderAnalysis } from '../providers/dispatch.mjs';
 import { repairAnalysisJson } from './repairAnalysisJson.mjs';
+import { validateAnalysis } from './validateAnalysis.mjs';
 import { searchWeb } from '../webSearch.mjs';
 
 // Only real Claude (provider_type 'claude') gets the native, agentic
@@ -170,6 +171,15 @@ export function createAnalyzeRouter(db, userId) {
         if (repaired) text = JSON.stringify(repaired);
       }
 
+      const parsedForValidation = (() => {
+        try {
+          return JSON.parse(extractBraces(text) || text);
+        } catch {
+          return null;
+        }
+      })();
+      const validationWarnings = validateAnalysis({ parsed: parsedForValidation, rawText: text, evidenceIds });
+
       if (isShared) {
         const cost = estimateSharedCostUsd(result.usage);
         if (cost > SHARED_COST_WARN_THRESHOLD_USD) {
@@ -186,7 +196,7 @@ export function createAnalyzeRouter(db, userId) {
         );
       }
 
-      res.json({ ...result, text });
+      res.json({ ...result, text, validationWarnings });
     } catch (err) {
       res.status(502).json({ error: err.message });
     }

@@ -54,7 +54,7 @@ describe('POST /api/analyze', () => {
     const res = await request(app).post('/api/analyze').send({ prompt: 'analyze this' });
 
     expect(res.status).toBe(200);
-    expect(res.body).toEqual({ text: '{"one_liner":"ok"}', usedWebSearch: true });
+    expect(res.body).toEqual({ text: '{"one_liner":"ok"}', usedWebSearch: true, validationWarnings: [] });
     expect(runProviderAnalysis).toHaveBeenCalledWith(
       expect.objectContaining({ id: rows[0].id, provider_type: 'claude' }),
       'analyze this'
@@ -79,6 +79,37 @@ describe('POST /api/analyze', () => {
     expect(parsed.one_liner).toBe('x');
     expect(parsed.suggested_weights).toEqual({ deesc: 33, base: 34, stag: 33 });
     expect(parsed.tranche2).toEqual({ verdict: 'wait', reasoning: 'z' });
+  });
+
+  it('flags suggested_weights that do not sum to 100 via validationWarnings, without failing the request', async () => {
+    const { rows } = await client.query(
+      `INSERT INTO llm_providers (user_id, provider_type, label, model, is_active)
+       VALUES ($1, 'claude', 'Claude', 'claude-sonnet-4-6', true) RETURNING *`,
+      [userId]
+    );
+    runProviderAnalysis.mockResolvedValue({
+      text: '{"one_liner":"ok","suggested_weights":{"deesc":30,"base":40,"stag":20}}',
+      usedWebSearch: false,
+    });
+
+    const res = await request(app).post('/api/analyze').send({ prompt: 'analyze this' });
+
+    expect(res.status).toBe(200);
+    expect(res.body.validationWarnings).toEqual(['suggested_weights sums to 90, not 100']);
+  });
+
+  it('returns an empty validationWarnings array for a clean response', async () => {
+    await client.query(
+      `INSERT INTO llm_providers (user_id, provider_type, label, model, is_active)
+       VALUES ($1, 'claude', 'Claude', 'claude-sonnet-4-6', true)`,
+      [userId]
+    );
+    runProviderAnalysis.mockResolvedValue({ text: '{"one_liner":"ok"}', usedWebSearch: false });
+
+    const res = await request(app).post('/api/analyze').send({ prompt: 'analyze this' });
+
+    expect(res.status).toBe(200);
+    expect(res.body.validationWarnings).toEqual([]);
   });
 
   it('returns 502 when the provider call fails', async () => {
