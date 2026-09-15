@@ -111,7 +111,7 @@ export async function listModelsById(id: number): Promise<string[]> {
   return data.models;
 }
 
-export async function analyzeViaBackend(prompt: string): Promise<{ text: string; usedWebSearch: boolean }> {
+export async function analyzeViaBackend(prompt: string): Promise<{ text: string; usedWebSearch: boolean; validationWarnings: string[] }> {
   const response = await fetch('/api/analyze', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },

@@ -84,7 +84,7 @@ type AppState = {
   diag: string;
   goldSource: string;
   aiLevel: 'beginner' | 'expert';
-  ai: { loading: boolean; error: string | null; data: AIResult | null; at: string | null; applied: boolean; usedWebSearch: boolean; providerLabel: string | null };
+  ai: { loading: boolean; error: string | null; data: AIResult | null; at: string | null; applied: boolean; usedWebSearch: boolean; validationWarnings: string[]; providerLabel: string | null };
   newMonitor: string;
 };
 
@@ -125,7 +125,7 @@ const defaultState: AppState = {
   diag: '',
   goldSource: '',
   aiLevel: 'beginner',
-  ai: { loading: false, error: null, data: null, at: null, applied: false, usedWebSearch: false, providerLabel: null },
+  ai: { loading: false, error: null, data: null, at: null, applied: false, usedWebSearch: false, validationWarnings: [], providerLabel: null },
   newMonitor: '',
 };
 
@@ -1162,7 +1162,7 @@ Write every string VALUE in ${langName} — the whole analysis, every sentence, 
 The three suggested_weights values must sum to 100.`;
 
     try {
-      const { text, usedWebSearch } = await analyzeViaBackend(prompt);
+      const { text, usedWebSearch, validationWarnings } = await analyzeViaBackend(prompt);
       const fallback = buildFallbackAnalysis(weightedTarget);
       const parsedPayload = tryParseJson(text);
       const extractedPayload = parsedPayload ? null : extractFieldsFromBrokenJson(text);
@@ -1195,6 +1195,7 @@ The three suggested_weights values must sum to 100.`;
           at: new Date().toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }),
           applied: false,
           usedWebSearch,
+          validationWarnings,
           providerLabel: `${activeProvider.label} · ${activeProvider.model}`,
         },
       }));
@@ -1221,6 +1222,7 @@ The three suggested_weights values must sum to 100.`;
           at: new Date().toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }),
           applied: false,
           usedWebSearch: false,
+          validationWarnings: [],
           providerLabel: null,
         },
       }));
@@ -1714,6 +1716,12 @@ The three suggested_weights values must sum to 100.`;
                       <div>
                         <div className="section-label gold-text" style={{ marginBottom: 6 }}>{t.aiWatchH}</div>
                         <div className="soft-text" style={{ fontSize: 15, lineHeight: 1.8 }}>{state.ai.data.watchlist_read}</div>
+                      </div>
+                    ) : null}
+                    {state.ai.validationWarnings && state.ai.validationWarnings.length > 0 ? (
+                      <div className="down-text" style={{ fontSize: 13, lineHeight: 1.6 }}>
+                        {state.lang === 'ar' ? 'تنبيه فحص تلقائي: ' : 'Automated check flagged: '}
+                        {state.ai.validationWarnings.join(' · ')}
                       </div>
                     ) : null}
                     <div className="muted-text font-mono" style={{ fontSize: 13, borderTop: '1px dashed var(--border)', paddingTop: 10 }}>
