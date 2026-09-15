@@ -224,11 +224,18 @@ export function createAnalyzeRouter(db, userId) {
       // computeConfidence in validateAnalysis.mjs (monotonic: it can only
       // hold or lower the model's reported confidence, never raise it).
       const modelConfidence = parsedForValidation?.primary_decision?.confidence;
+      // dca_read is deliberately excluded here, mirroring CLAIM_FIELD_KEYS in
+      // validateAnalysis.mjs: its numbers are the user's own plan data (from
+      // the snapshot), not an external market claim needing evidence-ID
+      // citation, so it legitimately carries evidence_ids: [] even when
+      // fully compliant. Counting it as a "claim" here would cap
+      // evidenceCoverageRatio below 0.5 for a correct, fully-valid
+      // DCA-focused response, silently capping confidence at 'medium' for no
+      // real reason.
       const claimFields = [
         parsedForValidation?.weights_reasoning,
         parsedForValidation?.egp_read,
         parsedForValidation?.wallet_read,
-        parsedForValidation?.dca_read,
         parsedForValidation?.watchlist_read,
         ...(Array.isArray(parsedForValidation?.primary_decision?.reasons) ? parsedForValidation.primary_decision.reasons : []),
       ].filter(Boolean);

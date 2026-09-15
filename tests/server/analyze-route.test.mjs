@@ -152,6 +152,38 @@ describe('POST /api/analyze', () => {
     expect(parsed.primary_decision.action).toBe('insufficient_evidence');
   });
 
+  it('does not count dca_read toward evidenceCoverageRatio, so an uncited DCA amount never caps confidence at medium', async () => {
+    await client.query(
+      `INSERT INTO llm_providers (user_id, provider_type, label, model, is_active)
+       VALUES ($1, 'claude', 'Claude', 'claude-sonnet-4-6', true)`,
+      [userId]
+    );
+    // dca_read states an EGP amount with no evidence_ids — that's correct,
+    // not a violation: it's the user's own plan data (validated separately
+    // by checkDcaAmountWithinSnapshot), not an evidence-backed market claim.
+    // No other field here states a number, so if dca_read were wrongly
+    // counted as a "claim" this response's evidenceCoverageRatio would drop
+    // from 1 to 0 and cap confidence at 'medium' even though validation
+    // passes cleanly and the model reported 'high'.
+    runProviderAnalysis.mockResolvedValue({
+      text: JSON.stringify({
+        primary_decision: { headline: 'h', action: 'buy', confidence: 'high' },
+        suggested_weights: { deesc: 33, base: 34, stag: 33 },
+        weights_reasoning: { text: 'steady macro backdrop supports current allocation', evidence_ids: [] },
+        dca_read: { text: 'Invest 5000 EGP into this tranche', evidence_ids: [] },
+      }),
+      usedWebSearch: false,
+    });
+
+    const res = await request(app).post('/api/analyze').send({ prompt: 'analyze this' });
+
+    expect(res.status).toBe(200);
+    expect(res.body.validation).toEqual({ ok: true, errors: [] });
+    expect(runProviderAnalysis).toHaveBeenCalledTimes(1);
+    const parsed = JSON.parse(res.body.text);
+    expect(parsed.primary_decision.confidence).toBe('high');
+  });
+
   it('returns 502 when the provider call fails', async () => {
     await client.query(
       `INSERT INTO llm_providers (user_id, provider_type, label, model, is_active)
