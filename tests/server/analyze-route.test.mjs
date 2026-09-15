@@ -234,6 +234,31 @@ describe('POST /api/analyze — web search augmentation for non-native-search pr
     expect(augmentedPrompt).toContain('analyze this');
   });
 
+  it('tags injected search results with stable evidence IDs and instructs the model to cite them', async () => {
+    process.env.SERPAPI_API_KEY = 'serp-test-key';
+    await client.query(
+      `INSERT INTO llm_providers (user_id, provider_type, label, model, is_active)
+       VALUES ($1, 'ollama', 'Local', 'gemma4', true)`,
+      [userId]
+    );
+    searchWeb.mockResolvedValue([
+      { title: 'Gold hits record high', snippet: 'Prices surged on Fed cut bets', link: 'https://example.com/1', date: '2 hours ago' },
+      { title: 'Fed holds rates steady', snippet: 'FOMC statement cites inflation risk', link: 'https://example.com/2', date: '' },
+    ]);
+    runProviderAnalysis.mockResolvedValue({ text: '{"one_liner":"ok"}', usedWebSearch: false });
+
+    const res = await request(app).post('/api/analyze').send({ prompt: 'analyze this' });
+
+    expect(res.status).toBe(200);
+    const [, augmentedPrompt] = runProviderAnalysis.mock.calls[0];
+    expect(augmentedPrompt).toContain('[EV-001]');
+    expect(augmentedPrompt).toContain('[EV-002]');
+    expect(augmentedPrompt).toContain('Gold hits record high');
+    expect(augmentedPrompt).toMatch(/cite the ID/i);
+    expect(augmentedPrompt).toMatch(/[Nn]ever invent an ID/);
+  });
+
+
   it('does not augment the prompt when SERPAPI_API_KEY is not configured', async () => {
     delete process.env.SERPAPI_API_KEY;
     await client.query(

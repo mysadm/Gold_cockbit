@@ -33,15 +33,19 @@ const WEB_SEARCH_QUERIES = [
 ];
 const NATIVE_SEARCH_PROVIDER_TYPES = new Set(['claude']);
 
+function evidenceIdFor(index) {
+  return `EV-${String(index + 1).padStart(3, '0')}`;
+}
+
 function formatSearchResults(results) {
   return results
-    .map((r, i) => `${i + 1}. ${r.title}${r.date ? ` [${r.date}]` : ''} — ${r.snippet} (${r.link})`)
+    .map((r, i) => `[${evidenceIdFor(i)}] ${r.title}${r.date ? ` [${r.date}]` : ''} — ${r.snippet} (${r.link})`)
     .join('\n');
 }
 
 async function augmentPromptWithSearch(prompt) {
   const apiKey = process.env.SERPAPI_API_KEY;
-  if (!apiKey) return { prompt, usedWebSearch: false };
+  if (!apiKey) return { prompt, usedWebSearch: false, evidenceIds: [] };
 
   try {
     const resultsPerQuery = await Promise.all(
@@ -53,11 +57,12 @@ async function augmentPromptWithSearch(prompt) {
       seenLinks.add(r.link);
       return true;
     });
-    if (results.length === 0) return { prompt, usedWebSearch: false };
-    const augmented = `LIVE WEB SEARCH RESULTS (use these as your source of current market/news context):\n${formatSearchResults(results)}\n\n${prompt}`;
-    return { prompt: augmented, usedWebSearch: true };
+    if (results.length === 0) return { prompt, usedWebSearch: false, evidenceIds: [] };
+    const evidenceIds = results.map((_, i) => evidenceIdFor(i));
+    const augmented = `LIVE WEB SEARCH RESULTS (use these as your source of current market/news context). Each result is tagged with a stable evidence ID like [EV-001]. Whenever you state a time-sensitive fact drawn from these results anywhere in your JSON output, cite the ID(s) it came from in brackets at the end of that sentence, e.g. "...rose 2% today [EV-002]." Never invent an ID that is not listed below, and never attach an ID to a claim these results don't actually support:\n${formatSearchResults(results)}\n\n${prompt}`;
+    return { prompt: augmented, usedWebSearch: true, evidenceIds };
   } catch {
-    return { prompt, usedWebSearch: false };
+    return { prompt, usedWebSearch: false, evidenceIds: [] };
   }
 }
 
@@ -142,10 +147,12 @@ export function createAnalyzeRouter(db, userId) {
     try {
       let effectivePrompt = prompt;
       let injectedWebSearch = false;
+      let evidenceIds = [];
       if (!NATIVE_SEARCH_PROVIDER_TYPES.has(provider.provider_type)) {
         const augmented = await augmentPromptWithSearch(prompt);
         effectivePrompt = augmented.prompt;
         injectedWebSearch = augmented.usedWebSearch;
+        evidenceIds = augmented.evidenceIds;
       }
 
       const result = await runProviderAnalysis(provider, effectivePrompt);
