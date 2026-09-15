@@ -113,15 +113,21 @@ describe('repairAnalysisJson', () => {
     expect(repairAnalysisJson('not json at all, just plain text')).toBeNull();
   });
 
-  it('repairs a response truncated mid-way through confidence_reasons, recovering the fields before it', () => {
-    // Missing the closing ']' for confidence_reasons before trends starts.
-    const broken = '{"one_liner": "x", "confidence": "medium", "confidence_reasons": ["fresh evidence", "trends": ["a"], "suggested_weights": {"deesc": 33, "base": 34, "stag": 33}, "weights_reasoning": "y", "tranche2": {"verdict": "wait", "reasoning": "z"}, "egp_read": "w"}';
+  it('prefers the repair candidate that recovers confidence over one that drops it, when both otherwise score equally', () => {
+    // The "last '}'" candidate truncates right after tranche2's nested
+    // object, silently dropping confidence/confidence_reasons entirely
+    // (they come after tranche2 in the text but before the object's real
+    // end). Only the "full remainder" candidate recovers them — and it
+    // only wins the score comparison because 'confidence' is itself in
+    // EXPECTED_KEYS; without it, both candidates tie and the first
+    // (confidence-less) one wins the tie-break instead.
+    const broken = '{"one_liner": "x", "trends": ["a"], "tranche2": {"verdict": "wait", "reasoning": "z"}, "confidence": "medium", "confidence_reasons": ["fresh data"';
 
     const repaired = repairAnalysisJson(broken);
 
     expect(repaired.one_liner).toBe('x');
     expect(repaired.confidence).toBe('medium');
-    expect(repaired.suggested_weights).toEqual({ deesc: 33, base: 34, stag: 33 });
+    expect(repaired.confidence_reasons).toEqual(['fresh data']);
   });
 
   it('extracts JSON wrapped in markdown code fences', () => {
