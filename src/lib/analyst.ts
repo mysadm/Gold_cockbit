@@ -375,8 +375,8 @@ export function buildFallbackAnalysis(input: {
 
   const dcaReadText = dcaPlanData
     ? (lang === 'ar'
-        ? 'ده تحليل بديل محلي — راجع تبويب خطة الدخول التدريجي مباشرة عشان تعرف حالة الدفعة الحالية.'
-        : 'This is a local fallback analysis — check the DCA Plan tab directly for your current tranche status.')
+        ? `ده تحليل بديل محلي بدون بحث لحظي — راجع تبويب خطة الدخول التدريجي عشان تتأكد من حالة الدفعة الحالية. بناءً على موقع السعر الحالي مقابل هدفك المرجح، ${deltaPct >= 0 ? 'السعر حاليًا عند أو فوق الهدف، فدخول جزئي وحذر أنسب من تنفيذ الدفعة كاملة دلوقتي' : 'السعر حاليًا تحت هدفك المرجح، وده بيدعم تنفيذ الدفعة على الجدول المحدد بدل الانتظار'}.`
+        : `This is a local fallback analysis with no live research behind it — check the DCA Plan tab to confirm your current tranche status. Based on where spot sits versus your weighted target, ${deltaPct >= 0 ? 'spot is at or above your target, so a partial, cautious entry makes more sense than deploying the full tranche right now' : 'spot is below your weighted target, which supports deploying this tranche on schedule rather than waiting'}.`)
     : null;
 
   const watchlistReadText = monitors.length > 0
