@@ -1,3 +1,5 @@
+import type { AnalysisSnapshot } from '../lib/analysisSnapshot';
+
 export type ProviderType = 'ollama' | 'openai' | 'claude' | 'custom' | 'shared' | 'openrouter';
 
 export type LlmProviderSettings = {
@@ -112,11 +114,14 @@ export async function listModelsById(id: number): Promise<string[]> {
   return data.models;
 }
 
-export async function analyzeViaBackend(prompt: string): Promise<{ text: string; usedWebSearch: boolean; validationWarnings: string[] }> {
+export async function analyzeViaBackend(
+  prompt: string,
+  snapshot: AnalysisSnapshot
+): Promise<{ text: string; usedWebSearch: boolean; validation: { ok: boolean; errors: string[] } }> {
   const response = await fetch('/api/analyze', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ prompt }),
+    body: JSON.stringify({ prompt, snapshot }),
   });
   return parseJsonOrThrow(response);
 }

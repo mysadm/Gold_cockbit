@@ -15,7 +15,7 @@ const WEIGHTS_SUM_TOLERANCE = 1; // absorbs Math.round() rounding, not real drif
 // carrying no evidence_ids, when none is expected or needed for the user's
 // own numbers.
 const CLAIM_FIELD_KEYS = ['weights_reasoning', 'egp_read', 'wallet_read', 'watchlist_read'];
-const NUMBER_OR_PERCENT_RE = /(\d{1,3}(?:[.,]\d+)?\s?%)|(\$\s?\d[\d,]*(?:\.\d+)?)|(\b\d[\d,]{2,}(?:\.\d+)?\s?(?:EGP|جنيه)\b)/;
+export const NUMBER_OR_PERCENT_RE = /(\d{1,3}(?:[.,]\d+)?\s?%)|(\$\s?\d[\d,]*(?:\.\d+)?)|(\b\d[\d,]{2,}(?:\.\d+)?\s?(?:EGP|جنيه)\b)/;
 
 function checkWeightsSum(parsed) {
   const weights = parsed?.suggested_weights;

@@ -1000,7 +1000,13 @@ function App() {
     const prompt = buildAnalysisPrompt(snapshot, snapshot.watchlist);
 
     try {
-      const { text, usedWebSearch, validationWarnings } = await analyzeViaBackend(prompt);
+      const { text, usedWebSearch, validation } = await analyzeViaBackend(prompt, snapshot);
+      // AppState still carries `validationWarnings` (a plain string array) —
+      // Task 9 renames this state field to `validation` and updates the
+      // downstream UI to read `.ok`. Until then, surface the new
+      // {ok, errors} shape's errors through the existing field so the
+      // warning banner keeps working across the transition.
+      const validationWarnings = validation.errors;
       const fallback = buildFallbackAnalysis({ lang: state.lang, weights: state.weights, spot: state.spot, weightedTarget, walletHasHoldings, walletIntlValue, walletEgyptValue, monitors: state.monitors, dcaPlanData: dcaPlan.data });
       // primary_decision.reasons/dca_read describe their own provenance
       // ("this is a local fallback, not model-generated") — substituting them

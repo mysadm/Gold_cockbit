@@ -58,11 +58,12 @@ describe('POST /api/analyze', () => {
     const res = await request(app).post('/api/analyze').send({ prompt: 'analyze this' });
 
     expect(res.status).toBe(200);
-    expect(res.body).toEqual({ text: '{"one_liner":"ok"}', usedWebSearch: false, validationWarnings: [] });
+    expect(res.body).toEqual({ text: '{"one_liner":"ok"}', usedWebSearch: false, validation: { ok: true, errors: [] } });
     expect(runProviderAnalysis).toHaveBeenCalledWith(
       expect.objectContaining({ id: rows[0].id, provider_type: 'claude' }),
       'analyze this'
     );
+    expect(runProviderAnalysis).toHaveBeenCalledTimes(1);
   });
 
   it('repairs malformed-but-recoverable JSON before returning it', async () => {
@@ -85,24 +86,7 @@ describe('POST /api/analyze', () => {
     expect(parsed.tranche2).toEqual({ verdict: 'wait', reasoning: 'z' });
   });
 
-  it('flags suggested_weights that do not sum to 100 via validationWarnings, without failing the request', async () => {
-    const { rows } = await client.query(
-      `INSERT INTO llm_providers (user_id, provider_type, label, model, is_active)
-       VALUES ($1, 'claude', 'Claude', 'claude-sonnet-4-6', true) RETURNING *`,
-      [userId]
-    );
-    runProviderAnalysis.mockResolvedValue({
-      text: '{"one_liner":"ok","suggested_weights":{"deesc":30,"base":40,"stag":20}}',
-      usedWebSearch: false,
-    });
-
-    const res = await request(app).post('/api/analyze').send({ prompt: 'analyze this' });
-
-    expect(res.status).toBe(200);
-    expect(res.body.validationWarnings).toEqual(['suggested_weights sums to 90, not 100']);
-  });
-
-  it('returns an empty validationWarnings array for a clean response', async () => {
+  it('returns validation:{ok:true, errors:[]} for a clean response, with no retry', async () => {
     await client.query(
       `INSERT INTO llm_providers (user_id, provider_type, label, model, is_active)
        VALUES ($1, 'claude', 'Claude', 'claude-sonnet-4-6', true)`,
@@ -113,7 +97,59 @@ describe('POST /api/analyze', () => {
     const res = await request(app).post('/api/analyze').send({ prompt: 'analyze this' });
 
     expect(res.status).toBe(200);
-    expect(res.body.validationWarnings).toEqual([]);
+    expect(res.body.validation).toEqual({ ok: true, errors: [] });
+    expect(runProviderAnalysis).toHaveBeenCalledTimes(1);
+  });
+
+  it('retries once on a hard validation failure and returns the corrected response when the retry passes', async () => {
+    await client.query(
+      `INSERT INTO llm_providers (user_id, provider_type, label, model, is_active)
+       VALUES ($1, 'claude', 'Claude', 'claude-sonnet-4-6', true)`,
+      [userId]
+    );
+    // First attempt: weights don't sum to 100 — a hard validation failure.
+    // Second attempt (the corrective retry): fixed weights, passes validation.
+    runProviderAnalysis
+      .mockResolvedValueOnce({
+        text: '{"primary_decision":{"headline":"h","action":"buy","confidence":"high"},"suggested_weights":{"deesc":30,"base":40,"stag":20}}',
+        usedWebSearch: false,
+      })
+      .mockResolvedValueOnce({
+        text: '{"primary_decision":{"headline":"h","action":"buy","confidence":"high"},"suggested_weights":{"deesc":30,"base":40,"stag":30}}',
+        usedWebSearch: false,
+      });
+
+    const res = await request(app).post('/api/analyze').send({ prompt: 'analyze this' });
+
+    expect(res.status).toBe(200);
+    expect(res.body.validation).toEqual({ ok: true, errors: [] });
+    expect(runProviderAnalysis).toHaveBeenCalledTimes(2);
+    const parsed = JSON.parse(res.body.text);
+    expect(parsed.suggested_weights).toEqual({ deesc: 30, base: 40, stag: 30 });
+  });
+
+  it('forces primary_decision.action to insufficient_evidence when both the original and the retry fail validation', async () => {
+    await client.query(
+      `INSERT INTO llm_providers (user_id, provider_type, label, model, is_active)
+       VALUES ($1, 'claude', 'Claude', 'claude-sonnet-4-6', true)`,
+      [userId]
+    );
+    // Both attempts return weights that don't sum to 100 — the retry never
+    // corrects the problem, so the route must force a safe downgrade rather
+    // than silently returning an unverified analysis.
+    runProviderAnalysis.mockResolvedValue({
+      text: '{"primary_decision":{"headline":"h","action":"buy","confidence":"high"},"suggested_weights":{"deesc":30,"base":40,"stag":20}}',
+      usedWebSearch: false,
+    });
+
+    const res = await request(app).post('/api/analyze').send({ prompt: 'analyze this' });
+
+    expect(res.status).toBe(200);
+    expect(res.body.validation.ok).toBe(false);
+    expect(res.body.validation.errors).toEqual(['suggested_weights sums to 90, not 100']);
+    expect(runProviderAnalysis).toHaveBeenCalledTimes(2);
+    const parsed = JSON.parse(res.body.text);
+    expect(parsed.primary_decision.action).toBe('insufficient_evidence');
   });
 
   it('returns 502 when the provider call fails', async () => {

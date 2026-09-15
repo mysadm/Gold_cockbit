@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { createApiKeyAuthMiddleware } from '../auth.mjs';
 import { runProviderAnalysis } from '../providers/dispatch.mjs';
 import { repairAnalysisJson } from './repairAnalysisJson.mjs';
-import { validateAnalysis } from './validateAnalysis.mjs';
+import { validateAnalysis, computeConfidence, NUMBER_OR_PERCENT_RE as NUMBER_OR_PERCENT_RE_FOR_COVERAGE } from './validateAnalysis.mjs';
 import { searchWeb } from '../webSearch.mjs';
 
 // No provider_type has any real-time access of its own — Claude's native
@@ -122,7 +122,7 @@ export function createAnalyzeRouter(db, userId) {
   });
 
   router.post('/', async (req, res) => {
-    const { prompt } = req.body;
+    const { prompt, snapshot } = req.body;
     const { rows } = await db.query(
       'SELECT * FROM llm_providers WHERE user_id = $1 AND is_active = true',
       [userId]
@@ -171,14 +171,75 @@ export function createAnalyzeRouter(db, userId) {
         if (repaired) text = JSON.stringify(repaired);
       }
 
-      const parsedForValidation = (() => {
+      let parsedForValidation = (() => {
         try {
           return JSON.parse(extractBraces(text) || text);
         } catch {
           return null;
         }
       })();
-      const validationWarnings = validateAnalysis({ parsed: parsedForValidation, rawText: text, evidenceIds });
+      let validation = validateAnalysis({ parsed: parsedForValidation, rawText: text, evidenceIds, snapshot });
+
+      if (!validation.ok) {
+        // One corrective re-prompt, mirroring the existing "output only
+        // JSON" retry pattern already used for malformed responses — the
+        // model gets one chance to fix the exact errors found, not a
+        // free-form do-over. If the retry still fails, we don't loop again;
+        // we force a safe, honest downgrade below instead.
+        const correctionPrompt = `Your previous response failed these checks:\n${validation.errors.map((e) => `- ${e}`).join('\n')}\nReturn a corrected JSON object that fixes every listed issue. Do not introduce new numbers, dates, or claims beyond what you already stated or what the supplied evidence/snapshot support.`;
+        const retryResult = await runProviderAnalysis(provider, `${effectivePrompt}\n\n${correctionPrompt}`);
+        let retryText = retryResult.text;
+        if (!isParseableJson(retryText)) {
+          const repaired = repairAnalysisJson(retryText);
+          if (repaired) retryText = JSON.stringify(repaired);
+        }
+        const retryParsed = (() => {
+          try {
+            return JSON.parse(extractBraces(retryText) || retryText);
+          } catch {
+            return null;
+          }
+        })();
+        const retryValidation = validateAnalysis({ parsed: retryParsed, rawText: retryText, evidenceIds, snapshot });
+        if (retryValidation.ok) {
+          text = retryText;
+          parsedForValidation = retryParsed;
+          validation = retryValidation;
+        } else {
+          // Still failing after one correction attempt — force a safe,
+          // honest result rather than rendering an unverified analysis.
+          validation = retryValidation;
+          if (parsedForValidation && typeof parsedForValidation === 'object') {
+            parsedForValidation.primary_decision = {
+              ...(parsedForValidation.primary_decision || {}),
+              action: 'insufficient_evidence',
+            };
+            text = JSON.stringify(parsedForValidation);
+          }
+        }
+      }
+
+      // Confidence is always computed here from the validated result, never
+      // trusted from the model's own self-reported value — see
+      // computeConfidence in validateAnalysis.mjs (monotonic: it can only
+      // hold or lower the model's reported confidence, never raise it).
+      const modelConfidence = parsedForValidation?.primary_decision?.confidence;
+      const claimFields = [
+        parsedForValidation?.weights_reasoning,
+        parsedForValidation?.egp_read,
+        parsedForValidation?.wallet_read,
+        parsedForValidation?.dca_read,
+        parsedForValidation?.watchlist_read,
+        ...(Array.isArray(parsedForValidation?.primary_decision?.reasons) ? parsedForValidation.primary_decision.reasons : []),
+      ].filter(Boolean);
+      const fieldsWithClaims = claimFields.filter((f) => NUMBER_OR_PERCENT_RE_FOR_COVERAGE.test(f?.text || ''));
+      const fieldsWithEvidence = fieldsWithClaims.filter((f) => Array.isArray(f?.evidence_ids) && f.evidence_ids.length > 0);
+      const evidenceCoverageRatio = fieldsWithClaims.length === 0 ? 1 : fieldsWithEvidence.length / fieldsWithClaims.length;
+      const confidence = computeConfidence({ modelConfidence, errors: validation.errors, evidenceCoverageRatio });
+      if (parsedForValidation && typeof parsedForValidation === 'object' && parsedForValidation.primary_decision) {
+        parsedForValidation.primary_decision.confidence = confidence;
+        text = JSON.stringify(parsedForValidation);
+      }
 
       if (isShared) {
         const cost = estimateSharedCostUsd(result.usage);
@@ -196,7 +257,7 @@ export function createAnalyzeRouter(db, userId) {
         );
       }
 
-      res.json({ ...result, text, validationWarnings });
+      res.json({ ...result, text, validation });
     } catch (err) {
       res.status(502).json({ error: err.message });
     }
