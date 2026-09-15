@@ -1,48 +1,101 @@
 import { describe, it, expect } from 'vitest';
-import { validateAnalysis } from '../../server/routes/validateAnalysis.mjs';
+import { validateAnalysis, computeConfidence } from '../../server/routes/validateAnalysis.mjs';
 
-describe('validateAnalysis', () => {
-  it('returns no warnings for a clean result with weights summing to 100 and only known evidence IDs', () => {
+const baseSnapshot = { dca: null };
+
+describe('validateAnalysis (v2)', () => {
+  it('returns ok:true for a clean v2 response', () => {
     const parsed = {
-      one_liner: 'Hold steady [EV-001].',
+      primary_decision: { action: 'hold', horizon: 'now', headline: 'x', confidence: 'medium', reasons: [{ text: 'steady', evidence_ids: [] }] },
       suggested_weights: { deesc: 30, base: 45, stag: 25 },
+      egp_read: { text: 'fine', evidence_ids: [] },
     };
-    const warnings = validateAnalysis({ parsed, rawText: JSON.stringify(parsed), evidenceIds: ['EV-001', 'EV-002'] });
-    expect(warnings).toEqual([]);
+    const result = validateAnalysis({ parsed, rawText: JSON.stringify(parsed), evidenceIds: [], snapshot: baseSnapshot });
+    expect(result).toEqual({ ok: true, errors: [] });
   });
 
-  it('flags suggested_weights that do not sum to 100', () => {
-    const parsed = { suggested_weights: { deesc: 30, base: 45, stag: 20 } };
-    const warnings = validateAnalysis({ parsed, rawText: JSON.stringify(parsed), evidenceIds: [] });
-    expect(warnings).toEqual(['suggested_weights sums to 95, not 100']);
+  it('hard-fails when suggested_weights does not sum to 100', () => {
+    const parsed = { suggested_weights: { deesc: 30, base: 45, stag: 20 }, primary_decision: { action: 'hold', horizon: 'now', headline: 'x', confidence: 'low', reasons: [] } };
+    const result = validateAnalysis({ parsed, rawText: JSON.stringify(parsed), evidenceIds: [], snapshot: baseSnapshot });
+    expect(result.ok).toBe(false);
+    expect(result.errors).toContain('suggested_weights sums to 95, not 100');
   });
 
-  it('tolerates a rounding-only mismatch of at most 1', () => {
-    const parsed = { suggested_weights: { deesc: 33, base: 34, stag: 34 } };
-    const warnings = validateAnalysis({ parsed, rawText: JSON.stringify(parsed), evidenceIds: [] });
-    expect(warnings).toEqual([]);
+  it('hard-fails a claim field stating a percentage with no evidence_ids', () => {
+    const parsed = {
+      primary_decision: { action: 'hold', horizon: 'now', headline: 'x', confidence: 'high', reasons: [] },
+      suggested_weights: { deesc: 33, base: 34, stag: 33 },
+      egp_read: { text: 'the pound weakened 3% this week', evidence_ids: [] },
+    };
+    const result = validateAnalysis({ parsed, rawText: JSON.stringify(parsed), evidenceIds: ['EV-001'], snapshot: baseSnapshot });
+    expect(result.ok).toBe(false);
+    expect(result.errors.some((e) => e.includes('egp_read'))).toBe(true);
   });
 
-  it('flags a cited evidence ID that was never supplied to the model', () => {
-    const rawText = 'The Fed held rates steady [EV-007].';
-    const warnings = validateAnalysis({ parsed: { one_liner: rawText }, rawText, evidenceIds: ['EV-001', 'EV-002'] });
-    expect(warnings).toEqual(['cited evidence ID(s) not in the supplied search results: EV-007']);
+  it('does not fail a claim field with no numeric content and empty evidence_ids', () => {
+    const parsed = {
+      primary_decision: { action: 'hold', horizon: 'now', headline: 'x', confidence: 'medium', reasons: [] },
+      suggested_weights: { deesc: 33, base: 34, stag: 33 },
+      egp_read: { text: 'the pound is broadly stable', evidence_ids: [] },
+    };
+    const result = validateAnalysis({ parsed, rawText: JSON.stringify(parsed), evidenceIds: [], snapshot: baseSnapshot });
+    expect(result.ok).toBe(true);
   });
 
-  it('does not flag evidence IDs when none were supplied to the model (no web search occurred)', () => {
-    const rawText = 'Gold looks steady today.';
-    const warnings = validateAnalysis({ parsed: { one_liner: rawText }, rawText, evidenceIds: [] });
-    expect(warnings).toEqual([]);
+  it('hard-fails a cited evidence ID that was never supplied', () => {
+    const parsed = {
+      primary_decision: { action: 'hold', horizon: 'now', headline: 'x', confidence: 'medium', reasons: [] },
+      suggested_weights: { deesc: 33, base: 34, stag: 33 },
+      egp_read: { text: 'rates held steady', evidence_ids: ['EV-999'] },
+    };
+    const result = validateAnalysis({ parsed, rawText: JSON.stringify(parsed), evidenceIds: ['EV-001'], snapshot: baseSnapshot });
+    expect(result.ok).toBe(false);
+    expect(result.errors.some((e) => e.includes('EV-999'))).toBe(true);
   });
 
-  it('skips the weights check entirely when suggested_weights is absent', () => {
-    const warnings = validateAnalysis({ parsed: { one_liner: 'x' }, rawText: 'x', evidenceIds: [] });
-    expect(warnings).toEqual([]);
+  it('hard-fails when dca_read states an EGP amount exceeding the plan\'s actual investment cap', () => {
+    const parsed = {
+      primary_decision: { action: 'hold', horizon: 'now', headline: 'x', confidence: 'medium', reasons: [] },
+      suggested_weights: { deesc: 33, base: 34, stag: 33 },
+      dca_read: { text: 'deploy 50000 EGP into this tranche', evidence_ids: [] },
+    };
+    const snapshot = { dca: { mode: 'fixed', total_investment_egp: 30000, monthly_investment_egp: null } };
+    const result = validateAnalysis({ parsed, rawText: JSON.stringify(parsed), evidenceIds: [], snapshot });
+    expect(result.ok).toBe(false);
+    expect(result.errors.some((e) => e.includes('dca_read'))).toBe(true);
   });
 
-  it('handles parsed being null (unparseable response) without throwing', () => {
-    const rawText = 'not json [EV-999]';
-    const warnings = validateAnalysis({ parsed: null, rawText, evidenceIds: ['EV-001'] });
-    expect(warnings).toEqual(['cited evidence ID(s) not in the supplied search results: EV-999']);
+  it('does not fail a dca_read amount within the plan\'s cap', () => {
+    const parsed = {
+      primary_decision: { action: 'hold', horizon: 'now', headline: 'x', confidence: 'medium', reasons: [] },
+      suggested_weights: { deesc: 33, base: 34, stag: 33 },
+      dca_read: { text: 'deploy 12000 EGP into this tranche', evidence_ids: [] },
+    };
+    const snapshot = { dca: { mode: 'fixed', total_investment_egp: 30000, monthly_investment_egp: null } };
+    const result = validateAnalysis({ parsed, rawText: JSON.stringify(parsed), evidenceIds: [], snapshot });
+    expect(result.ok).toBe(true);
+  });
+
+  it('returns ok:false with a specific error when parsed is null', () => {
+    const result = validateAnalysis({ parsed: null, rawText: 'not json', evidenceIds: [], snapshot: baseSnapshot });
+    expect(result).toEqual({ ok: false, errors: ['response was not valid JSON'] });
+  });
+});
+
+describe('computeConfidence', () => {
+  it('returns the model confidence unchanged when there are no errors and coverage is high', () => {
+    expect(computeConfidence({ modelConfidence: 'high', errors: [], evidenceCoverageRatio: 1 })).toBe('high');
+  });
+
+  it('downgrades to low whenever there are any validation errors, regardless of model confidence', () => {
+    expect(computeConfidence({ modelConfidence: 'high', errors: ['x'], evidenceCoverageRatio: 1 })).toBe('low');
+  });
+
+  it('caps at medium when evidence coverage is below 50%, even with no errors', () => {
+    expect(computeConfidence({ modelConfidence: 'high', errors: [], evidenceCoverageRatio: 0.3 })).toBe('medium');
+  });
+
+  it('never raises confidence above what the model itself reported', () => {
+    expect(computeConfidence({ modelConfidence: 'low', errors: [], evidenceCoverageRatio: 1 })).toBe('low');
   });
 });
