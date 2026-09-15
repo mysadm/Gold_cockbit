@@ -16,6 +16,40 @@ export type AIResult = {
   watchlist_read?: string;
 };
 
+export type ClaimField = { text: string; evidence_ids: string[] };
+
+export type HorizonKey = 'now' | 'next_event' | 'strategic';
+
+export type PrimaryDecisionAction = 'buy' | 'hold' | 'wait' | 'reduce' | 'review' | 'insufficient_evidence';
+
+export type PrimaryDecision = {
+  action: PrimaryDecisionAction;
+  horizon: HorizonKey;
+  headline: string;
+  confidence: AIConfidenceLevel;
+  reasons: ClaimField[];
+};
+
+export type HorizonAction = {
+  horizon: HorizonKey;
+  action: string;
+  condition: string;
+};
+
+export type AIResultV2 = {
+  schema_version: '2';
+  primary_decision: PrimaryDecision;
+  horizon_actions: HorizonAction[];
+  suggested_weights: { deesc: number; base: number; stag: number };
+  weights_reasoning: ClaimField;
+  egp_read: ClaimField;
+  wallet_read?: ClaimField;
+  dca_read?: ClaimField;
+  watchlist_read?: ClaimField;
+  assumptions: string[];
+  missing_inputs: string[];
+};
+
 function fmt(n: number, d = 0) {
   return n.toLocaleString('en-US', { minimumFractionDigits: d, maximumFractionDigits: d });
 }
