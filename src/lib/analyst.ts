@@ -39,7 +39,15 @@ export type AIResultV2 = {
 
 export function buildAnalysisPrompt(
   snapshot: AnalysisSnapshot,
-  watchlist: { id: string; label: string; signal: 'supportive' | 'watch' | 'risk' }[]
+  watchlist: { id: string; label: string; signal: 'supportive' | 'watch' | 'risk' }[],
+  // Whether the active provider's own "Web search" toggle is on. This is a
+  // best-effort, client-side signal (the server may still end up supplying
+  // no evidence pack even when this is true, e.g. no SERPAPI_API_KEY
+  // configured) — the CITATIONS instruction below is worded accordingly so
+  // the model is never asked to do something structurally unsatisfiable.
+  // Server-side validateAnalysis.mjs is the actual authority on whether
+  // citations are required; this only affects prompt wording.
+  hasEvidencePack: boolean = true
 ): string {
   const lang = snapshot.locale;
   const langName = lang === 'ar' ? 'Egyptian colloquial Arabic (مصري)' : 'English';
@@ -82,7 +90,9 @@ export function buildAnalysisPrompt(
     }`
   );
   lines.push(
-    `CITATIONS — every ClaimField's "text" that states a number, percentage, price, or dated event must have that claim's supporting evidence_id(s) (as given to you in the search results, formatted like "EV-001") in that field's "evidence_ids" array. A field whose text makes no time-sensitive claim may have an empty evidence_ids array — but never leave evidence_ids empty when the text asserts a specific number, percentage, price, or dated event.`
+    hasEvidencePack
+      ? `CITATIONS — every ClaimField's "text" that states a number, percentage, price, or dated event must have that claim's supporting evidence_id(s) (as given to you in the search results, formatted like "EV-001") in that field's "evidence_ids" array. A field whose text makes no time-sensitive claim may have an empty evidence_ids array — but never leave evidence_ids empty when the text asserts a specific number, percentage, price, or dated event.`
+      : `CITATIONS — no live search results were supplied for this request, so no evidence IDs exist to cite. Leave every field's "evidence_ids" array empty ([]) — never invent an ID like "EV-001", since none were given to you.`
   );
   lines.push(
     `Write every string VALUE in ${langName} — the whole analysis, every sentence, must be in ${langName}, no English mixed in unless it's a ticker/number. Respond with ONLY a single JSON object, no markdown code fences, matching EXACTLY this schema and these key names in English (the KEYS stay in English exactly as shown, only the VALUES are translated, no other keys, no nested wrapper object):`

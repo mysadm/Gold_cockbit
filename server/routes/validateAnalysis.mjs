@@ -36,27 +36,49 @@ function fieldEvidenceIds(field) {
   return field.evidence_ids.filter((id) => typeof id === 'string');
 }
 
-function checkClaimField(key, field, knownIds, errors) {
+// The "cited ID must be known" half of the check — kept separate from the
+// citation-required check below so it can be applied on its own to fields
+// (like dca_read) that legitimately carry evidence_ids without being
+// required to cite numeric claims.
+function checkEvidenceIdsKnown(key, field, knownIds, errors) {
   if (!field) return;
-  const text = fieldText(field);
   const ids = fieldEvidenceIds(field);
-  if (NUMBER_OR_PERCENT_RE.test(text) && ids.length === 0) {
-    errors.push(`${key} states a number/percentage/price with no evidence_ids attached`);
-  }
   const unknown = ids.filter((id) => !knownIds.has(id));
   if (unknown.length > 0) {
     errors.push(`${key} cites evidence ID(s) not in the supplied search results: ${unknown.join(', ')}`);
   }
 }
 
+// requireCitations gates ONLY the "numeric claim needs evidence_ids" rule.
+// When no evidence pack was supplied at all (web search off, or no
+// SERPAPI_API_KEY), there are no valid IDs the model could possibly cite, so
+// demanding citations there would hard-fail every numeric claim
+// unconditionally. The "cited ID must be known" check stays unconditional
+// regardless: with zero known IDs, any cited ID is still fabricated.
+function checkClaimField(key, field, knownIds, errors, requireCitations) {
+  if (!field) return;
+  const text = fieldText(field);
+  const ids = fieldEvidenceIds(field);
+  if (requireCitations && NUMBER_OR_PERCENT_RE.test(text) && ids.length === 0) {
+    errors.push(`${key} states a number/percentage/price with no evidence_ids attached`);
+  }
+  checkEvidenceIdsKnown(key, field, knownIds, errors);
+}
+
 function checkClaimFields(parsed, evidenceIds) {
   const errors = [];
   const known = new Set(evidenceIds || []);
-  for (const key of CLAIM_FIELD_KEYS) checkClaimField(key, parsed?.[key], known, errors);
+  const requireCitations = known.size > 0;
+  for (const key of CLAIM_FIELD_KEYS) checkClaimField(key, parsed?.[key], known, errors, requireCitations);
   const reasons = parsed?.primary_decision?.reasons;
   if (Array.isArray(reasons)) {
-    reasons.forEach((reason, i) => checkClaimField(`primary_decision.reasons[${i}]`, reason, known, errors));
+    reasons.forEach((reason, i) => checkClaimField(`primary_decision.reasons[${i}]`, reason, known, errors, requireCitations));
   }
+  // dca_read is excluded from CLAIM_FIELD_KEYS (its numeric content is the
+  // user's own plan data, not an evidence-citation claim — see the comment
+  // above), but the prompt schema still invites the model to attach
+  // evidence_ids to it, so a fabricated ID there should still be caught.
+  checkEvidenceIdsKnown('dca_read', parsed?.dca_read, known, errors);
   return errors;
 }
 

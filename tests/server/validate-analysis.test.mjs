@@ -42,6 +42,22 @@ describe('validateAnalysis (v2)', () => {
     expect(result.ok).toBe(true);
   });
 
+  it('does NOT hard-fail a numeric claim with empty evidence_ids when no evidence pack was supplied at all', () => {
+    // Contrast with the earlier test ("hard-fails a claim field stating a
+    // percentage with no evidence_ids"), which passes evidenceIds: ['EV-001']
+    // (a real evidence pack exists). Here evidenceIds is [] — web search was
+    // off, or SERPAPI_API_KEY unset — so there are no valid IDs the model
+    // could possibly cite. Requiring citations here would hard-fail every
+    // numeric claim unconditionally whenever the pack is empty.
+    const parsed = {
+      primary_decision: { action: 'hold', horizon: 'now', headline: 'x', confidence: 'high', reasons: [] },
+      suggested_weights: { deesc: 33, base: 34, stag: 33 },
+      egp_read: { text: 'the pound weakened 3% this week', evidence_ids: [] },
+    };
+    const result = validateAnalysis({ parsed, rawText: JSON.stringify(parsed), evidenceIds: [], snapshot: baseSnapshot });
+    expect(result.ok).toBe(true);
+  });
+
   it('hard-fails a cited evidence ID that was never supplied', () => {
     const parsed = {
       primary_decision: { action: 'hold', horizon: 'now', headline: 'x', confidence: 'medium', reasons: [] },
@@ -74,6 +90,22 @@ describe('validateAnalysis (v2)', () => {
     const snapshot = { dca: { mode: 'fixed', total_investment_egp: 30000, monthly_investment_egp: null } };
     const result = validateAnalysis({ parsed, rawText: JSON.stringify(parsed), evidenceIds: [], snapshot });
     expect(result.ok).toBe(true);
+  });
+
+  it('hard-fails dca_read citing a fabricated evidence ID not in the supplied set', () => {
+    // dca_read is excluded from CLAIM_FIELD_KEYS (its numbers are the user's
+    // own plan data, not an evidence-citation claim), but the prompt schema
+    // still invites the model to attach evidence_ids to it, so a fabricated
+    // ID there must still be caught, same as every other claim field.
+    const parsed = {
+      primary_decision: { action: 'hold', horizon: 'now', headline: 'x', confidence: 'medium', reasons: [] },
+      suggested_weights: { deesc: 33, base: 34, stag: 33 },
+      dca_read: { text: 'deploy 12000 EGP into this tranche', evidence_ids: ['EV-999'] },
+    };
+    const snapshot = { dca: { mode: 'fixed', total_investment_egp: 30000, monthly_investment_egp: null } };
+    const result = validateAnalysis({ parsed, rawText: JSON.stringify(parsed), evidenceIds: ['EV-001'], snapshot });
+    expect(result.ok).toBe(false);
+    expect(result.errors.some((e) => e.includes('dca_read') && e.includes('EV-999'))).toBe(true);
   });
 
   it('returns ok:false with a specific error when parsed is null', () => {

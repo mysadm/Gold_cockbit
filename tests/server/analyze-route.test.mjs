@@ -184,6 +184,37 @@ describe('POST /api/analyze', () => {
     expect(parsed.primary_decision.confidence).toBe('high');
   });
 
+  it('does not force insufficient_evidence for a numeric claim when web search is disabled and no evidence pack exists', async () => {
+    // provider's own "Web search" toggle is off (settings.webSearch: false)
+    // and no SERPAPI_API_KEY is set in this test environment, so evidenceIds
+    // is []. Before the fix, checkClaimField's citation-required rule fired
+    // unconditionally, so any numeric claim (here, egp_read's "3%") hard-
+    // failed both the original attempt and the retry — since there are no
+    // valid evidence IDs to cite either way — and got forced to
+    // insufficient_evidence on every single analysis with search off.
+    await client.query(
+      `INSERT INTO llm_providers (user_id, provider_type, label, model, is_active, settings)
+       VALUES ($1, 'claude', 'Claude', 'claude-sonnet-4-6', true, $2)`,
+      [userId, JSON.stringify({ webSearch: false })]
+    );
+    runProviderAnalysis.mockResolvedValue({
+      text: JSON.stringify({
+        primary_decision: { headline: 'h', action: 'buy', confidence: 'high' },
+        suggested_weights: { deesc: 33, base: 34, stag: 33 },
+        egp_read: { text: 'the pound weakened 3% this week', evidence_ids: [] },
+      }),
+      usedWebSearch: false,
+    });
+
+    const res = await request(app).post('/api/analyze').send({ prompt: 'analyze this' });
+
+    expect(res.status).toBe(200);
+    expect(res.body.validation).toEqual({ ok: true, errors: [] });
+    expect(runProviderAnalysis).toHaveBeenCalledTimes(1);
+    const parsed = JSON.parse(res.body.text);
+    expect(parsed.primary_decision.action).toBe('buy');
+  });
+
   it('returns 502 when the provider call fails', async () => {
     await client.query(
       `INSERT INTO llm_providers (user_id, provider_type, label, model, is_active)
