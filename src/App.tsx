@@ -190,18 +190,24 @@ function extractFieldsFromBrokenJson(text: string): Record<string, unknown> | nu
   };
   const result: Record<string, unknown> = {};
   const one_liner = getStr('one_liner');
+  const confidence = getStr('confidence');
+  const confidence_reasons = getArr('confidence_reasons');
   const trends = getArr('trends');
   const weights_reasoning = getStr('weights_reasoning');
   const egp_read = getStr('egp_read');
   const wallet_read = getStr('wallet_read');
+  const dca_read = getStr('dca_read');
   const watchlist_read = getStr('watchlist_read');
   const tranche2Verdict = clean.match(/"verdict"\s*:\s*"([^"]*)"/);
   const tranche2Reasoning = clean.match(/"tranche2"[\s\S]*?"reasoning"\s*:\s*"((?:[^"\\]|\\.)*)"/);
   if (one_liner) result.one_liner = one_liner;
+  if (confidence) result.confidence = confidence;
+  if (confidence_reasons) result.confidence_reasons = confidence_reasons;
   if (trends) result.trends = trends;
   if (weights_reasoning) result.weights_reasoning = weights_reasoning;
   if (egp_read) result.egp_read = egp_read;
   if (wallet_read) result.wallet_read = wallet_read;
+  if (dca_read) result.dca_read = dca_read;
   if (watchlist_read) result.watchlist_read = watchlist_read;
   if (tranche2Verdict || tranche2Reasoning) {
     result.tranche2 = {
@@ -1164,13 +1170,22 @@ The three suggested_weights values must sum to 100.`;
     try {
       const { text, usedWebSearch, validationWarnings } = await analyzeViaBackend(prompt);
       const fallback = buildFallbackAnalysis(weightedTarget);
+      // confidence/confidence_reasons/dca_read describe their own provenance
+      // ("this is a local fallback, not model-generated") — substituting them
+      // into an otherwise-real model response (e.g. one that simply omitted
+      // confidence_reasons) would falsely claim the whole analysis is a
+      // fallback. Use this stripped-down object wherever normalizeAIResult is
+      // asked to fill in gaps in a real response; the catch block below still
+      // uses `fallback` directly, where the honest self-describing wording
+      // belongs (that path genuinely is a fallback with no live model data).
+      const normalizationFallback: AIResult = { ...fallback, confidence: undefined, confidence_reasons: undefined, dca_read: undefined };
       const parsedPayload = tryParseJson(text);
       const extractedPayload = parsedPayload ? null : extractFieldsFromBrokenJson(text);
       const cleanText = stripJsonFences(text);
       const parsed = parsedPayload
-        ? normalizeAIResult(parsedPayload, fallback)
+        ? normalizeAIResult(parsedPayload, normalizationFallback)
         : extractedPayload
-          ? normalizeAIResult(extractedPayload, fallback)
+          ? normalizeAIResult(extractedPayload, normalizationFallback)
           : normalizeAIResult(
               {
                 one_liner: cleanText
@@ -1184,7 +1199,7 @@ The three suggested_weights values must sum to 100.`;
                 wallet_read: fallback.wallet_read,
                 watchlist_read: fallback.watchlist_read,
               },
-              fallback
+              normalizationFallback
             );
       setState((prev) => ({
         ...prev,
