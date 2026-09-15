@@ -13,12 +13,6 @@ export const DEFAULT_BASE_URLS = {
 // provider row — the row exists only to hold the "shared" activation state.
 const SHARED_TIER_MODEL = 'claude-haiku-4-5';
 
-// Off only when the user explicitly unchecked the "Web search" toggle in the
-// AI settings card — unset (older rows, never-saved settings) defaults on.
-export function isWebSearchEnabled(providerRow) {
-  return providerRow.settings?.webSearch !== false;
-}
-
 export async function runProviderAnalysis(providerRow, prompt, { expectJson = true, system = GOLD_MARKET_ANALYST_SYSTEM_PROMPT } = {}) {
   const temperature = typeof providerRow.settings?.temperature === 'number' ? providerRow.settings.temperature : undefined;
   // maxTokens from user settings is only ever applied as a ceiling *increase* — the

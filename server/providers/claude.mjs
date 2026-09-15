@@ -15,11 +15,11 @@ async function callAnthropic({ apiKey, model, messages, temperature, maxTokens, 
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
   try {
-    // 16000 (not 8000): the response schema spans up to 7 written fields
-    // (one_liner, trends, weights_reasoning, tranche2, egp_read, wallet_read,
-    // watchlist_read), and 8000 was getting exhausted before the JSON was
-    // fully written, truncating it mid-string. A user-configured maxTokens
-    // can only raise this floor, never lower it.
+    // 16000 (not 8000): the response is a multi-field JSON object (primary
+    // decision with reasons, horizon actions, suggested weights, several
+    // ClaimField reads, assumptions/missing inputs), and 8000 was getting
+    // exhausted before the JSON was fully written, truncating it mid-string.
+    // A user-configured maxTokens can only raise this floor, never lower it.
     const body = { model, max_tokens: Math.max(maxTokens || 0, 16000), messages };
     if (typeof temperature === 'number') body.temperature = temperature;
     if (system) body.system = system;
