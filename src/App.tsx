@@ -35,12 +35,14 @@ import { Card, SectionLabel, Hairline, MetricRow, GlowBar, ChangeTag, Icon } fro
 import {
   normalizeAIResult,
   buildFallbackAnalysis,
+  buildAnalysisPrompt,
   extractFieldsFromBrokenJson,
   tryParseJson,
   stripJsonFences,
   type AIResult,
   type AIConfidenceLevel,
 } from './lib/analyst';
+import { buildAnalysisSnapshot, type BuildSnapshotInput } from './lib/analysisSnapshot';
 
 type Theme = 'light' | 'vault';
 type Language = 'en' | 'ar';
@@ -916,70 +918,69 @@ function App() {
     }
     setState((prev) => ({ ...prev, ai: { ...prev.ai, loading: true, error: null, data: prev.ai.data, at: prev.ai.at, applied: false } }));
     const weightedTarget = SCEN_META.reduce((sum, scenario) => sum + (state.weights[scenario.key] / 100) * ((scenario.lo + scenario.hi) / 2), 0);
-    const watch = state.monitors.map((monitor) => `${state.lang === 'ar' ? monitor.ar : monitor.en}=${['supportive', 'watch', 'risk'][monitor.sig]}`).join(', ');
-    const scenarioContext = SCEN_META.map((scenario) => `${t.scen[scenario.key].name} (currently weighted ${state.weights[scenario.key]}%, price band $${fmt(scenario.lo)}-$${fmt(scenario.hi)}): ${t.scen[scenario.key].thesis}`).join(' | ');
-    const langName = state.lang === 'ar' ? 'Egyptian colloquial Arabic (مصري)' : 'English';
     let egyptSnapshot = egypt.data;
     if (!egyptSnapshot) {
       egyptSnapshot = await fetchEgyptPrices().catch(() => null);
       if (egyptSnapshot) setEgypt({ loading: false, error: null, data: egyptSnapshot });
     }
-    const egyptContext = egyptSnapshot
-      ? egyptSnapshot.rows.map((row) => `${EGYPT_KARAT_LABEL[row.karat](t)}: sell ${row.sell} EGP / buy ${row.buy} EGP`).join(', ')
-      : null;
-    const walletContext = walletHasHoldings
-      ? walletRows.filter((row) => row.amount > 0).map((row) => `${t[row.labelKey]}: ${row.amount}${row.key === 'pounds' ? '' : 'g'}`).join(', ')
-      : null;
-    const dcaContext = (() => {
-      if (!dcaPlan.data) return null;
-      const isRecurring = dcaPlan.data.mode === 'recurring';
-      const parts = isRecurring
-        ? [`mode=${dcaPlan.data.mode}`, `monthly_investment_egp=${dcaPlan.data.total_investment_egp}`, `spacing_months=${dcaPlan.data.spacing_months}`]
-        : [`mode=${dcaPlan.data.mode}`, `total_investment_egp=${dcaPlan.data.total_investment_egp}`, `spacing_months=${dcaPlan.data.spacing_months}`, `tranche_split=${tranchePct.join('/')}%`];
-      if (dcaWindows && trancheStatus.length) {
-        const activeIndex = trancheStatus.indexOf('active');
-        const nextPendingIndex = trancheStatus.indexOf('pending');
-        if (activeIndex >= 0) {
-          parts.push(isRecurring
-            ? `status=OPEN NOW, window ${formatTrancheWindow(dcaWindows[activeIndex].windowStart, dcaWindows[activeIndex].windowEnd)}, recurring monthly deployment of ${dcaPlan.data.total_investment_egp} EGP`
-            : `status=OPEN NOW, window ${formatTrancheWindow(dcaWindows[activeIndex].windowStart, dcaWindows[activeIndex].windowEnd)}, tranche ${activeIndex + 1} at ${tranchePct[activeIndex] ?? tranchePct[activeIndex % tranchePct.length]}% of budget`);
-        } else if (nextPendingIndex >= 0) {
-          parts.push(`status=next window ${formatTrancheWindow(dcaWindows[nextPendingIndex].windowStart, dcaWindows[nextPendingIndex].windowEnd)}`);
-        } else {
-          parts.push('status=all tranches complete');
-        }
-      }
-      const costBasisParts = walletCostBasis
-        .filter((cb) => cb.openQty > 0)
-        .map((cb) => `${cb.unit}: avg cost ${fmt(cb.avgCostEgp)} EGP, open qty ${cb.openQty}`);
-      if (costBasisParts.length) parts.push(`cost_basis=[${costBasisParts.join('; ')}]`);
-      return parts.join(', ');
-    })();
-    const cockpitState = {
-      xau_usd: state.spot,
-      usd_egp: state.egp,
-      weighted_target_usd: Math.round(weightedTarget),
+    const activeIndex = trancheStatus.indexOf('active');
+    const nextPendingIndex = trancheStatus.indexOf('pending');
+    const activeOrNextIndex = activeIndex >= 0 ? activeIndex : nextPendingIndex;
+    const snapshotInput: BuildSnapshotInput = {
+      generatedAt: new Date().toISOString(),
+      locale: state.lang,
+      explanationLevel: state.aiLevel,
+      spot: state.spot,
+      egp: state.egp,
+      weightedTarget: Math.round(weightedTarget),
+      scenarios: SCEN_META.map((scenario) => ({
+        key: scenario.key,
+        nameEn: T.en.scen[scenario.key].name,
+        weightPct: state.weights[scenario.key],
+        priceLo: scenario.lo,
+        priceHi: scenario.hi,
+        thesis: T.en.scen[scenario.key].thesis,
+      })),
+      egypt: egyptSnapshot
+        ? {
+            retrievedAt: egyptSnapshot.fetchedAt,
+            rows: egyptSnapshot.rows.map((row) => ({ karat: row.karat, sell: row.sell, buy: row.buy })),
+          }
+        : null,
+      wallet: {
+        hasHoldings: walletHasHoldings,
+        holdings: Object.fromEntries(walletRows.map((row) => [row.key, row.amount])),
+        intlValueEgp: walletIntlValue,
+        egyptValueEgp: walletEgyptValue,
+        costBasis: walletCostBasis.map((cb) => ({
+          unit: cb.unit,
+          avgCostEgp: cb.avgCostEgp,
+          openQty: cb.openQty,
+          realizedEgp: cb.realizedEgp,
+        })),
+      },
+      dca: dcaPlan.data
+        ? {
+            mode: dcaPlan.data.mode,
+            spacingMonths: dcaPlan.data.spacing_months,
+            tranchePcts: dcaPlan.data.mode === 'fixed' ? tranchePct : null,
+            totalInvestmentEgp: dcaPlan.data.mode === 'fixed' ? dcaPlan.data.total_investment_egp : null,
+            monthlyInvestmentEgp: dcaPlan.data.mode === 'recurring' ? dcaPlan.data.total_investment_egp : null,
+            trancheStatus,
+            activeIndex,
+            nextPendingIndex,
+            windowStart: dcaWindows && activeOrNextIndex >= 0 ? dcaWindows[activeOrNextIndex].windowStart.toISOString() : null,
+            windowEnd: dcaWindows && activeOrNextIndex >= 0 ? dcaWindows[activeOrNextIndex].windowEnd.toISOString() : null,
+          }
+        : null,
+      watchlist: state.monitors.map((monitor, index) => ({
+        id: String(index),
+        label: state.lang === 'ar' ? monitor.ar : monitor.en,
+        signal: (['supportive', 'watch', 'risk'] as const)[monitor.sig],
+      })),
     };
-    const prompt = `You are a senior precious-metals strategist advising a Cairo-based CIO. LIVE COCKPIT STATE (JSON): ${JSON.stringify(cockpitState)}.
-CURRENT SCENARIO FRAMEWORK (the user's existing weights and theses — these may be stale): ${scenarioContext}.
-Use your live web search to check whether real current events still support these theses as weighted, or whether the balance between the three scenarios has genuinely shifted. Specifically verify, don't assume from memory: the current status of any active armed conflict or military strikes (not just diplomatic tension) involving Iran, Russia/Ukraine, or any other major flashpoint; whether oil/gas shipping chokepoints (Strait of Hormuz, Red Sea/Bab-el-Mandeb) are open, restricted, or under attack right now; any new sanctions; Fed policy moves; central-bank gold buying; and EGP moves. A ceasefire, deal, or truce you remember from training may have already collapsed — search for its current state rather than assuming it held. Your suggested_weights must reflect this reassessment, not just restate the current weights.
-WATCHLIST — treat this as a primary input alongside your own research, not background color. Weigh supportive items toward the scenario they favor and risk items away from it; let them materially move both suggested_weights and the tranche2 verdict: ${watch}. Write watchlist_read as an explicit, named walk-through of these specific variables — call out which ones are currently supportive vs. risk, whether your live research still backs the user's current signal on each, and flag any where you think the user's own color-coding looks stale or wrong given what you found.
-${egyptContext ? `LOCAL EGYPTIAN MARKET (live retail prices from iSagha.com, EGP per gram): ${egyptContext}. Use this to ground your egp_read specifically in what a buyer/seller sees in the Egyptian market right now, not just the theoretical USD/EGP conversion.` : ''}
-${walletContext ? `HIS PHYSICAL WALLET (what he actually owns today): ${walletContext}. Current value: ~${fmt(walletIntlValue)} EGP at the international price${walletEgyptValue !== null ? `, ~${fmt(walletEgyptValue)} EGP at the live Egyptian market price` : ''}. Write wallet_read as a fresh re-evaluation of THIS SPECIFIC holding given today's read — is it well-positioned given the scenario reassessment above, should he add, hold, or trim, and note if the international and Egyptian-market valuations of it diverge meaningfully.` : ''}
-${dcaContext ? `HIS DCA (dollar-cost-averaging) PLAN: ${dcaContext}. Write dca_read as a concrete recommendation tied to the ACTUAL installment status above — if a tranche window is open, say so explicitly and whether today's read supports executing it on schedule or waiting a few days within the window; if the next window is in the future, say there's no action needed yet; reference his real average cost basis if given, and never suggest a deployment size beyond what his stated investment plan actually allows.` : ''}
-ANALYSIS DEPTH AND STYLE — this is a hard requirement, not a style suggestion: you are advising this specific person on this specific decision, not compiling a briefing. Every field must be grounded in specific facts you found in this search (named events, exact figures, dates, levels) — never a vague, generic statement like "geopolitical tensions" with nothing concrete behind it. But citing a fact is not the goal — explaining what it means for the reader is. For every fact you use, state its implication for the reader's position in the same sentence or the one right after it; never list findings as a headline feed. Pick the 2-3 developments that actually move the reader's decision and explain those well, rather than cataloguing everything you found. ${state.aiLevel === 'beginner' ? 'Explain those specifics in simple everyday language a non-expert can follow — plain words, no jargon — but still name the actual events and numbers, and always close the loop with what it means for him in EGP terms.' : 'Apply institutional-grade discipline: treat only what you verified via search as fact, mark anything else as background. Prioritize the Egyptian-market angle throughout — the local premium over the international price and the implied "souq-dollar" vs. the official EGP rate — since that\'s the layer the user actually holds. Write like an expert advising a client face-to-face: lead with the call, back it with the minimum evidence needed to justify it, and skip any fact that doesn\'t change what he should do. No filler, no restated caveats, no headline-dumping.'}
-Write every string VALUE in ${langName} — the whole analysis, every sentence, must be in ${langName}, no English mixed in unless it's a ticker/number. Respond with ONLY a single JSON object, no markdown code fences, matching EXACTLY this schema and these key names in English (the KEYS stay in English exactly as shown, only the VALUES are translated, no other keys, no nested wrapper object):
-{
-  "one_liner": "<one-sentence bottom-line: what he should do or watch right now, and the single biggest reason why, in ${langName}>",
-  "confidence": "<one of exactly: low | medium | high — NEVER an invented percentage like '85%'. Base this on: how fresh and mutually agreeing your search evidence is, whether the watchlist/wallet/DCA context you were given is complete, and whether the scenarios still disagree sharply with what you found>",
-  "confidence_reasons": ["<1-3 short reasons for that confidence level, in ${langName}, e.g. 'evidence is same-day and consistent' or 'no wallet context supplied'>"],
-  "trends": ["<2-3 developments that actually move this decision — for each, the event AND what it means for him, not just the headline, in ${langName}>"],
-  "suggested_weights": { "deesc": <number 0-100>, "base": <number 0-100>, "stag": <number 0-100> },
-  "weights_reasoning": "<why these weights, explained as cause-and-effect from what changed — not a recap of facts already stated elsewhere, in ${langName}>",
-  "tranche2": { "verdict": "<deploy|partial|wait>", "reasoning": "<why, in ${langName}>" },
-  "egp_read": "<how the EGP side of the hedge is doing, in ${langName}>"${walletContext ? `,\n  "wallet_read": "<re-evaluation of his physical wallet given today's read, in ${langName}>"` : ''}${dcaContext ? `,\n  "dca_read": "<concrete DCA recommendation tied to his actual installment status and cost basis, in ${langName}>"` : ''}${watch ? `,\n  "watchlist_read": "<named walk-through of the watchlist variables and whether your research still backs the user's signal on each, in ${langName}>"` : ''}
-}
-The three suggested_weights values must sum to 100.`;
+    const snapshot = buildAnalysisSnapshot(snapshotInput);
+    const prompt = buildAnalysisPrompt(snapshot, snapshot.watchlist);
 
     try {
       const { text, usedWebSearch, validationWarnings } = await analyzeViaBackend(prompt);

@@ -1,4 +1,5 @@
 import type { DcaPlan } from '../api/dcaPlan';
+import type { AnalysisSnapshot } from './analysisSnapshot';
 
 export type AIConfidenceLevel = 'low' | 'medium' | 'high';
 
@@ -49,6 +50,106 @@ export type AIResultV2 = {
   assumptions: string[];
   missing_inputs: string[];
 };
+
+export function buildAnalysisPrompt(
+  snapshot: AnalysisSnapshot,
+  watchlist: { id: string; label: string; signal: 'supportive' | 'watch' | 'risk' }[]
+): string {
+  const lang = snapshot.locale;
+  const langName = lang === 'ar' ? 'Egyptian colloquial Arabic (مصري)' : 'English';
+  const beginner = snapshot.explanation_level === 'beginner';
+  const egyptContext = snapshot.egypt;
+  const walletContext = snapshot.wallet.has_holdings;
+  const dcaContext = snapshot.dca;
+  const watchNames = watchlist.map((w) => `${w.label}=${w.signal}`).join(', ');
+
+  const lines: string[] = [];
+  lines.push(
+    `You are a senior precious-metals strategist advising a Cairo-based CIO. Treat the following DATA SNAPSHOT as ground truth — it was computed by the application, not you; never recompute, override, or second-guess any number in it. Cite it, don't derive from it: ${JSON.stringify(snapshot)}`
+  );
+  lines.push(
+    `Use your live web search to check whether real current events still support the scenario weights in the snapshot, or whether the balance between the three scenarios has genuinely shifted. Specifically verify, don't assume from memory: the current status of any active armed conflict or military strikes (not just diplomatic tension) involving Iran, Russia/Ukraine, or any other major flashpoint; whether oil/gas shipping chokepoints (Strait of Hormuz, Red Sea/Bab-el-Mandeb) are open, restricted, or under attack right now; any new sanctions; Fed policy moves; central-bank gold buying; and EGP moves. A ceasefire, deal, or truce you remember from training may have already collapsed — search for its current state rather than assuming it held. Your suggested_weights must reflect this reassessment, not just restate the snapshot's current weights.`
+  );
+  lines.push(
+    `WATCHLIST — treat this as a primary input alongside your own research, not background color. Weigh supportive items toward the scenario they favor and risk items away from it; let them materially move both suggested_weights and primary_decision: ${watchNames || '(none provided)'}. Write watchlist_read as an explicit, named walk-through of these specific variables — call out which ones are currently supportive vs. risk, whether your live research still backs the user's current signal on each, and flag any where you think the user's own color-coding looks stale or wrong given what you found.`
+  );
+  if (egyptContext) {
+    lines.push(
+      `Use the snapshot's "egypt" section (live retail prices, EGP per gram) to ground your egp_read specifically in what a buyer/seller sees in the Egyptian market right now, not just the theoretical USD/EGP conversion. The snapshot already computes implied_gold_market_usd_egp and local_premium_pct for you — cite them, don't recompute them.`
+    );
+  }
+  if (walletContext) {
+    lines.push(
+      `Use the snapshot's "wallet" section (what he actually owns today, and its computed value) to write wallet_read as a fresh re-evaluation of THIS SPECIFIC holding given today's read — is it well-positioned given the scenario reassessment above, should he add, hold, or trim, and note if the international and Egyptian-market valuations of it diverge meaningfully.`
+    );
+  }
+  if (dcaContext) {
+    lines.push(
+      `Use the snapshot's "dca" section (his actual installment status and cost basis) to write dca_read as a concrete recommendation tied to that ACTUAL status — if a tranche window is open (status=open_now), say so explicitly and whether today's read supports executing it on schedule or waiting a few days within the window; if the next window is in the future (status=next_window), say there's no action needed yet; reference his real average cost basis if given, and never suggest a deployment size beyond what his stated investment plan actually allows.`
+    );
+  }
+  lines.push(
+    `ANALYSIS DEPTH AND STYLE — this is a hard requirement, not a style suggestion: you are advising this specific person on this specific decision, not compiling a briefing. Every field must be grounded in specific facts you found in this search (named events, exact figures, dates, levels) — never a vague, generic statement like "geopolitical tensions" with nothing concrete behind it. But citing a fact is not the goal — explaining what it means for the reader is. For every fact you use, state its implication for the reader's position in the same sentence or the one right after it; never list findings as a headline feed. Pick the 2-3 developments that actually move the reader's decision and explain those well, rather than cataloguing everything you found. ${
+      beginner
+        ? 'Explain those specifics in simple everyday language a non-expert can follow — plain words, no jargon — but still name the actual events and numbers, and always close the loop with what it means for him in EGP terms.'
+        : 'Apply institutional-grade discipline: treat only what you verified via search as fact, mark anything else as background. Prioritize the Egyptian-market angle throughout — the local premium over the international price and the implied "souq-dollar" vs. the official EGP rate — since that\'s the layer the user actually holds. Write like an expert advising a client face-to-face: lead with the call, back it with the minimum evidence needed to justify it, and skip any fact that doesn\'t change what he should do. No filler, no restated caveats, no headline-dumping.'
+    }`
+  );
+  lines.push(
+    `CITATIONS — every ClaimField's "text" that states a number, percentage, price, or dated event must have that claim's supporting evidence_id(s) (as given to you in the search results, formatted like "EV-001") in that field's "evidence_ids" array. A field whose text makes no time-sensitive claim may have an empty evidence_ids array — but never leave evidence_ids empty when the text asserts a specific number, percentage, price, or dated event.`
+  );
+  lines.push(
+    `Write every string VALUE in ${langName} — the whole analysis, every sentence, must be in ${langName}, no English mixed in unless it's a ticker/number. Respond with ONLY a single JSON object, no markdown code fences, matching EXACTLY this schema and these key names in English (the KEYS stay in English exactly as shown, only the VALUES are translated, no other keys, no nested wrapper object):`
+  );
+
+  const schemaLines: string[] = [];
+  schemaLines.push(`  "schema_version": "2",`);
+  schemaLines.push(`  "primary_decision": {`);
+  schemaLines.push(`    "action": "<one of exactly: buy | hold | wait | reduce | review | insufficient_evidence>",`);
+  schemaLines.push(`    "horizon": "<one of exactly: now | next_event | strategic — which horizon this call is for>",`);
+  schemaLines.push(`    "headline": "<one-sentence bottom-line: what he should do right now, and the single biggest reason why, in ${langName}>",`);
+  schemaLines.push(`    "confidence": "<one of exactly: low | medium | high — NEVER an invented percentage like '85%'. Base this on: how fresh and mutually agreeing your search evidence is, whether the watchlist/wallet/DCA context you were given is complete, and whether the scenarios still disagree sharply with what you found>",`);
+  schemaLines.push(`    "reasons": [{ "text": "<1-3 entries, each the event AND what it means for him, in ${langName}>", "evidence_ids": ["<EV-XXX ids or []>"] }]`);
+  schemaLines.push(`  },`);
+  schemaLines.push(
+    `  "horizon_actions": [{ "horizon": "<now|next_event|strategic>", "action": "<what to do at this horizon, in ${langName}>", "condition": "<what would trigger this, in ${langName}>" }]`
+  );
+  schemaLines.push(`  ,"suggested_weights": { "deesc": <number 0-100>, "base": <number 0-100>, "stag": <number 0-100> },`);
+  schemaLines.push(
+    `  "weights_reasoning": { "text": "<why these weights, explained as cause-and-effect from what changed — not a recap of facts already stated elsewhere, in ${langName}>", "evidence_ids": ["<EV-XXX ids or []>"] },`
+  );
+  schemaLines.push(
+    `  "egp_read": { "text": "<how the EGP side of the hedge is doing, in ${langName}>", "evidence_ids": ["<EV-XXX for every number/date/event stated above, or [] if none>"] }`
+  );
+  if (walletContext) {
+    schemaLines.push(
+      `  ,"wallet_read": { "text": "<re-evaluation of his physical wallet given today's read, in ${langName}>", "evidence_ids": ["<EV-XXX ids or []>"] }`
+    );
+  }
+  if (dcaContext) {
+    schemaLines.push(
+      `  ,"dca_read": { "text": "<concrete DCA recommendation tied to his actual installment status and cost basis, in ${langName}>", "evidence_ids": ["<EV-XXX ids or []>"] }`
+    );
+  }
+  if (watchlist.length > 0) {
+    schemaLines.push(
+      `  ,"watchlist_read": { "text": "<named walk-through of the watchlist variables and whether your research still backs the user's signal on each, in ${langName}>", "evidence_ids": ["<EV-XXX ids or []>"] }`
+    );
+  }
+  schemaLines.push(
+    `  ,"assumptions": ["<anything you assumed because the snapshot didn't specify it — an empty array is fine and expected when nothing was assumed>"]`
+  );
+  schemaLines.push(
+    `  ,"missing_inputs": ["<anything you'd need to know to be more confident — an empty array is fine and expected when nothing is missing>"]`
+  );
+
+  lines.push(`{\n${schemaLines.join('\n')}\n}`);
+  lines.push(
+    `The three suggested_weights values must sum to 100. If your action differs across the now/next_event/strategic horizons, list each differing horizon in horizon_actions with its own action and the condition that would trigger a shift; if they don't differ, horizon_actions may be empty or contain one entry restating primary_decision — never contradict primary_decision without explaining why in weights_reasoning or a horizon_actions entry's condition.`
+  );
+
+  return lines.join('\n');
+}
 
 function fmt(n: number, d = 0) {
   return n.toLocaleString('en-US', { minimumFractionDigits: d, maximumFractionDigits: d });
