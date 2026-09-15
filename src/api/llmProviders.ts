@@ -116,12 +116,14 @@ export async function listModelsById(id: number): Promise<string[]> {
 
 export async function analyzeViaBackend(
   prompt: string,
-  snapshot: AnalysisSnapshot
+  snapshot: AnalysisSnapshot,
+  signal?: AbortSignal
 ): Promise<{ text: string; usedWebSearch: boolean; validation: { ok: boolean; errors: string[] } }> {
   const response = await fetch('/api/analyze', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ prompt, snapshot }),
+    signal,
   });
   return parseJsonOrThrow(response);
 }

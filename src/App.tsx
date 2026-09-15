@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'preact/hooks';
+import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { AIModelSettingsManager } from 'ai-settings-ui';
 import 'ai-settings-ui/styles.css';
 import { createGoldCockpitAiAdapter } from './lib/aiSettingsAdapter';
@@ -80,7 +80,18 @@ type AppState = {
   diag: string;
   goldSource: string;
   aiLevel: 'beginner' | 'expert';
-  ai: { loading: boolean; error: string | null; data: AIResultV2 | null; at: string | null; applied: boolean; usedWebSearch: boolean; validation: { ok: boolean; errors: string[] } | null; providerLabel: string | null };
+  ai: {
+    loading: boolean;
+    error: string | null;
+    data: AIResultV2 | null;
+    at: string | null;
+    applied: boolean;
+    usedWebSearch: boolean;
+    validation: { ok: boolean; errors: string[] } | null;
+    providerLabel: string | null;
+    startedAt: number | null;
+    timedOut: boolean;
+  };
   newMonitor: string;
 };
 
@@ -116,6 +127,13 @@ function primaryActionColor(action: PrimaryDecisionAction): string {
   }
 }
 
+function progressStageLabel(elapsedMs: number, lang: 'ar' | 'en'): string {
+  if (elapsedMs < 5000) return lang === 'ar' ? 'بيحضّر السياق' : 'Preparing context';
+  if (elapsedMs < 20000) return lang === 'ar' ? 'بيجمع الأدلة' : 'Gathering evidence';
+  if (elapsedMs < 40000) return lang === 'ar' ? 'بيحلل' : 'Analyzing';
+  return lang === 'ar' ? 'بيخلّص' : 'Finalizing';
+}
+
 const EGYPT_KARAT_LABEL: Record<EgyptGoldSnapshot['rows'][number]['karat'], (t: (typeof T)['ar'] | (typeof T)['en']) => string> = {
   '24k': (t) => t.k24,
   '22k': (t) => t.k22,
@@ -137,7 +155,7 @@ const defaultState: AppState = {
   diag: '',
   goldSource: '',
   aiLevel: 'beginner',
-  ai: { loading: false, error: null, data: null, at: null, applied: false, usedWebSearch: false, validation: null, providerLabel: null },
+  ai: { loading: false, error: null, data: null, at: null, applied: false, usedWebSearch: false, validation: null, providerLabel: null, startedAt: null, timedOut: false },
   newMonitor: '',
 };
 
@@ -173,7 +191,7 @@ function loadState(): AppState {
       // page refresh/close while an analysis is running would otherwise
       // load back in with loading:true forever, permanently disabling the
       // Analyze button with no way to recover except clearing storage.
-      ai: { ...defaultState.ai, ...saved?.ai, loading: false },
+      ai: { ...defaultState.ai, ...saved?.ai, loading: false, startedAt: null },
       monitors: Array.isArray(monitors) && monitors.length ? monitors : DEFAULT_MONITORS.map((m) => ({ ...m })),
       aiLevel,
     };
@@ -192,6 +210,24 @@ function initialTabFromUrl(): TabKey {
 function App() {
   const [state, setState] = useState<AppState>(loadState);
   const [activeTab, setActiveTab] = useState<TabKey>(initialTabFromUrl);
+  // Analysis in-flight controls: the AbortController lives in a ref so the
+  // Cancel button (rendered while state.ai.loading is true) can reach the
+  // exact controller `analyze()` created for the current request, across
+  // the async function's lifetime. manualCancelRef distinguishes a
+  // user-initiated Cancel from the 45s auto-timeout — both raise the same
+  // AbortError, but the message shown should differ.
+  const abortControllerRef = useRef<AbortController | null>(null);
+  const manualCancelRef = useRef(false);
+  // Ticks once per 500ms while an analysis is loading, purely to force a
+  // re-render so the elapsed-time-driven progress label stays current.
+  // state.ai.startedAt (a timestamp) is the source of truth for elapsed
+  // time — this tick is not itself persisted or read anywhere else.
+  const [progressTick, setProgressTick] = useState(0);
+  useEffect(() => {
+    if (!state.ai.loading) return;
+    const id = window.setInterval(() => setProgressTick((n) => n + 1), 500);
+    return () => window.clearInterval(id);
+  }, [state.ai.loading]);
   const [watchApplied, setWatchApplied] = useState(false);
   const [egypt, setEgypt] = useState<{ loading: boolean; error: string | null; data: EgyptGoldSnapshot | null }>({
     loading: false,
@@ -933,7 +969,11 @@ function App() {
       }));
       return;
     }
-    setState((prev) => ({ ...prev, ai: { ...prev.ai, loading: true, error: null, data: prev.ai.data, at: prev.ai.at, applied: false } }));
+    manualCancelRef.current = false;
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+    const timeoutId = window.setTimeout(() => controller.abort(), 45000);
+    setState((prev) => ({ ...prev, ai: { ...prev.ai, loading: true, error: null, data: prev.ai.data, at: prev.ai.at, applied: false, startedAt: Date.now(), timedOut: false } }));
     const weightedTarget = SCEN_META.reduce((sum, scenario) => sum + (state.weights[scenario.key] / 100) * ((scenario.lo + scenario.hi) / 2), 0);
     let egyptSnapshot = egypt.data;
     if (!egyptSnapshot) {
@@ -1000,7 +1040,7 @@ function App() {
     const prompt = buildAnalysisPrompt(snapshot, snapshot.watchlist);
 
     try {
-      const { text, usedWebSearch, validation } = await analyzeViaBackend(prompt, snapshot);
+      const { text, usedWebSearch, validation } = await analyzeViaBackend(prompt, snapshot, controller.signal);
       const fallback = buildFallbackAnalysis({ lang: state.lang, weights: state.weights, spot: state.spot, weightedTarget, walletHasHoldings, walletIntlValue, walletEgyptValue, monitors: state.monitors, dcaPlanData: dcaPlan.data });
       // primary_decision.reasons/dca_read describe their own provenance
       // ("this is a local fallback, not model-generated") — substituting them
@@ -1048,9 +1088,36 @@ function App() {
           usedWebSearch,
           validation,
           providerLabel: `${activeProvider.label} · ${activeProvider.model}`,
+          startedAt: null,
+          timedOut: false,
         },
       }));
     } catch (error) {
+      // A fetch aborted via AbortController.abort() rejects with a
+      // DOMException named "AbortError" (some environments/polyfills throw
+      // a plain Error with that same .name) — check .name specifically so a
+      // genuine network failure still falls through to the generic error
+      // path below rather than being misreported as a timeout/cancel.
+      const isAbort = (error as { name?: string } | null)?.name === 'AbortError';
+      if (isAbort) {
+        const wasManualCancel = manualCancelRef.current;
+        manualCancelRef.current = false;
+        setState((prev) => ({
+          ...prev,
+          ai: {
+            ...prev.ai,
+            loading: false,
+            error: wasManualCancel
+              ? (state.lang === 'ar' ? 'تم إلغاء التحليل.' : 'Analysis cancelled.')
+              : (state.lang === 'ar' ? 'انتهت مهلة التحليل بعد 45 ثانية.' : 'Analysis timed out after 45s.'),
+            startedAt: null,
+            timedOut: true,
+          },
+        }));
+        window.clearTimeout(timeoutId);
+        if (abortControllerRef.current === controller) abortControllerRef.current = null;
+        return;
+      }
       const message = error instanceof Error ? error.message : 'analysis failed';
       const fallback = buildFallbackAnalysis({ lang: state.lang, weights: state.weights, spot: state.spot, weightedTarget, walletHasHoldings, walletIntlValue, walletEgyptValue, monitors: state.monitors, dcaPlanData: dcaPlan.data });
       const friendlyMessage = message.includes('No active provider')
@@ -1075,9 +1142,13 @@ function App() {
           usedWebSearch: false,
           validation: null,
           providerLabel: null,
+          startedAt: null,
+          timedOut: false,
         },
       }));
     }
+    window.clearTimeout(timeoutId);
+    if (abortControllerRef.current === controller) abortControllerRef.current = null;
   };
 
   // Renders a ClaimField's .text, plus — in Expert mode only — its
@@ -1501,7 +1572,33 @@ function App() {
                   <button className={state.aiLevel === 'expert' ? 'btn-primary' : 'btn-outline'} style={{ padding: '5px 12px', fontSize: 15 }} onClick={() => setState((prev) => ({ ...prev, aiLevel: 'expert' }))}>{t.aiLvlExp}</button>
                 </div>
                 <button className="btn-primary" style={{ width: '100%' }} onClick={() => void analyze()} disabled={state.ai.loading}>{state.ai.loading ? t.aiGoing : t.aiGo}</button>
-                {state.ai.error ? <div className="down-text" style={{ fontSize: 14, marginTop: 10, textAlign: 'center' }}>{t.aiErr}{state.ai.error}</div> : null}
+                {state.ai.loading ? (
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginTop: 10 }}>
+                    <span className="muted-text" style={{ fontSize: 13 }}>
+                      {progressStageLabel(state.ai.startedAt ? Date.now() - state.ai.startedAt : 0, state.lang)}
+                    </span>
+                    <button
+                      className="btn-outline"
+                      style={{ padding: '4px 12px', fontSize: 13 }}
+                      onClick={() => {
+                        manualCancelRef.current = true;
+                        abortControllerRef.current?.abort();
+                      }}
+                    >
+                      {state.lang === 'ar' ? 'إلغاء' : 'Cancel'}
+                    </button>
+                  </div>
+                ) : null}
+                {state.ai.error ? (
+                  <div className="down-text" style={{ fontSize: 14, marginTop: 10, textAlign: 'center' }}>
+                    {t.aiErr}{state.ai.error}
+                    {state.ai.timedOut ? (
+                      <button className="btn-outline" style={{ display: 'block', margin: '8px auto 0', padding: '4px 14px', fontSize: 13 }} onClick={() => void analyze()}>
+                        {state.lang === 'ar' ? 'أعد المحاولة' : 'Retry'}
+                      </button>
+                    ) : null}
+                  </div>
+                ) : null}
                 {state.ai.data ? (
                   <div style={{ marginTop: 16, borderTop: '1px solid var(--border)', paddingTop: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
                     <div>
