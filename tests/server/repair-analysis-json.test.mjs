@@ -130,6 +130,16 @@ describe('repairAnalysisJson', () => {
     expect(repaired.confidence_reasons).toEqual(['fresh data']);
   });
 
+  it('repairs a response truncated mid-way through a dca_read-adjacent array, recovering dca_read', () => {
+    // Missing the closing ']' for trends before dca_read starts (dca_read placed early for this test).
+    const broken = '{"one_liner": "x", "trends": ["a", "dca_read": "the DCA read", "watchlist_read": "z"}';
+
+    const repaired = repairAnalysisJson(broken);
+
+    expect(repaired.one_liner).toBe('x');
+    expect(repaired.dca_read).toBe('the DCA read');
+  });
+
   it('extracts JSON wrapped in markdown code fences', () => {
     const fenced = '```json\n{"one_liner": "x", "trends": ["a"], "suggested_weights": {"deesc": 33, "base": 34, "stag": 33}, "weights_reasoning": "y", "tranche2": {"verdict": "wait", "reasoning": "z"}, "egp_read": "w"}\n```';
 
