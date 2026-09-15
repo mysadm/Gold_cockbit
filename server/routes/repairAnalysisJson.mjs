@@ -1,4 +1,20 @@
-const EXPECTED_KEYS = ['one_liner', 'confidence', 'trends', 'suggested_weights', 'weights_reasoning', 'tranche2', 'egp_read', 'wallet_read', 'dca_read', 'watchlist_read'];
+// Order matters — it mirrors the exact key order buildAnalysisPrompt (src/lib/analyst.ts)
+// emits in the schema block, since repairCandidate walks forward through this
+// list using each key as a boundary marker for "where the previous field's
+// array/object should have been closed".
+const EXPECTED_KEYS = [
+  'schema_version',
+  'primary_decision',
+  'horizon_actions',
+  'suggested_weights',
+  'weights_reasoning',
+  'egp_read',
+  'wallet_read',
+  'dca_read',
+  'watchlist_read',
+  'assumptions',
+  'missing_inputs',
+];
 
 function tryParse(text) {
   try {
