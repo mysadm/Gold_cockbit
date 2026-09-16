@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Make every analysis run — regardless of which provider/model is active — search the web with the same evidence when compared close together, make it visible *why* a given run didn't search when it didn't, and cut the analysis pipeline's latency by removing redundant SerpAPI round-trips.
+**Goal:** Make every analysis run — regardless of which provider/model is active — search the web with the same evidence when compared close together, make it visible *why* a given run didn't search when it didn't, cut the analysis pipeline's latency by removing redundant SerpAPI round-trips, and — whenever an analysis actually used evidence — show the reader exactly which sources backed it via a glossary at the end of the analysis.
 
-**Architecture:** `server/routes/analyze.mjs`'s `augmentPromptWithSearch()` already runs the same `searchWeb()` calls for every `provider_type` (claude, shared, openai, ollama, openrouter, custom) — evidence gathering was already unified in a prior plan (see "Task 3: Retire Claude's native web-search tool" in `docs/superpowers/plans/2026-09-15-analyst-data-contract-v2.md`) and is covered by an explicit regression test (`tests/server/analyze-route.test.mjs`, `'searches for claude providers too...'`). The actual sources of "different models, different analysis" are (a) SerpAPI's results are not deterministic call-to-call — comparing two providers a few minutes apart can hand them genuinely different top-5 results even under the same `tbs=qdr:d` recency filter, and (b) a search that silently fails (rate limit, the IPv6-routing flakiness already observed against `serpapi.com`, the provider's own "Web search" toggle being off) collapses to the same `usedWebSearch: false` the UI shows for every other reason, so the user can't tell "this model doesn't search" from "this run's search happened to fail." This plan adds a short-TTL cache in front of `searchWeb()` so back-to-back analyses reuse byte-identical evidence (unifying comparisons *and* skipping the network round-trip — the speed win), and threads a specific `searchStatus` reason through the response so the UI can say why, instead of a bare boolean.
+**Architecture:** `server/routes/analyze.mjs`'s `augmentPromptWithSearch()` already runs the same `searchWeb()` calls for every `provider_type` (claude, shared, openai, ollama, openrouter, custom) — evidence gathering was already unified in a prior plan (see "Task 3: Retire Claude's native web-search tool" in `docs/superpowers/plans/2026-09-15-analyst-data-contract-v2.md`) and is covered by an explicit regression test (`tests/server/analyze-route.test.mjs`, `'searches for claude providers too...'`). The actual sources of "different models, different analysis" are (a) SerpAPI's results are not deterministic call-to-call — comparing two providers a few minutes apart can hand them genuinely different top-5 results even under the same `tbs=qdr:d` recency filter, and (b) a search that silently fails (rate limit, the IPv6-routing flakiness already observed against `serpapi.com`, the provider's own "Web search" toggle being off) collapses to the same `usedWebSearch: false` the UI shows for every other reason, so the user can't tell "this model doesn't search" from "this run's search happened to fail." This plan adds a short-TTL cache in front of `searchWeb()` so back-to-back analyses reuse byte-identical evidence (unifying comparisons *and* skipping the network round-trip — the speed win), threads a specific `searchStatus` reason through the response so the UI can say why, instead of a bare boolean, and — since `analyze.mjs` already computes an `[EV-001]`-style evidence ID for every search result and tells the model to cite them inline (see `formatSearchResults`/`evidenceIdFor`) but today throws away the title/link/date once the prompt is built — returns those source records to the frontend and renders them as a numbered glossary under the analysis, so an inline `[EV-002]` citation is traceable to an actual URL instead of being a dead-end tag.
 
 **Tech Stack:** Node/Express backend (`server/`), Preact/TypeScript frontend (`src/`), Vitest for tests.
 
@@ -17,6 +17,8 @@
 - `searchStatus` must be additive — do not remove or change the meaning of the existing `usedWebSearch: boolean` field; every current consumer (frontend, existing tests) keeps working unchanged.
 - Cache TTL: 10 minutes. Long enough that comparing 2-3 providers back-to-back gets identical evidence; short enough that "today's news" (the `qdr:d` recency filter's whole point) doesn't go stale within a session.
 - All new/changed code follows the existing comment style in this codebase: comments explain *why*, not *what* — see `server/webSearch.mjs`'s `RECENCY_FILTER` comment for the bar to match.
+- The evidence glossary renders only when there is evidence to show (`evidenceSources.length > 0`) — no empty "Sources" heading on a run that didn't search or found nothing.
+- The glossary is the last section of the analysis card, after the sensitivity table (the current last section) — it's a footnote to the whole analysis, not to any one field.
 
 ---
 
@@ -24,10 +26,10 @@
 
 - Create: `server/searchCache.mjs` — a tiny TTL cache (`getCached`/`setCached`), used only by `webSearch.mjs`. Split out from `webSearch.mjs` so it can be unit-tested without mocking `fetch`, and so a future second cache consumer doesn't have to import search-specific code.
 - Modify: `server/webSearch.mjs` — check the cache before hitting SerpAPI; populate it only on success.
-- Modify: `server/routes/analyze.mjs` — compute and thread a `searchStatus` string through `augmentPromptWithSearch()`'s return value and into the final JSON response.
-- Modify: `src/api/llmProviders.ts` — add `searchStatus` to `analyzeViaBackend`'s return type.
-- Modify: `src/App.tsx` — store `searchStatus` in `AppState['ai']`, set it on both the success and catch paths, and render a bilingual reason next to the existing "+ web search" indicator when search did not run.
-- Modify tests: `tests/server/web-search.test.mjs` (cache behavior), `tests/server/analyze-route.test.mjs` (searchStatus values), create `tests/server/search-cache.test.mjs` (cache module in isolation).
+- Modify: `server/routes/analyze.mjs` — compute and thread a `searchStatus` string through `augmentPromptWithSearch()`'s return value and into the final JSON response, and (Task 6) keep the source records (`{id, title, link, date}`) behind each evidence ID instead of discarding them once the prompt is built.
+- Modify: `src/api/llmProviders.ts` — add `searchStatus` and `evidenceSources` to `analyzeViaBackend`'s return type.
+- Modify: `src/App.tsx` — store `searchStatus`/`evidenceSources` in `AppState['ai']`, set them on both the success and catch paths, render a bilingual reason next to the existing "+ web search" indicator when search did not run, and render the evidence glossary as the last section of the analysis card.
+- Modify tests: `tests/server/web-search.test.mjs` (cache behavior), `tests/server/analyze-route.test.mjs` (searchStatus and evidenceSources values), create `tests/server/search-cache.test.mjs` (cache module in isolation).
 
 ---
 
@@ -611,9 +613,200 @@ git commit -m "test: verify web-search evidence is identical across providers wi
 
 ---
 
+## Task 6: Evidence glossary — return sources and render them at the end of the analysis
+
+**Files:**
+- Modify: `server/routes/analyze.mjs` (the `augmentPromptWithSearch` function and response assembly from Task 3)
+- Modify: `src/api/llmProviders.ts:117-127`
+- Modify: `src/App.tsx` (AppState type, both `setState` call sites, and the render tree's last analysis section — currently the sensitivity table around line 1781-1804)
+- Test: `tests/server/analyze-route.test.mjs`
+
+**Interfaces:**
+- Consumes: Task 3's `augmentPromptWithSearch(prompt, providerRow)` and the `results` array already computed inside it (each entry: `{ title, snippet, link, date }`) and `evidenceIdFor(index)` (already defined in `analyze.mjs`, above `augmentPromptWithSearch`).
+- Produces: `augmentPromptWithSearch` additionally returns `evidenceSources: { id: string; title: string; link: string; date: string }[]` — one entry per result actually injected into the prompt, in the same order as their `[EV-00N]` IDs. The `/api/analyze` response gains a top-level `evidenceSources` array (empty when nothing was injected). `AppState['ai'].evidenceSources: { id: string; title: string; link: string; date: string }[]`.
+
+- [ ] **Step 1: Write the failing test**
+
+Add to `tests/server/analyze-route.test.mjs`, in the `describe('POST /api/analyze — web search augmentation', ...)` block:
+
+```js
+  it('returns the evidence sources behind each injected [EV-00N] ID', async () => {
+    process.env.SERPAPI_API_KEY = 'serp-test-key';
+    await client.query(
+      `INSERT INTO llm_providers (user_id, provider_type, label, model, is_active)
+       VALUES ($1, 'ollama', 'Local', 'gemma4', true)`,
+      [userId]
+    );
+    searchWeb.mockResolvedValue([
+      { title: 'Gold hits record high', snippet: 'Prices surged on Fed cut bets', link: 'https://example.com/1', date: '2 hours ago' },
+      { title: 'Fed holds rates steady', snippet: 'FOMC statement cites inflation risk', link: 'https://example.com/2', date: '' },
+    ]);
+    runProviderAnalysis.mockResolvedValue({ text: '{"one_liner":"ok"}', usedWebSearch: false });
+
+    const res = await request(app).post('/api/analyze').send({ prompt: 'analyze this' });
+
+    expect(res.body.evidenceSources).toEqual([
+      { id: 'EV-001', title: 'Gold hits record high', link: 'https://example.com/1', date: '2 hours ago' },
+      { id: 'EV-002', title: 'Fed holds rates steady', link: 'https://example.com/2', date: '' },
+    ]);
+  });
+
+  it('returns an empty evidenceSources array when search did not run', async () => {
+    delete process.env.SERPAPI_API_KEY;
+    await client.query(
+      `INSERT INTO llm_providers (user_id, provider_type, label, model, is_active)
+       VALUES ($1, 'ollama', 'Local', 'gemma4', true)`,
+      [userId]
+    );
+    runProviderAnalysis.mockResolvedValue({ text: '{"one_liner":"ok"}', usedWebSearch: false });
+
+    const res = await request(app).post('/api/analyze').send({ prompt: 'analyze this' });
+
+    expect(res.body.evidenceSources).toEqual([]);
+  });
+```
+
+- [ ] **Step 2: Run tests to verify they fail**
+
+Run: `npx vitest run tests/server/analyze-route.test.mjs`
+Expected: FAIL — `res.body.evidenceSources` is `undefined`.
+
+- [ ] **Step 3: Update `server/routes/analyze.mjs`**
+
+Extend the four `return` points inside `augmentPromptWithSearch` (from Task 3) with `evidenceSources`, and build it from `results` right where `evidenceIds` is already built:
+
+```js
+async function augmentPromptWithSearch(prompt, providerRow) {
+  if (!isWebSearchEnabled(providerRow)) {
+    return { prompt, usedWebSearch: false, evidenceIds: [], evidenceSources: [], searchStatus: 'disabled' };
+  }
+
+  const apiKey = process.env.SERPAPI_API_KEY;
+  if (!apiKey) return { prompt, usedWebSearch: false, evidenceIds: [], evidenceSources: [], searchStatus: 'no_api_key' };
+
+  try {
+    const resultsPerQuery = await Promise.all(
+      WEB_SEARCH_QUERIES.map((query) => searchWeb(query, apiKey))
+    );
+    const seenLinks = new Set();
+    const results = resultsPerQuery.flat().filter((r) => {
+      if (!r.link || seenLinks.has(r.link)) return false;
+      seenLinks.add(r.link);
+      return true;
+    });
+    if (results.length === 0) return { prompt, usedWebSearch: false, evidenceIds: [], evidenceSources: [], searchStatus: 'no_results' };
+    const evidenceIds = results.map((_, i) => evidenceIdFor(i));
+    // The model only ever sees title/snippet/date inline in the prompt text
+    // (formatSearchResults below) — it has no reason to echo the source URL
+    // back in its JSON response, so the app has to hold onto it separately
+    // to ever show the reader where an [EV-00N] citation actually came from.
+    const evidenceSources = results.map((r, i) => ({ id: evidenceIdFor(i), title: r.title, link: r.link, date: r.date }));
+    const augmented = `LIVE WEB SEARCH RESULTS (use these as your source of current market/news context). Each result is tagged with a stable evidence ID like [EV-001]. Whenever you state a time-sensitive fact drawn from these results anywhere in your JSON output, cite the ID(s) it came from in brackets at the end of that sentence, e.g. "...rose 2% today [EV-002]." Never invent an ID that is not listed below, and never attach an ID to a claim these results don't actually support:\n${formatSearchResults(results)}\n\n${prompt}`;
+    return { prompt: augmented, usedWebSearch: true, evidenceIds, evidenceSources, searchStatus: 'ok' };
+  } catch {
+    return { prompt, usedWebSearch: false, evidenceIds: [], evidenceSources: [], searchStatus: 'failed' };
+  }
+}
+```
+
+Update the call site to capture it:
+
+```js
+      const augmented = await augmentPromptWithSearch(prompt, provider);
+      effectivePrompt = augmented.prompt;
+      injectedWebSearch = augmented.usedWebSearch;
+      evidenceIds = augmented.evidenceIds;
+      const searchStatus = augmented.searchStatus;
+      const evidenceSources = augmented.evidenceSources;
+```
+
+And the response:
+
+```js
+      res.json({ ...result, text, validation, searchStatus, evidenceSources });
+```
+
+- [ ] **Step 4: Run tests to verify they pass**
+
+Run: `npx vitest run tests/server/analyze-route.test.mjs`
+Expected: PASS (all tests, old and new)
+
+- [ ] **Step 5: Update `analyzeViaBackend`'s return type**
+
+In `src/api/llmProviders.ts`, add to the `Promise<{...}>` return type from Task 4's Step 1:
+
+```ts
+  evidenceSources: { id: string; title: string; link: string; date: string }[];
+```
+
+- [ ] **Step 6: Thread it through `AppState` and `analyze()` in `src/App.tsx`**
+
+Add to the `ai` block of `AppState` (alongside `searchStatus` from Task 4's Step 2):
+
+```ts
+    evidenceSources: { id: string; title: string; link: string; date: string }[];
+```
+
+Add `evidenceSources: [],` to the initial state's `ai` object, right after `searchStatus: null,`.
+
+In `analyze()`'s success path, destructure it alongside the others (`const { text, usedWebSearch, searchStatus, evidenceSources, validation } = await analyzeViaBackend(...)`) and add `evidenceSources,` to that `setState` call, right after `searchStatus,`.
+
+In the catch-path `setState`, add `evidenceSources: [],` right after `searchStatus: null,` — same reasoning as that field: a caught error never got far enough to have sources.
+
+- [ ] **Step 7: Render the glossary as the last section of the analysis card**
+
+In `src/App.tsx`, immediately after the sensitivity-table block (the current last section, closing around line 1804 — look for the block starting `{state.aiLevel === 'expert' && sensitivityTable.length ? (` and ending with its closing `) : null}`), add:
+
+```tsx
+                    {state.ai.evidenceSources.length ? (
+                      <div style={{ marginTop: 16 }}>
+                        <div className="section-label gold-text" style={{ marginBottom: 6 }}>{t.aiEvidenceH}</div>
+                        {state.ai.evidenceSources.map((source) => (
+                          <div key={source.id} className="soft-text" style={{ fontSize: 13, lineHeight: 1.8 }}>
+                            <span style={{ opacity: 0.7 }}>[{source.id}]</span>{' '}
+                            <a href={source.link} target="_blank" rel="noopener noreferrer">{source.title}</a>
+                            {source.date ? ` — ${source.date}` : ''}
+                          </div>
+                        ))}
+                      </div>
+                    ) : null}
+```
+
+This renders unconditionally on `aiLevel` (unlike the inline `[EV-00N]` chips on individual fields, which only show in Expert mode per the existing pattern at line 1207) — a beginner reading "gold rose because of X [implicitly backed by a source]" still benefits from being able to check where that came from, and the glossary is opt-in-to-read (a footer list), not inline noise the way per-field chips would be.
+
+Add the two translation keys next to the other `aiXxxH` section-label keys in both the `ar` and `en` objects (near `aiSensitivityH`):
+
+```ts
+// in the ar object, near aiSensitivityH: 'حساسية قيمة المحفظة',
+aiEvidenceH: 'مصادر الأدلة',
+```
+
+```ts
+// in the en object, near aiSensitivityH: 'WALLET SENSITIVITY',
+aiEvidenceH: 'SOURCES',
+```
+
+- [ ] **Step 8: Typecheck**
+
+Run: `npx tsc -b`
+Expected: no errors
+
+- [ ] **Step 9: Manual verification**
+
+Run `npm run dev`, trigger an analysis with a provider that has "Web search" enabled and a working `SERPAPI_API_KEY`, and confirm a "SOURCES" / "مصادر الأدلة" list appears at the bottom of the analysis card with clickable titles linking to the actual articles, numbered `[EV-001]`, `[EV-002]`, etc. matching any inline citations shown elsewhere in Expert mode. Then switch to a provider with web search disabled and confirm the glossary section does not render at all (not even an empty heading).
+
+- [ ] **Step 10: Commit**
+
+```bash
+git add server/routes/analyze.mjs src/api/llmProviders.ts src/App.tsx tests/server/analyze-route.test.mjs
+git commit -m "feat: show a sources glossary at the end of the analysis for every cited evidence ID"
+```
+
+---
+
 ## Self-Review Notes
 
-- **Spec coverage:** "unify web search for all models" → Tasks 2 (cache) + 5 (regression test) directly address evidence becoming identical across providers within a session; "not all models are searching" → Task 3's `searchStatus` makes the actual reason visible per-run instead of collapsing everything into `usedWebSearch: false`, and Task 4 surfaces it in the UI so the user can tell "toggled off" from "search failed" from "genuinely no results." "Speed up analysis" → Task 2's cache removes up to 5 parallel SerpAPI round-trips (each with an 8s timeout, per the prior plan) on a cache hit, which is the single largest fixed cost in the pipeline outside the LLM call itself.
+- **Spec coverage:** "unify web search for all models" → Tasks 2 (cache) + 5 (regression test) directly address evidence becoming identical across providers within a session; "not all models are searching" → Task 3's `searchStatus` makes the actual reason visible per-run instead of collapsing everything into `usedWebSearch: false`, and Task 4 surfaces it in the UI so the user can tell "toggled off" from "search failed" from "genuinely no results." "Speed up analysis" → Task 2's cache removes up to 5 parallel SerpAPI round-trips (each with an 8s timeout, per the prior plan) on a cache hit, which is the single largest fixed cost in the pipeline outside the LLM call itself. "When there is evidence, show a glossary of it and its sources at the end of the analysis" → Task 6 returns the `{id, title, link, date}` behind every `[EV-00N]` citation (previously discarded once the prompt was built) and renders it as the last section of the analysis card, only when there's something to show.
 - **Deliberately out of scope** (would need a product decision, not an engineering one, so not included as a task): reducing `WEB_SEARCH_QUERIES` from 5 to fewer queries, changing the LLM retry-then-downgrade loop's shape, or switching providers' `REQUEST_TIMEOUT_MS`/`max_tokens` floors. These all trade off analysis *quality* for speed and should be a separate, explicit decision, not bundled into a caching/observability change.
 - **Placeholder scan:** no TBD/TODO markers; every step has runnable code.
-- **Type consistency:** `searchStatus`'s literal union (`'ok' | 'disabled' | 'no_api_key' | 'no_results' | 'failed'`) is spelled identically in Task 3's server code, Task 4's TypeScript type, and Task 4's `searchStatusNote` switch — verified by re-reading each occurrence above.
+- **Type consistency:** `searchStatus`'s literal union (`'ok' | 'disabled' | 'no_api_key' | 'no_results' | 'failed'`) is spelled identically in Task 3's server code, Task 4's TypeScript type, and Task 4's `searchStatusNote` switch. `evidenceSources`'s shape (`{ id: string; title: string; link: string; date: string }[]`) is spelled identically in Task 6's server code, its `analyzeViaBackend` return type, and its `AppState['ai']` field — verified by re-reading each occurrence above. Task 6's `augmentPromptWithSearch` return object is a strict superset of Task 3's (same four branches, each gaining one `evidenceSources` key), so a reviewer applying Task 3 then Task 6 in order never sees a signature mismatch.
