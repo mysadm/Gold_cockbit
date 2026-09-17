@@ -310,6 +310,61 @@ input[type="text"]:focus, input[type="number"]:focus, input[type="date"]:focus, 
   .app-bottom-nav { display: flex; }
 }
 
+.bottom-nav {
+  align-items: stretch;
+  gap: 0;
+  padding: 8px 4px 10px;
+  background: var(--surface);
+  border-top: 1px solid var(--border);
+}
+
+.tab-btn {
+  flex: 1;
+  min-width: 44px;
+  min-height: 44px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  background: none;
+  border: none;
+  color: var(--text-soft);
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.tab-btn svg { width: 21px; height: 21px; stroke: currentColor; }
+.tab-btn span { font-size: 10.5px; font-weight: 700; }
+.tab-btn[aria-current="page"] { color: var(--gold-bright); }
+
+.tab-btn:focus-visible {
+  outline: 2px solid var(--up);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
+.more-sheet-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: flex-end;
+  z-index: 50;
+}
+
+.more-sheet {
+  width: 100%;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  border-radius: 16px 16px 0 0;
+  /* .instrument-card already sets background/border/shadow; this overrides
+     just the corner radii so the sheet reads as sliding up from the bottom
+     edge, not as a floating card. */
+}
+
 .legacy-ui {
 input[type=number],input[type=text],input[type=password],input.numf{width:100%;background:transparent;border:none;border-bottom:1px solid #c4c4c4;color:#1a1a1a;font-family:'IBM Plex Mono',monospace;font-size:17px;padding:2px 0;outline:none;text-align:left;direction:ltr;-moz-appearance:textfield;}
 input::-webkit-outer-spin-button,input::-webkit-inner-spin-button{-webkit-appearance:none;}
