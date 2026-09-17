@@ -10,9 +10,24 @@ const MAX_RESULTS = 5;
 // which is what a daily gold-market analysis actually needs.
 const RECENCY_FILTER = 'qdr:d';
 
+// analyze.mjs runs several of these in parallel and awaits all of them before
+// ever calling the LLM — an unbounded fetch here means a slow or half-
+// unreachable SerpAPI (seen in practice: IPv6 route failures before falling
+// back to IPv4) can stall the entire analysis well past the frontend's
+// request timeout. Each caller already treats a thrown/rejected query as "no
+// results from this query" via .catch(() => []), so timing out here is safe.
+const SEARCH_TIMEOUT_MS = 8000;
+
 export async function searchWeb(query, apiKey) {
   const url = `${SERPAPI_URL}?engine=google&num=${MAX_RESULTS}&q=${encodeURIComponent(query)}&tbs=${RECENCY_FILTER}&api_key=${encodeURIComponent(apiKey)}`;
-  const response = await fetch(url);
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), SEARCH_TIMEOUT_MS);
+  let response;
+  try {
+    response = await fetch(url, { signal: controller.signal });
+  } finally {
+    clearTimeout(timeout);
+  }
   const data = await response.json();
 
   if (!response.ok) {

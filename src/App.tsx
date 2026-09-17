@@ -141,10 +141,18 @@ function confidenceColor(confidence: AIConfidenceLevel): string {
   }
 }
 
+// The full pipeline can chain several sequential network calls before the
+// response comes back: web search, the primary LLM call, an internal
+// JSON-format retry inside the provider, and a validation-triggered
+// downgrade retry (server/routes/analyze.mjs) — each of which can itself
+// take up to several seconds. 45s was too tight for that chain in practice
+// and caused spurious timeouts on otherwise-successful analyses.
+const ANALYSIS_TIMEOUT_MS = 90000;
+
 function progressStageLabel(elapsedMs: number, lang: 'ar' | 'en'): string {
   if (elapsedMs < 5000) return lang === 'ar' ? 'بيحضّر السياق' : 'Preparing context';
   if (elapsedMs < 20000) return lang === 'ar' ? 'بيجمع الأدلة' : 'Gathering evidence';
-  if (elapsedMs < 40000) return lang === 'ar' ? 'بيحلل' : 'Analyzing';
+  if (elapsedMs < 75000) return lang === 'ar' ? 'بيحلل' : 'Analyzing';
   return lang === 'ar' ? 'بيخلّص' : 'Finalizing';
 }
 
@@ -240,7 +248,7 @@ function App() {
   // Cancel button (rendered while state.ai.loading is true) can reach the
   // exact controller `analyze()` created for the current request, across
   // the async function's lifetime. manualCancelRef distinguishes a
-  // user-initiated Cancel from the 45s auto-timeout — both raise the same
+  // user-initiated Cancel from the ANALYSIS_TIMEOUT_MS auto-timeout — both raise the same
   // AbortError, but the message shown should differ.
   const abortControllerRef = useRef<AbortController | null>(null);
   const manualCancelRef = useRef(false);
@@ -1011,7 +1019,7 @@ function App() {
     manualCancelRef.current = false;
     const controller = new AbortController();
     abortControllerRef.current = controller;
-    const timeoutId = window.setTimeout(() => controller.abort(), 45000);
+    const timeoutId = window.setTimeout(() => controller.abort(), ANALYSIS_TIMEOUT_MS);
     setState((prev) => ({ ...prev, ai: { ...prev.ai, loading: true, error: null, data: prev.ai.data, at: prev.ai.at, applied: false, startedAt: Date.now(), timedOut: false } }));
     const weightedTarget = SCEN_META.reduce((sum, scenario) => sum + (state.weights[scenario.key] / 100) * ((scenario.lo + scenario.hi) / 2), 0);
     let egyptSnapshot = egypt.data;
@@ -1149,7 +1157,7 @@ function App() {
             loading: false,
             error: wasManualCancel
               ? (state.lang === 'ar' ? 'تم إلغاء التحليل.' : 'Analysis cancelled.')
-              : (state.lang === 'ar' ? 'انتهت مهلة التحليل بعد 45 ثانية.' : 'Analysis timed out after 45s.'),
+              : (state.lang === 'ar' ? `انتهت مهلة التحليل بعد ${ANALYSIS_TIMEOUT_MS / 1000} ثانية.` : `Analysis timed out after ${ANALYSIS_TIMEOUT_MS / 1000}s.`),
             startedAt: null,
             timedOut: true,
           },
