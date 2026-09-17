@@ -33,6 +33,7 @@ import {
 } from './api/wallet';
 import { fetchAlertRules, createAlertRule, setAlertRuleActive, type AlertRule } from './api/alertRules';
 import { Sidebar, NAV_LABELS, type ScreenKey } from './ui/Sidebar';
+import { BottomNav } from './ui/BottomNav';
 import { Card, SectionLabel, Hairline, MetricRow, GlowBar, ChangeTag, Icon } from './ui/primitives';
 import {
   normalizeAIResult,
@@ -1268,6 +1269,8 @@ function App() {
             padding: '16px 24px',
             borderBottom: '1px solid var(--border)',
             display: 'flex',
+            flexWrap: 'wrap',
+            rowGap: 8,
             justifyContent: 'space-between',
             alignItems: 'center',
             background: 'var(--surface)',
@@ -2609,6 +2612,8 @@ function App() {
           </div>
           </div>
         </div>
+
+        <BottomNav screen={sidebarScreen} setScreen={(s) => setActiveTab(s)} ar={ar} />
       </main>
     </div>
   );
