@@ -44,12 +44,16 @@ export function Sidebar({
   screen,
   setScreen,
   ar,
+  isLight,
+  toggleTheme,
   toggleLang,
   liveLabel,
 }: {
   screen: ScreenKey;
   setScreen: (s: ScreenKey) => void;
   ar: boolean;
+  isLight: boolean;
+  toggleTheme: () => void;
   toggleLang: () => void;
   liveLabel: string;
 }) {
@@ -108,9 +112,20 @@ export function Sidebar({
       </div>
 
       <div style={{ paddingTop: 12, borderTop: '1px solid var(--border)', display: 'flex', flexDirection: 'column', gap: 8 }}>
-        <button className="btn-outline" style={{ width: '100%', padding: '6px 0', fontSize: 15 }} onClick={toggleLang}>
-          {ar ? 'EN' : 'عربي'}
-        </button>
+        <div style={{ display: 'flex', gap: 6 }}>
+          <button className="btn-outline" style={{ flex: 1, padding: '6px 0', fontSize: 15 }} onClick={toggleLang}>
+            {ar ? 'EN' : 'عربي'}
+          </button>
+          <button
+            type="button"
+            className="btn-outline"
+            style={{ flex: 1, padding: '6px 0', fontSize: 15, display: 'flex', justifyContent: 'center' }}
+            onClick={toggleTheme}
+            aria-label={isLight ? (ar ? 'التحويل للوضع الداكن' : 'Switch to dark mode') : (ar ? 'التحويل للوضع الفاتح' : 'Switch to light mode')}
+          >
+            <Icon name={isLight ? 'moon' : 'sun'} size={12} />
+          </button>
+        </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, paddingInlineStart: 4 }}>
           <div className="live-dot" />
           <span className="muted-text font-mono" style={{ fontSize: 14 }}>

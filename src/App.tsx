@@ -50,6 +50,7 @@ import {
 import { buildAnalysisSnapshot, type BuildSnapshotInput, type PreviousAnalysis } from './lib/analysisSnapshot';
 import { computeSensitivityTable } from './lib/sensitivity';
 
+type Theme = 'dark' | 'light';
 type Language = 'en' | 'ar';
 type MonitorSignal = 0 | 1 | 2;
 
@@ -78,6 +79,7 @@ type AppState = {
   egp: number;
   prem: number;
   calcamt: number;
+  theme: Theme;
   lang: Language;
   weights: { deesc: number; base: number; stag: number };
   monitors: Monitor[];
@@ -176,6 +178,7 @@ const defaultState: AppState = {
   egp: 49.2,
   prem: 3,
   calcamt: 50000,
+  theme: 'dark',
   lang: 'ar',
   weights: { deesc: 35, base: 45, stag: 20 },
   monitors: DEFAULT_MONITORS.map((m) => ({ ...m })),
@@ -1230,15 +1233,18 @@ function App() {
   );
 
   const ar = state.lang === 'ar';
+  const isLight = state.theme === 'light';
   const sidebarScreen: ScreenKey = activeTab === 'market' ? 'home' : (activeTab as ScreenKey);
   const screenTitle = NAV_LABELS[sidebarScreen][ar ? 'ar' : 'en'];
 
   return (
-    <div style={{ height: '100vh', display: 'flex', background: 'var(--bg)', fontFamily: ar ? 'var(--font-arabic)' : 'var(--font-sans)' }} dir={ar ? 'rtl' : 'ltr'}>
+    <div className={isLight ? 'theme-light' : ''} style={{ height: '100vh', display: 'flex', background: 'var(--bg)', fontFamily: ar ? 'var(--font-arabic)' : 'var(--font-sans)' }} dir={ar ? 'rtl' : 'ltr'}>
       <Sidebar
         screen={sidebarScreen}
         setScreen={(s) => setActiveTab(s)}
         ar={ar}
+        isLight={isLight}
+        toggleTheme={() => setState((prev) => ({ ...prev, theme: prev.theme === 'light' ? 'dark' : 'light' }))}
         toggleLang={toggleLang}
         liveLabel={`LIVE · $${fmt(state.spot)}`}
       />
@@ -1533,7 +1539,7 @@ function App() {
               <Card>
                 <SectionLabel text={t.watchImpliedLbl.toUpperCase()} />
                 <div className="soft-text font-mono" style={{ fontSize: 15, marginBottom: 8 }}>
-                  <span className="up-text">{watchlistCounts.support} {t.siglbl[0]}</span> · <span className="gold-text">{watchlistCounts.monitor} {t.siglbl[1]}</span> · <span className="down-text">{watchlistCounts.risk} {t.siglbl[2]}</span>
+                  <span className="up-text">{watchlistCounts.support} {t.siglbl[0]}</span> · <span className="caution-text">{watchlistCounts.monitor} {t.siglbl[1]}</span> · <span className="down-text">{watchlistCounts.risk} {t.siglbl[2]}</span>
                 </div>
                 <div className="font-mono" style={{ fontSize: 22, fontWeight: 600, color: 'var(--text)', marginBottom: 12 }}>
                   {watchlistImpliedWeights.deesc}% / {watchlistImpliedWeights.base}% / {watchlistImpliedWeights.stag}%

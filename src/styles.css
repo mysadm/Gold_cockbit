@@ -12,29 +12,63 @@
 }
 
 :root {
-  --bg: #0d0c0a;
-  --surface: #1a1611;
-  --elevated: #211c15;
-  --surface-hover: #211c15; /* the source Figma tokens define no separate hover step —
+  --bg: #0a0f1e;
+  --surface: #111827;
+  --elevated: #161e2e;
+  --surface-hover: #161e2e; /* the source Figma tokens define no separate hover step —
                                 components.css's own :hover rules (e.g. .gc-nav-item:hover)
                                 reuse the "elevated" bg-2 value, so this does too */
-  --gold: #b8841f;         /* accent-gold-strong: primary buttons, big price readout */
-  --gold-bright: #f2b33d;  /* accent-gold: icons, small accents, focus rings */
-  --gold-dim: rgba(184, 132, 31, 0.55);
-  --gold-glow: #241d10;    /* accent-gold-bg: a real pre-tinted panel fill in the source
+  --gold: #00a87d;         /* accent-gold-strong: primary buttons, big price readout */
+  --gold-bright: #00c896;  /* accent-gold: icons, small accents, focus rings */
+  --gold-dim: rgba(0, 168, 125, 0.55);
+  --gold-glow: #0d2b22;    /* accent-gold-bg: a real pre-tinted panel fill in the source
                                tokens, not a computed alpha — used for active-nav-item and
                                AI-panel backgrounds */
-  --gold-border: #4a3d28;  /* border-strong */
-  --text: #f2ecdd;
-  --text-soft: #a69b85;
-  --text-muted: #6e6552;
-  --border: #332a1c;       /* border-default */
-  --border-solid: #332a1c; /* the source tokens have one border color, not a translucent/solid pair */
-  --up: #3ed598;
-  --up-bg: #132621;
-  --down: #e5533d;
-  --down-bg: #2a1712;
+  --gold-glow-shadow: rgba(0, 200, 150, 0.32); /* accent-gold's glow as a shadow color —
+                               kept as its own variable (not baked into --gold-bright)
+                               because light mode needs a different rgba, not just a
+                               different opacity of the same hex */
+  --gold-border: #2e3b4e;  /* border-strong */
+  --text: #f5f7fa;
+  --text-soft: #8b95a5;
+  --text-muted: #5a6472;
+  --border: #1f2937;       /* border-default */
+  --border-solid: #1f2937; /* the source tokens have one border color, not a translucent/solid pair */
+  --up: #22d3ee;           /* status-live — cyan, deliberately distinct from the green accent */
+  --up-bg: #0c2429;
+  --caution: #f2b33d;      /* status-caution — unchanged from the prior palette; stays a
+                               different hue from both the green accent and the cyan live
+                               status so all three read as distinct */
+  --down: #f0453d;
+  --down-bg: #2b1614;
   --sidebar-w: 232px;
+}
+
+/* Restored light mode (see git history on this file for the original
+   .theme-vault, removed when the app went dark-only) — same palette as
+   gold-cockpit-theme-package/css/tokens.css's :root[data-theme="light"]. */
+.theme-light {
+  --bg: #f5f7fa;
+  --surface: #ffffff;
+  --elevated: #eef2f6;
+  --surface-hover: #eef2f6;
+  --gold: #00815f;
+  --gold-bright: #00a87d;
+  --gold-dim: rgba(0, 129, 95, 0.55);
+  --gold-glow: #e1f7ef;
+  --gold-glow-shadow: rgba(0, 168, 125, 0.22);
+  --gold-border: #c3cbd6;
+  --text: #0a0f1e;
+  --text-soft: #4b5563;
+  --text-muted: #8792a2;
+  --border: #dee3ea;
+  --border-solid: #dee3ea;
+  --up: #0891b2;
+  --up-bg: #e0f7fa;
+  --caution: #b8791a;      /* darker than the dark-mode amber — #f2b33d doesn't clear
+                               contrast on a white panel */
+  --down: #d23b28;
+  --down-bg: #fbe6e2;
 }
 
 * { box-sizing: border-box; }
@@ -69,7 +103,7 @@ body {
 .instrument-card--ai {
   background: var(--gold-glow);
   border-color: var(--gold-border);
-  box-shadow: 0 0 14px 0 rgba(242, 179, 61, 0.35);
+  box-shadow: 0 0 14px 0 var(--gold-glow-shadow);
 }
 
 .glow-bar {
@@ -131,7 +165,7 @@ body {
   border-radius: 6px;
   border: none;
   cursor: pointer;
-  box-shadow: 0 0 14px 0 rgba(242, 179, 61, 0.35);
+  box-shadow: 0 0 14px 0 var(--gold-glow-shadow);
   letter-spacing: 0.02em;
 }
 
@@ -256,6 +290,7 @@ input[type="text"]:focus, input[type="number"]:focus, input[type="date"]:focus, 
 .soft-text { color: var(--text-soft); }
 .up-text { color: var(--up); }
 .down-text { color: var(--down); }
+.caution-text { color: var(--caution); }
 .legacy-ui {
 input[type=number],input[type=text],input[type=password],input.numf{width:100%;background:transparent;border:none;border-bottom:1px solid #c4c4c4;color:#1a1a1a;font-family:'IBM Plex Mono',monospace;font-size:17px;padding:2px 0;outline:none;text-align:left;direction:ltr;-moz-appearance:textfield;}
 input::-webkit-outer-spin-button,input::-webkit-inner-spin-button{-webkit-appearance:none;}
