@@ -115,17 +115,25 @@ export async function listModelsById(id: number): Promise<string[]> {
 }
 
 export async function analyzeViaBackend(
-  prompt: string,
+  prompt: string | (() => string),
   snapshot: AnalysisSnapshot,
   signal?: AbortSignal
-): Promise<{ text: string; usedWebSearch: boolean; searchStatus: SearchStatus; evidenceSources: EvidenceSource[]; validation: { ok: boolean; errors: string[] } }> {
+): Promise<{ text: string; contractVersion: '2' | '3'; usedWebSearch: boolean; searchStatus: SearchStatus; evidenceSources: EvidenceSource[]; validation: { ok: boolean; errors: string[] } }> {
+  const contractResponse = await fetch('/api/analyze/contract', { signal });
+  // An older server has no negotiation endpoint. Only a 404 uses legacy;
+  // network/auth failures must not silently downgrade the contract.
+  const contract = contractResponse.status === 404 ? { version: '2' } : await parseJsonOrThrow(contractResponse);
+  const contractVersion = contract.version === '3' ? '3' : '2';
+  const body = contractVersion === '3'
+    ? { contract_version: '3', snapshot }
+    : { prompt: typeof prompt === 'function' ? prompt() : prompt, snapshot };
   const response = await fetch('/api/analyze', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ prompt, snapshot }),
+    body: JSON.stringify(body),
     signal,
   });
-  return parseJsonOrThrow(response);
+  return { ...await parseJsonOrThrow(response), contractVersion };
 }
 
 export type AnalyzeQuota = { shared: false } | { shared: true; used: number; limit: number };

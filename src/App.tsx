@@ -38,6 +38,7 @@ import {
   normalizeAIResult,
   buildFallbackAnalysis,
   buildAnalysisPrompt,
+  parseCompactAnalysis,
   extractFieldsFromBrokenJson,
   tryParseJson,
   stripJsonFences,
@@ -46,7 +47,7 @@ import {
   type PrimaryDecisionAction,
   type AIConfidenceLevel,
 } from './lib/analyst';
-import { buildAnalysisSnapshot, type BuildSnapshotInput } from './lib/analysisSnapshot';
+import { buildAnalysisSnapshot, type BuildSnapshotInput, type PreviousAnalysis } from './lib/analysisSnapshot';
 import { computeSensitivityTable } from './lib/sensitivity';
 
 type Theme = 'light' | 'vault';
@@ -72,6 +73,8 @@ type WalletHoldings = {
 const WALLET_UNIT_KEYS: (keyof WalletHoldings)[] = ['oz', 'g24', 'g21', 'g18', 'pounds'];
 
 type AppState = {
+  marketRetrievedAt: { xau: string | null; fx: string | null };
+  previousAnalysis: PreviousAnalysis | null;
   spot: number;
   egp: number;
   prem: number;
@@ -169,6 +172,8 @@ const EGYPT_KARAT_LABEL: Record<EgyptGoldSnapshot['rows'][number]['karat'], (t: 
 };
 
 const defaultState: AppState = {
+  marketRetrievedAt: { xau: null, fx: null },
+  previousAnalysis: null,
   spot: 4060,
   egp: 49.2,
   prem: 3,
@@ -914,7 +919,9 @@ function App() {
   };
 
   const updateNumber = (field: 'spot' | 'egp' | 'prem' | 'calcamt', raw: string) => {
-    setState((prev) => ({ ...prev, [field]: normNum(raw) }));
+    setState((prev) => ({ ...prev, [field]: normNum(raw),
+      marketRetrievedAt: { ...prev.marketRetrievedAt, ...(field === 'spot' ? {xau:null} : field === 'egp' ? {fx:null} : {}) },
+    }));
   };
 
   const withTimeout = (promise: Promise<any>, ms = 6000) => Promise.race([promise, new Promise((_, reject) => window.setTimeout(() => reject(new Error('timeout')), ms))]);
@@ -992,6 +999,10 @@ function App() {
       ...prev,
       spot: goldValue ? Math.round(goldValue) : prev.spot,
       egp: fxValue ? Math.round(fxValue * 100) / 100 : prev.egp,
+      marketRetrievedAt: {
+        xau: goldValue ? new Date().toISOString() : prev.marketRetrievedAt.xau,
+        fx: fxValue ? new Date().toISOString() : prev.marketRetrievedAt.fx,
+      },
       goldSource,
       stamp: goldValue && fxValue ? { cls: 'ok', txt: `Live via ${goldSource} · ${new Date().toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}` } : { cls: 'err', txt: 'Partial — feeds failed' },
       diag: diagArr.join('\n'),
@@ -1035,6 +1046,8 @@ function App() {
     const nextPendingIndex = trancheStatus.indexOf('pending');
     const activeOrNextIndex = activeIndex >= 0 ? activeIndex : nextPendingIndex;
     const snapshotInput: BuildSnapshotInput = {
+      marketRetrievedAt: state.marketRetrievedAt,
+      previousAnalysis: state.previousAnalysis,
       generatedAt: new Date().toISOString(),
       locale: state.lang,
       explanationLevel: state.aiLevel,
@@ -1089,10 +1102,11 @@ function App() {
     };
     const snapshot = buildAnalysisSnapshot(snapshotInput);
     const hasEvidencePack = activeProvider?.settings?.webSearch !== false;
-    const prompt = buildAnalysisPrompt(snapshot, snapshot.watchlist, hasEvidencePack);
+    const prompt = () => buildAnalysisPrompt(snapshot, snapshot.watchlist, hasEvidencePack);
 
     try {
-      const { text, usedWebSearch, searchStatus, evidenceSources, validation } = await analyzeViaBackend(prompt, snapshot, controller.signal);
+      const { text, contractVersion, usedWebSearch, searchStatus, evidenceSources, validation } = await analyzeViaBackend(prompt, snapshot, controller.signal);
+      controller.signal.throwIfAborted();
       const fallback = buildFallbackAnalysis({ lang: state.lang, weights: state.weights, spot: state.spot, weightedTarget, walletHasHoldings, walletIntlValue, walletEgyptValue, monitors: state.monitors, dcaPlanData: dcaPlan.data });
       // primary_decision.reasons/dca_read describe their own provenance
       // ("this is a local fallback, not model-generated") — substituting them
@@ -1106,7 +1120,9 @@ function App() {
       const parsedPayload = tryParseJson(text);
       const extractedPayload = parsedPayload ? null : extractFieldsFromBrokenJson(text);
       const cleanText = stripJsonFences(text);
-      const parsed = parsedPayload
+      const parsed = contractVersion === '3'
+        ? parseCompactAnalysis(text, snapshot, evidenceSources.map(s => s.id))
+        : parsedPayload
         ? normalizeAIResult(parsedPayload, normalizationFallback)
         : extractedPayload
           ? normalizeAIResult(extractedPayload, normalizationFallback)
@@ -1131,6 +1147,9 @@ function App() {
             );
       setState((prev) => ({
         ...prev,
+        previousAnalysis: validation?.ok && parsed.primary_decision.action !== 'insufficient_evidence'
+          ? {generated_at:new Date().toISOString(),action:parsed.primary_decision.action,confidence:parsed.primary_decision.confidence,suggested_weights:parsed.suggested_weights}
+          : prev.previousAnalysis,
         ai: {
           loading: false,
           error: null,

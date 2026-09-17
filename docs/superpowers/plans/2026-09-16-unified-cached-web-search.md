@@ -1,6 +1,6 @@
 # Unified Evidence + Token-Efficient Analyst Pipeline — v2 Review Plan
 
-**Status:** Proposed for review — do not implement until approved
+**Status:** Approved; implementation in progress. Checkpoints after Tasks 2, 5, and 8. Default contract stays v2 pending benchmark review.
 
 **Supersedes:** The first version of this plan, which covered only search caching, search status, and the evidence glossary
 
@@ -480,12 +480,12 @@ Steps:
 
 Steps:
 
-- [ ] Add a persisted ISO market retrieval timestamp set only on successful market pulls.
-- [ ] Build `price_alignment` deterministically with the approved 60-minute threshold.
-- [ ] Add the last successfully validated analysis as optional `previous_analysis`.
-- [ ] Upgrade snapshot schema to `2`.
-- [ ] Test aligned, stale, missing-timestamp, and prior-analysis cases.
-- [ ] Confirm a failed or cancelled analysis never replaces `previous_analysis`.
+- [x] Add a persisted ISO market retrieval timestamp set only on successful market pulls.
+- [x] Build `price_alignment` deterministically with the approved 60-minute threshold.
+- [x] Add the last successfully validated analysis as optional `previous_analysis`.
+- [x] Upgrade snapshot schema to `2`.
+- [x] Test aligned, stale, missing-timestamp, and prior-analysis cases.
+- [x] Confirm a failed or cancelled analysis never replaces `previous_analysis`.
 
 ### Task 4 — Move runtime prompt construction to the server and compact the system prompt
 
@@ -500,14 +500,14 @@ Steps:
 
 Steps:
 
-- [ ] Move the long methodology into `docs/analyst-methodology.md` for reference.
-- [ ] Replace the runtime system prompt with the compact prompt in section 8.1.
-- [ ] Build the runtime prompt server-side from snapshot plus final evidence pack.
-- [ ] Stop instructing the model to use a search capability it does not have.
-- [ ] Change the web client to submit structured snapshot data; do not submit a client-authored final prompt.
-- [ ] Temporarily continue accepting a legacy `prompt` field for older clients, but mark that path deprecated and never mix it with the v3 snapshot path.
-- [ ] Add character-budget tests for system and runtime instruction text.
-- [ ] Verify the generated prompt is byte-identical across provider types for the same snapshot/evidence.
+- [x] Move the long methodology into `docs/analyst-methodology.md` for reference.
+- [x] Replace the runtime system prompt with the compact prompt in section 8.1.
+- [x] Build the runtime prompt server-side from snapshot plus final evidence pack.
+- [x] Stop instructing the model to use a search capability it does not have.
+- [x] Change the web client to submit structured snapshot data; do not submit a client-authored final prompt.
+- [x] Temporarily continue accepting a legacy `prompt` field for older clients, but mark that path deprecated and never mix it with the v3 snapshot path.
+- [x] Add character-budget tests for system and runtime instruction text.
+- [x] Verify the generated prompt is byte-identical across provider types for the same snapshot/evidence.
 
 ### Task 5 — Implement AnalystResultV3 and validation
 
@@ -522,13 +522,13 @@ Steps:
 
 Steps:
 
-- [ ] Add v3 types, parser, normalization, and fallback result.
-- [ ] Generate a minified structural schema example for the runtime prompt.
-- [ ] Implement every validation rule in section 10.
-- [ ] Retain one corrective retry and safe downgrade.
-- [ ] Compute final confidence on the server.
-- [ ] Add tests for every status invariant and evidence/weight relationship.
-- [ ] Fuzz the parser with fenced JSON, preambles, truncated strings, numeric strings, unknown enums, and missing optional reads.
+- [x] Add v3 types, parser, normalization, and fallback result.
+- [x] Generate a minified structural schema example for the runtime prompt.
+- [x] Implement every validation rule in section 10.
+- [x] Retain one corrective retry and safe downgrade.
+- [x] Compute final confidence on the server.
+- [x] Add tests for every status invariant and evidence/weight relationship.
+- [x] Fuzz the parser with fenced JSON, preambles, truncated strings, numeric strings, unknown enums, and missing optional reads.
 
 ### Task 6 — Render v3 and lower output budget safely
 

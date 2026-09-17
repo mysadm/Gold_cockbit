@@ -1,5 +1,6 @@
 import type { DcaPlan } from '../api/dcaPlan';
 import type { AnalysisSnapshot } from './analysisSnapshot';
+import { parseV3, validateV3 } from '../../shared/analystContract.mjs';
 
 export type AIConfidenceLevel = 'low' | 'medium' | 'high';
 
@@ -25,6 +26,7 @@ export type HorizonAction = {
 
 export type AIResultV2 = {
   schema_version: '2';
+  compact_result?: AnalystResultV3;
   primary_decision: PrimaryDecision;
   horizon_actions: HorizonAction[];
   suggested_weights: { deesc: number; base: number; stag: number };
@@ -36,6 +38,39 @@ export type AIResultV2 = {
   assumptions: string[];
   missing_inputs: string[];
 };
+
+export type AnalystResultV3 = {
+  schema_version: '3';
+  status: 'material_change' | 'no_material_change' | 'insufficient_evidence';
+  primary_decision: Omit<PrimaryDecision, 'reasons'> & { next_trigger: string; invalidation: string };
+  evidence: { evidence_id: string; scenario_effect: 'deesc' | 'base' | 'stag' | 'mixed' | 'neutral'; strength: AIConfidenceLevel; implication: string }[];
+  suggested_weights: AIResultV2['suggested_weights'];
+  weight_changes: { scenario: 'deesc' | 'base' | 'stag'; from: number; to: number; evidence_ids: string[] }[];
+  reads: { egp: string; wallet?: string; dca?: string; watchlist?: string };
+  assumptions: string[];
+  missing_inputs: string[];
+};
+
+// Compatibility view only: retain the original v3 result and never repair its
+// numbers or fill missing decision fields with a legacy recommendation.
+export function parseCompactAnalysis(text: string, snapshot: AnalysisSnapshot, evidenceIds: string[]): AIResultV2 {
+  const payload = parseV3(text);
+  const validation = validateV3({ parsed: payload, snapshot, evidenceIds });
+  if (!validation.ok) throw new Error('Invalid compact analyst response');
+  const r = payload as AnalystResultV3;
+  const claim = (text: string): ClaimField => ({ text, evidence_ids: [] });
+  return {
+    schema_version: '2', compact_result: r,
+    primary_decision: { ...r.primary_decision, reasons: r.evidence.map(e => ({ text: e.implication, evidence_ids: [e.evidence_id] })) },
+    horizon_actions: [], suggested_weights: r.suggested_weights,
+    weights_reasoning: { text: '', evidence_ids: r.weight_changes.flatMap(c => c.evidence_ids) },
+    egp_read: claim(r.reads.egp),
+    ...(r.reads.wallet ? { wallet_read: claim(r.reads.wallet) } : {}),
+    ...(r.reads.dca ? { dca_read: claim(r.reads.dca) } : {}),
+    ...(r.reads.watchlist ? { watchlist_read: claim(r.reads.watchlist) } : {}),
+    assumptions: r.assumptions, missing_inputs: r.missing_inputs,
+  };
+}
 
 export function buildAnalysisPrompt(
   snapshot: AnalysisSnapshot,

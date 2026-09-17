@@ -20,16 +20,23 @@ const baseInput = {
 };
 
 describe('buildAnalysisSnapshot', () => {
+  it('requires fresh independently timestamped gold, FX and local prices', () => {
+    const input = {...baseInput, marketRetrievedAt: {xau:'2026-09-15T09:50:00Z',fx:'2026-09-15T09:40:00Z'}, egypt:{retrievedAt:'2026-09-15T09:45:00Z',rows:[]}};
+    expect(buildAnalysisSnapshot(input).price_alignment.premium_reliable).toBe(true);
+    expect(buildAnalysisSnapshot({...input, generatedAt:'2026-09-16T10:00:00Z'}).price_alignment).toMatchObject({aligned:true,premium_reliable:false});
+    expect(buildAnalysisSnapshot({...input,marketRetrievedAt:undefined}).price_alignment.premium_reliable).toBe(false);
+    expect(buildAnalysisSnapshot({...input,marketRetrievedAt:{xau:null,fx:input.marketRetrievedAt.fx}}).price_alignment.premium_reliable).toBe(false);
+  });
   it('is a plain JSON-serializable object with a schema_version and generated_at', () => {
     const snapshot = buildAnalysisSnapshot(baseInput);
-    expect(snapshot.schema_version).toBe('1');
+    expect(snapshot.schema_version).toBe('2');
     expect(snapshot.generated_at).toBe('2026-09-15T10:00:00.000Z');
     expect(() => JSON.stringify(snapshot)).not.toThrow();
   });
 
   it('carries market numbers through untouched', () => {
     const snapshot = buildAnalysisSnapshot(baseInput);
-    expect(snapshot.market).toEqual({ xau_usd: 2650, usd_egp: 48.5, weighted_target_usd: 2700 });
+    expect(snapshot.market).toMatchObject({ xau_usd: 2650, usd_egp: 48.5, weighted_target_usd: 2700 });
   });
 
   it('omits egypt when no snapshot is available', () => {

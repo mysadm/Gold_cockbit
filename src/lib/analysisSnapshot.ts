@@ -37,6 +37,8 @@ export type SnapshotDcaInput = {
 
 export type BuildSnapshotInput = {
   generatedAt: string;
+  marketRetrievedAt?: { xau: string | null; fx: string | null };
+  previousAnalysis?: PreviousAnalysis | null;
   locale: 'ar' | 'en';
   explanationLevel: 'beginner' | 'expert';
   spot: number;
@@ -49,12 +51,20 @@ export type BuildSnapshotInput = {
   watchlist: { id: string; label: string; signal: 'supportive' | 'watch' | 'risk' }[];
 };
 
+export type PreviousAnalysis = {
+  generated_at: string;
+  action: string;
+  confidence: 'low' | 'medium' | 'high';
+  suggested_weights: { deesc: number; base: number; stag: number };
+};
 export type AnalysisSnapshot = {
-  schema_version: '1';
+  schema_version: '2';
   generated_at: string;
   locale: 'ar' | 'en';
   explanation_level: 'beginner' | 'expert';
-  market: { xau_usd: number; usd_egp: number; weighted_target_usd: number };
+  market: { xau_usd: number; usd_egp: number; weighted_target_usd: number; xau_retrieved_at: string | null; fx_retrieved_at: string | null };
+  price_alignment: { aligned: boolean; premium_reliable: boolean; age_gap_minutes: number | null; max_gap_minutes: number };
+  previous_analysis: PreviousAnalysis | null;
   scenarios: { key: string; name_en: string; weight_pct: number; price_lo: number; price_hi: number; thesis: string }[];
   egypt: {
     retrieved_at: string;
@@ -121,12 +131,19 @@ function buildDca(input: SnapshotDcaInput | null): AnalysisSnapshot['dca'] {
 }
 
 export function buildAnalysisSnapshot(input: BuildSnapshotInput): AnalysisSnapshot {
+  const times = [input.marketRetrievedAt?.xau, input.marketRetrievedAt?.fx, input.egypt?.retrievedAt].map(t => t ? Date.parse(t) : NaN);
+  const complete = times.every(Number.isFinite);
+  const gap = complete ? (Math.max(...times) - Math.min(...times)) / 60000 : null;
+  const now = Date.parse(input.generatedAt);
+  const fresh = complete && times.every(t => t <= now && now - t <= 60 * 60000);
   return {
-    schema_version: '1',
+    schema_version: '2',
     generated_at: input.generatedAt,
     locale: input.locale,
     explanation_level: input.explanationLevel,
-    market: { xau_usd: input.spot, usd_egp: input.egp, weighted_target_usd: input.weightedTarget },
+    market: { xau_usd: input.spot, usd_egp: input.egp, weighted_target_usd: input.weightedTarget, xau_retrieved_at: input.marketRetrievedAt?.xau ?? null, fx_retrieved_at: input.marketRetrievedAt?.fx ?? null },
+    price_alignment: { aligned: gap !== null && gap <= 60, premium_reliable: fresh && gap !== null && gap <= 60, age_gap_minutes: gap === null ? null : round2(gap), max_gap_minutes: 60 },
+    previous_analysis: input.previousAnalysis ?? null,
     scenarios: input.scenarios.map((s) => ({
       key: s.key,
       name_en: s.nameEn,

@@ -4,6 +4,8 @@ import { runProviderAnalysis } from '../providers/dispatch.mjs';
 import { repairAnalysisJson } from './repairAnalysisJson.mjs';
 import { validateAnalysis, computeConfidence, NUMBER_OR_PERCENT_RE as NUMBER_OR_PERCENT_RE_FOR_COVERAGE } from './validateAnalysis.mjs';
 import { collectEvidence } from '../evidence.mjs';
+import { validateSnapshot } from '../analystV3.mjs';
+import { runAnalysisV3 } from '../runAnalysisV3.mjs';
 
 // Claude Haiku 4.5 pricing (the fixed model behind the shared tier — see
 // providers/dispatch.mjs), used only to estimate/log spend, not to bill.
@@ -41,6 +43,7 @@ function estimateSharedCostUsd(usage) {
 export function createAnalyzeRouter(db, userId) {
   const router = Router();
   router.use(createApiKeyAuthMiddleware());
+  router.get('/contract', (req,res) => res.json({version:process.env.ANALYST_CONTRACT_VERSION === 'v3' ? '3' : '2'}));
 
   router.get('/quota', async (req, res) => {
     const { rows } = await db.query(
@@ -60,6 +63,12 @@ export function createAnalyzeRouter(db, userId) {
 
   router.post('/', async (req, res) => {
     const { prompt, snapshot } = req.body;
+    const isV3 = req.body.contract_version === '3';
+    if(isV3) {
+      if(process.env.ANALYST_CONTRACT_VERSION !== 'v3')return res.status(409).json({error:'Analyst v3 is not enabled'});
+      const errors=validateSnapshot(snapshot);
+      if(errors.length)return res.status(400).json({error:errors.join('; ')});
+    }
     const { rows } = await db.query(
       'SELECT * FROM llm_providers WHERE user_id = $1 AND is_active = true',
       [userId]
@@ -84,6 +93,21 @@ export function createAnalyzeRouter(db, userId) {
     }
 
     try {
+      if(isV3) {
+        const controller=new AbortController();
+        const timeout=setTimeout(()=>controller.abort(),85000);
+        const disconnect=()=>{if(!res.writableEnded)controller.abort();};
+        res.on('close',disconnect);
+        let output;
+        try {output=await runAnalysisV3(provider,snapshot,runProviderAnalysis,{signal:controller.signal});}
+        finally {clearTimeout(timeout);res.off('close',disconnect);}
+        if(isShared && output.usage) {
+          await db.query(`INSERT INTO ai_shared_usage (user_id, used_on, call_count, total_cost_usd)
+            VALUES ($1,CURRENT_DATE,1,$2) ON CONFLICT (user_id, used_on)
+            DO UPDATE SET call_count=ai_shared_usage.call_count+1,total_cost_usd=ai_shared_usage.total_cost_usd+$2`,[userId,estimateSharedCostUsd(output.usage)]);
+        }
+        return res.json(output);
+      }
       const evidence = await collectEvidence(provider);
       const { usedWebSearch: injectedWebSearch, evidenceIds, searchStatus, evidenceSources } = evidence;
       const effectivePrompt = evidence.usedWebSearch
