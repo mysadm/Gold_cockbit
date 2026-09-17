@@ -1619,7 +1619,7 @@ function App() {
           {activeTab === 'ai' && (
             <div>
               <SectionLabel text={t.aiT.toUpperCase()} />
-              <Card>
+              <Card className="instrument-card--ai">
                 <div className="soft-text" style={{ fontSize: 15, marginBottom: 6 }}>
                   {t.aiUsingProvider}: {activeProvider ? `${activeProvider.label} (${providerTypeLabel(activeProvider.provider_type)})` : t.aiNoProvider}
                 </div>
