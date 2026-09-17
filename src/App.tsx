@@ -50,7 +50,6 @@ import {
 import { buildAnalysisSnapshot, type BuildSnapshotInput, type PreviousAnalysis } from './lib/analysisSnapshot';
 import { computeSensitivityTable } from './lib/sensitivity';
 
-type Theme = 'light' | 'vault';
 type Language = 'en' | 'ar';
 type MonitorSignal = 0 | 1 | 2;
 
@@ -79,7 +78,6 @@ type AppState = {
   egp: number;
   prem: number;
   calcamt: number;
-  theme: Theme;
   lang: Language;
   weights: { deesc: number; base: number; stag: number };
   monitors: Monitor[];
@@ -178,7 +176,6 @@ const defaultState: AppState = {
   egp: 49.2,
   prem: 3,
   calcamt: 50000,
-  theme: 'light',
   lang: 'ar',
   weights: { deesc: 35, base: 45, stag: 20 },
   monitors: DEFAULT_MONITORS.map((m) => ({ ...m })),
@@ -1233,18 +1230,15 @@ function App() {
   );
 
   const ar = state.lang === 'ar';
-  const vault = state.theme === 'vault';
   const sidebarScreen: ScreenKey = activeTab === 'market' ? 'home' : (activeTab as ScreenKey);
   const screenTitle = NAV_LABELS[sidebarScreen][ar ? 'ar' : 'en'];
 
   return (
-    <div className={vault ? 'theme-vault' : ''} style={{ height: '100vh', display: 'flex', background: 'var(--bg)' }} dir={ar ? 'rtl' : 'ltr'}>
+    <div style={{ height: '100vh', display: 'flex', background: 'var(--bg)', fontFamily: ar ? 'var(--font-arabic)' : 'var(--font-sans)' }} dir={ar ? 'rtl' : 'ltr'}>
       <Sidebar
         screen={sidebarScreen}
         setScreen={(s) => setActiveTab(s)}
         ar={ar}
-        vault={vault}
-        toggleTheme={() => setState((prev) => ({ ...prev, theme: prev.theme === 'vault' ? 'light' : 'vault' }))}
         toggleLang={toggleLang}
         liveLabel={`LIVE · $${fmt(state.spot)}`}
       />
