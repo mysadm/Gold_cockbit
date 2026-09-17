@@ -42,7 +42,7 @@
 **Interfaces:**
 - Produces: every existing `var(--bg)`, `var(--surface)`, `var(--gold)`, etc. reference elsewhere in the codebase now resolves to the Cockpit palette. No new variable names — Task 2 depends on these values being in place first.
 
-- [ ] **Step 1: Replace the font imports and `@theme` font tokens**
+- [x] **Step 1: Replace the font imports and `@theme` font tokens**
 
 In `src/styles.css`, replace lines 1-13:
 
@@ -63,7 +63,7 @@ In `src/styles.css`, replace lines 1-13:
 
 Rationale for each change from the current file: `DM Serif Display` is dropped (Task 2 repoints `.font-display`'s four call sites — the hero ounce price, the weighted-target price, and the two DCA tranche numbers — from serif to mono, matching the theme package's "every numeric readout is JetBrains Mono" rule, so no rule still needs the serif face). `Cairo` is replaced by `Tajawal` (the theme package's mandated Arabic face). `JetBrains Mono`'s weights gain `700`/`800` (the package's price-display and eyebrow-adjacent mono values use up to 800; the old app only ever used up to 600). `--font-display` now points at the mono stack instead of the serif one, for the same reason as above.
 
-- [ ] **Step 2: Replace the `:root` color/spacing tokens**
+- [x] **Step 2: Replace the `:root` color/spacing tokens**
 
 Replace lines 15-35 (the `:root` block, stopping before `.theme-vault`):
 
@@ -99,7 +99,7 @@ Every value here is copied verbatim from `gold-cockpit-theme-package/css/tokens.
 
 Delete the `.theme-vault { ... }` block (old lines 37-49) entirely — Task 3 removes its last usage from `App.tsx`; deleting the CSS block now means nothing referencing the class does anything, which is fine since Task 3 lands in the same work session.
 
-- [ ] **Step 3: Update the browser theme-color meta tag**
+- [x] **Step 3: Update the browser theme-color meta tag**
 
 In `index.html`, line 6, change:
 
@@ -109,11 +109,11 @@ In `index.html`, line 6, change:
 
 (was `#00B240`, a leftover from an older green branding that didn't even match the app's prior blue-ish `--gold: #3a9ec2` — this now matches the new accent-gold token exactly.)
 
-- [ ] **Step 4: Verify**
+- [x] **Step 4: Verify**
 
 Run `npm run dev`, open `localhost:3577`. Expect: the page background, panels, and text are now dark/amber instead of light/teal, even though most component shapes haven't changed yet (Task 2 handles that) — this step is purely a "did the token swap take effect" check. Also open `gold-cockpit-theme-package/html/desktop-dashboard.html` directly in a second tab and compare the background/text/gold hues side by side.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/styles.css index.html
@@ -131,7 +131,7 @@ git commit -m "feat: swap theme tokens to the Cockpit palette and fonts"
 - Consumes: the tokens from Task 1.
 - Produces: no new class names — every existing consumer in `App.tsx`/`Sidebar.tsx`/`primitives.tsx` is affected without being edited.
 
-- [ ] **Step 1: Panels — `.instrument-card`**
+- [x] **Step 1: Panels — `.instrument-card`**
 
 Replace:
 
@@ -167,7 +167,7 @@ with:
 
 This matches `.gc-panel` in `components.css` exactly (flat fill, `--gc-radius-lg`, `--gc-shadow-panel`). The gradient fill, inset top-highlight, and hover lift are dropped — the source design's panels are flat and static; there's no `.gc-panel:hover` rule to port.
 
-- [ ] **Step 2: Navigation — `.nav-item`**
+- [x] **Step 2: Navigation — `.nav-item`**
 
 Replace:
 
@@ -240,7 +240,7 @@ with:
 
 Matches `.gc-nav-item` / `.gc-nav-item[aria-current="page"]` — note the active state's text color is `var(--gold-bright)` (the brighter accent, `#f2b33d`), not `var(--gold)` (`#b8841f`), matching the source's `.gc-nav-item[aria-current] { color: var(--gc-color-accent-gold); }`. The `background: none`/`border: none`/`text-align: start`/`width: 100%` additions exist because Task 3 converts the underlying element from a `<div onClick>` to a real `<button>` (a plain `<button>` otherwise renders with browser-default chrome and centered text) — without that conversion, the `:focus-visible` ring added here would never fire, since a `<div>` with no `tabIndex` never receives keyboard focus at all. The old app had no keyboard-focus ring on nav items, and no way to reach one by keyboard either.
 
-- [ ] **Step 3: Buttons — `.btn-primary` and `.btn-outline`**
+- [x] **Step 3: Buttons — `.btn-primary` and `.btn-outline`**
 
 Replace:
 
@@ -344,7 +344,7 @@ with:
 
 `.btn-primary` now matches `.gc-btn-primary` precisely, including the always-on gold glow shadow (not just on hover, as the old rule had it) and the `:focus-visible`/`:active` states the source defines. `.btn-outline` is the one component in this task without a source-package equivalent; the comment inline documents that it's an extrapolation, not a literal spec value, per this plan's Global Constraints.
 
-- [ ] **Step 4: Eyebrow label — `.section-label`**
+- [x] **Step 4: Eyebrow label — `.section-label`**
 
 Replace:
 
@@ -372,7 +372,7 @@ with:
 
 Matches `.gc-eyebrow` — notably the source label is **not** uppercased (Arabic text doesn't have a meaningful "uppercase," and the source explicitly sets `text-transform: none`), smaller (11px vs 14px), and uses the secondary (not tertiary/muted) text color.
 
-- [ ] **Step 5: Status tags and live dot**
+- [x] **Step 5: Status tags and live dot**
 
 Replace:
 
@@ -450,7 +450,7 @@ with:
 
 Same structure as before, recolored to the new `--up`/`--down` hues (`#3ed598`/`#e5533d`) — the source package's `.gc-status-dot` is 8px with no pulse animation, but this app's live-updating price context is exactly what a pulse communicates, so the animation is kept (an intentional, documented deviation, not an oversight).
 
-- [ ] **Step 6: Hairline and hero-number font**
+- [x] **Step 6: Hairline and hero-number font**
 
 Replace:
 
@@ -477,11 +477,11 @@ with:
 
 `--font-display` already points at JetBrains Mono after Task 1; this adds the explicit `800` weight the source's `display/price-lg` style specifies (DM Serif Display had no comparable "extra-bold" concept, so the old rule never needed a weight). This one rule change updates all four `.font-display` call sites in `App.tsx` (the hero ounce price, the weighted-target price, and the two DCA tranche numbers) from serif to bold mono with no JSX edits.
 
-- [ ] **Step 7: Verify**
+- [x] **Step 7: Verify**
 
 Run `npm run dev`. Walk every screen in the sidebar (Market, Calculator, Target, Scenarios, Egypt, Analyst, DCA Plan, Watchlist, Wallet, Settings) and confirm: panels are flat dark cards with rounded corners (not gradient), the primary CTA buttons glow gently and brighten on hover, nav items highlight in amber-gold when active, section eyebrows are small/non-uppercase, and the big price numbers (Market screen ounce price, Target screen weighted price, DCA tranche percentages) render in bold monospace instead of serif.
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add src/styles.css
@@ -500,7 +500,7 @@ git commit -m "feat: restyle shared panels, buttons, nav items and labels to the
 - Consumes: `--gold-strong`-equivalent tokens from Task 1 (no new tokens needed).
 - Produces: `Sidebar`'s prop signature shrinks — `vault` and `toggleTheme` are removed. Any other caller of `Sidebar` (there is only the one, in `App.tsx`) must be updated in the same commit.
 
-- [ ] **Step 1: Remove the `Theme` type and `state.theme` field in `src/App.tsx`**
+- [x] **Step 1: Remove the `Theme` type and `state.theme` field in `src/App.tsx`**
 
 Delete the type definition (around line 53):
 
@@ -510,7 +510,7 @@ type Theme = 'light' | 'vault';
 
 Remove the `theme: Theme;` field from the `AppState` type (around line 82) and the `theme: 'light',` entry from the initial state object (around line 189). A pre-existing `localStorage` blob from before this change may still contain a `theme` key — that's harmless: `loadState()` parses it into an object that's spread into the new `AppState` shape, and an extra, no-longer-read key on that object is simply ignored (no migration code needed, per this codebase's own convention: `loadState`'s comments already describe similarly ignoring stale pre-v2 shapes rather than writing a migration).
 
-- [ ] **Step 2: Update the root render in `src/App.tsx`**
+- [x] **Step 2: Update the root render in `src/App.tsx`**
 
 Find (around line 1244-1259):
 
@@ -553,7 +553,7 @@ Replace with:
 
 The added `fontFamily` on the root wrapper is the one genuinely new behavior in this task: today, `body`'s global `font-family: var(--font-sans)` (DM Sans) applies even in Arabic mode almost everywhere — only one `<h1>` in the whole file overrides it. This wrapper-level override cascades Tajawal to every element in Arabic mode (English mode is unaffected, since `var(--font-sans)` there is identical to what `body` already sets — the inline style is a no-op for `en`). This directly delivers the theme package's "Tajawal for all Arabic UI text" requirement without touching every individual text element.
 
-- [ ] **Step 3: Remove the toggle button and resize the logo mark in `src/ui/Sidebar.tsx`**
+- [x] **Step 3: Remove the toggle button and resize the logo mark in `src/ui/Sidebar.tsx`**
 
 Remove `vault` and `toggleTheme` from the destructured props and the type signature:
 
@@ -614,7 +614,7 @@ Resize the logo mark from 28×28 to 30×30 to match `.gc-logo-mark`'s spec (the 
 
 (`color: '#0e1210'` becomes `color: 'var(--bg)'` — the hardcoded old dark background hex is replaced with the token, so the glyph automatically stays readable against whatever `--gold` resolves to.)
 
-- [ ] **Step 4: Convert nav items from `<div onClick>` to real, keyboard-operable `<button>`s**
+- [x] **Step 4: Convert nav items from `<div onClick>` to real, keyboard-operable `<button>`s**
 
 Find the nav item loop (around line 100-103):
 
@@ -646,15 +646,15 @@ Replace with:
 
 This is the same accessibility fix the source package's README calls out for its own bottom-nav/sidebar markup ("the original review flagged the nav items as unlabeled, non-keyboard-operable `<div>`s — this new markup fixes that at the same time as the reskin, don't reintroduce `<div onclick>`"). The `active` class is kept (so Task 2's CSS needs no selector changes), and `aria-current="page"` is added alongside it for real assistive-tech semantics, matching `.gc-nav-item[aria-current="page"]`'s own selector in the source `components.css`.
 
-- [ ] **Step 5: Typecheck**
+- [x] **Step 5: Typecheck**
 
 Run `npx tsc -b`. Expect: no errors. (This will catch it immediately if any other file still imports/passes `vault` or `toggleTheme` to `Sidebar`, or still references the removed `<div>` nav-item shape — `grep -rn "toggleTheme\|vault=" src/` should also come back empty before moving on.)
 
-- [ ] **Step 6: Verify**
+- [x] **Step 6: Verify**
 
 Run `npm run dev`. Confirm: the sidebar no longer shows a sun/moon button, only the language toggle (now full-width); switching to Arabic visibly changes body text to Tajawal (compare against `gold-cockpit-theme-package/html/mobile-market.html`'s type, which uses the same font); switching back to English is unaffected (still DM Sans, as before this task); clicking a nav item still switches screens; pressing Tab repeatedly from the logo reaches each nav item in order with a visible green focus ring, and pressing Enter/Space on a focused item activates it.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add src/App.tsx src/ui/Sidebar.tsx
@@ -673,7 +673,7 @@ git commit -m "feat: remove the light/vault theme toggle; apply Tajawal in Arabi
 - Consumes: `--gold-glow`, `--gold-border` tokens from Task 1.
 - Produces: `.instrument-card--ai`, an additive class meant to be combined with `.instrument-card` (via the existing `Card` primitive's `className` prop), reserved for this one screen only, per the source package's explicit guidance.
 
-- [ ] **Step 1: Add the glow-panel class**
+- [x] **Step 1: Add the glow-panel class**
 
 In `src/styles.css`, add after the `.instrument-card` rule from Task 2:
 
@@ -690,7 +690,7 @@ In `src/styles.css`, add after the `.instrument-card` rule from Task 2:
 
 Matches `.gc-ai-panel` (`accent-gold-bg` fill, `border-strong` border, gold-glow shadow), layered on top of `.instrument-card`'s base padding/radius/shadow-panel rather than duplicating them.
 
-- [ ] **Step 2: Apply it to the AI Analyst panel**
+- [x] **Step 2: Apply it to the AI Analyst panel**
 
 In `src/App.tsx`, find the AI Analyst screen's outer panel (around line 1637):
 
@@ -709,11 +709,11 @@ Change the opening tag to:
 
 (`Card`'s existing signature already accepts and forwards a `className`, appending it after `instrument-card` — see `src/ui/primitives.tsx`'s `Card` component — so no primitive changes are needed.)
 
-- [ ] **Step 3: Verify**
+- [x] **Step 3: Verify**
 
 Run `npm run dev`, open the Analyst screen. Confirm: only this one panel has the warm gold-tinted background and glow — every other panel in the app (Market, Calculator, Wallet, etc.) still renders as the plain flat `.instrument-card` from Task 2.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add src/styles.css src/App.tsx
@@ -726,21 +726,27 @@ git commit -m "feat: give the AI Analyst panel its gold-glow treatment"
 
 **Files:** none (verification-only task)
 
-- [ ] **Step 1: Side-by-side comparison against the reference builds**
+- [x] **Step 1: Side-by-side comparison against the reference builds**
 
 Open `gold-cockpit-theme-package/html/desktop-dashboard.html` and `localhost:3577` in two side-by-side windows. Confirm the background depth (bg-0 vs bg-1 panels), border color, text color hierarchy (primary/secondary/tertiary), and gold accent hue all match.
 
-- [ ] **Step 2: Walk every screen, both languages**
+- [x] **Step 2: Walk every screen, both languages**
 
 In the running app, click through every sidebar entry (Market, Calculator, Target, Scenarios, Egypt, Analyst, DCA Plan, Watchlist, Wallet, Settings) in both Arabic and English, checking: panels are flat/rounded/dark, primary buttons glow and have a visible focus ring when tabbed to, nav items highlight correctly when active, hero numbers (ounce price, weighted target, DCA tranche %) render bold monospace, the AI panel (and only the AI panel) has the gold-tinted glow, and Arabic text renders in Tajawal while English stays in DM Sans.
 
-- [ ] **Step 3: Regression check**
+- [x] **Step 3: Regression check**
 
 Run `npx tsc -b` and `npm test`. Expect: both clean/green — this is a CSS-only change, so a failure here would indicate an accidental JSX/type break introduced in Tasks 3-4, not an expected consequence of the reskin.
 
-- [ ] **Step 4: Report findings**
+- [x] **Step 4: Report findings**
 
 If anything in Steps 1-2 doesn't match the reference, note the specific screen/element and the mismatch — don't silently patch it into a "close enough" value; go back to the relevant task and correct it against the actual token/component source.
+
+**Findings from execution (2026-09-18):** Walked Market, Calculator, Target, Scenarios, Analyst, and Wallet in both languages — all match the reference (flat panels, glowing primary buttons, bold-mono hero numbers, gold-highlighted active nav with a working keyboard focus ring, Tajawal in Arabic, the AI panel's glow isolated to that one screen). Two things are visibly inconsistent with the new theme but are **out of scope** for this plan and were left alone rather than silently patched:
+1. The `<details>`/`<summary>` "explainer" expanders (e.g. "How does this analyst work?") still render in the old bright green (`#00B240`) — they're styled by the `.legacy-ui` block this plan's Global Constraints explicitly forbid touching.
+2. The Settings screen's AI-provider management table (`ai-settings-ui`, a separate component library) still renders in its own light theme — it has its own independent styling system, never in scope for this plan.
+
+Both are legitimate follow-ups for a future plan, not defects in this one.
 
 ---
 

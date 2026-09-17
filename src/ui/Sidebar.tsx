@@ -44,7 +44,7 @@ export function Sidebar({
   screen,
   setScreen,
   ar,
-  vault,
+  isLight,
   toggleTheme,
   toggleLang,
   liveLabel,
@@ -52,20 +52,20 @@ export function Sidebar({
   screen: ScreenKey;
   setScreen: (s: ScreenKey) => void;
   ar: boolean;
-  vault: boolean;
+  isLight: boolean;
   toggleTheme: () => void;
   toggleLang: () => void;
   liveLabel: string;
 }) {
   return (
     <nav
+      className="app-sidebar"
       style={{
         width: 'var(--sidebar-w)',
         minWidth: 'var(--sidebar-w)',
         background: 'var(--surface)',
         borderRight: ar ? 'none' : '1px solid var(--border)',
         borderLeft: ar ? '1px solid var(--border)' : 'none',
-        display: 'flex',
         flexDirection: 'column',
         padding: '20px 12px',
         height: '100vh',
@@ -76,8 +76,8 @@ export function Sidebar({
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 2 }}>
           <div
             style={{
-              width: 28,
-              height: 28,
+              width: 30,
+              height: 30,
               borderRadius: 6,
               background: 'var(--gold)',
               display: 'flex',
@@ -85,7 +85,7 @@ export function Sidebar({
               justifyContent: 'center',
             }}
           >
-            <span style={{ color: '#0e1210', fontWeight: 700, fontSize: 18 }}>✦</span>
+            <span style={{ color: 'var(--bg)', fontWeight: 800, fontSize: 15 }}>✦</span>
           </div>
           <span style={{ fontSize: 19, fontWeight: 700, letterSpacing: '0.02em', color: 'var(--text)' }}>
             {ar ? 'كوكبيت' : 'Cockpit'}
@@ -98,10 +98,16 @@ export function Sidebar({
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 2, flex: 1, overflowY: 'auto' }}>
         {SCREEN_ORDER.map((s) => (
-          <div key={s} className={`nav-item ${screen === s ? 'active' : ''}`} onClick={() => setScreen(s)}>
+          <button
+            key={s}
+            type="button"
+            className={`nav-item ${screen === s ? 'active' : ''}`}
+            aria-current={screen === s ? 'page' : undefined}
+            onClick={() => setScreen(s)}
+          >
             <Icon name={SCREEN_ICONS[s]} size={16} />
             <span>{NAV_LABELS[s][ar ? 'ar' : 'en']}</span>
-          </div>
+          </button>
         ))}
       </div>
 
@@ -110,8 +116,14 @@ export function Sidebar({
           <button className="btn-outline" style={{ flex: 1, padding: '6px 0', fontSize: 15 }} onClick={toggleLang}>
             {ar ? 'EN' : 'عربي'}
           </button>
-          <button className="btn-outline" style={{ flex: 1, padding: '6px 0', fontSize: 15, display: 'flex', justifyContent: 'center' }} onClick={toggleTheme}>
-            <Icon name={vault ? 'sun' : 'moon'} size={12} />
+          <button
+            type="button"
+            className="btn-outline"
+            style={{ flex: 1, padding: '6px 0', fontSize: 15, display: 'flex', justifyContent: 'center' }}
+            onClick={toggleTheme}
+            aria-label={isLight ? (ar ? 'التحويل للوضع الداكن' : 'Switch to dark mode') : (ar ? 'التحويل للوضع الفاتح' : 'Switch to light mode')}
+          >
+            <Icon name={isLight ? 'moon' : 'sun'} size={12} />
           </button>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, paddingInlineStart: 4 }}>

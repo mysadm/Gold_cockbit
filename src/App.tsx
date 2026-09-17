@@ -33,6 +33,7 @@ import {
 } from './api/wallet';
 import { fetchAlertRules, createAlertRule, setAlertRuleActive, type AlertRule } from './api/alertRules';
 import { Sidebar, NAV_LABELS, type ScreenKey } from './ui/Sidebar';
+import { BottomNav } from './ui/BottomNav';
 import { Card, SectionLabel, Hairline, MetricRow, GlowBar, ChangeTag, Icon } from './ui/primitives';
 import {
   normalizeAIResult,
@@ -50,7 +51,7 @@ import {
 import { buildAnalysisSnapshot, type BuildSnapshotInput, type PreviousAnalysis } from './lib/analysisSnapshot';
 import { computeSensitivityTable } from './lib/sensitivity';
 
-type Theme = 'light' | 'vault';
+type Theme = 'dark' | 'light';
 type Language = 'en' | 'ar';
 type MonitorSignal = 0 | 1 | 2;
 
@@ -186,7 +187,7 @@ const defaultState: AppState = {
   egp: 49.2,
   prem: 3,
   calcamt: 50000,
-  theme: 'light',
+  theme: 'dark',
   lang: 'ar',
   weights: { deesc: 35, base: 45, stag: 20 },
   monitors: DEFAULT_MONITORS.map((m) => ({ ...m })),
@@ -261,6 +262,19 @@ function initialTabFromUrl(): TabKey {
 function App() {
   const [state, setState] = useState<AppState>(loadState);
   const [activeTab, setActiveTab] = useState<TabKey>(initialTabFromUrl);
+  // .theme-light must live on <body>, not on an inner div: `body { color:
+  // var(--text); }` is the only rule most unstyled text relies on for its
+  // color (e.g. the Egypt screen's karat/sell columns, which set no color
+  // of their own), and an inherited `color` is resolved to a concrete value
+  // at the point it's declared, not re-evaluated per descendant. Scoping
+  // the class on a div nested inside <body> left that declaration seeing
+  // only :root's (dark) --text regardless of the div's own override, so
+  // light mode rendered that unstyled text in dark-mode's near-white —
+  // invisible against a light background. Toggling the class on body
+  // itself makes body's own --text (and therefore its `color`) correct.
+  useEffect(() => {
+    document.body.classList.toggle('theme-light', state.theme === 'light');
+  }, [state.theme]);
   // Analysis in-flight controls: the AbortController lives in a ref so the
   // Cancel button (rendered while state.ai.loading is true) can reach the
   // exact controller `analyze()` created for the current request, across
@@ -1242,18 +1256,18 @@ function App() {
   );
 
   const ar = state.lang === 'ar';
-  const vault = state.theme === 'vault';
+  const isLight = state.theme === 'light';
   const sidebarScreen: ScreenKey = activeTab === 'market' ? 'home' : (activeTab as ScreenKey);
   const screenTitle = NAV_LABELS[sidebarScreen][ar ? 'ar' : 'en'];
 
   return (
-    <div className={vault ? 'theme-vault' : ''} style={{ height: '100vh', display: 'flex', background: 'var(--bg)' }} dir={ar ? 'rtl' : 'ltr'}>
+    <div style={{ height: '100vh', display: 'flex', background: 'var(--bg)', fontFamily: ar ? 'var(--font-arabic)' : 'var(--font-sans)' }} dir={ar ? 'rtl' : 'ltr'}>
       <Sidebar
         screen={sidebarScreen}
         setScreen={(s) => setActiveTab(s)}
         ar={ar}
-        vault={vault}
-        toggleTheme={() => setState((prev) => ({ ...prev, theme: prev.theme === 'vault' ? 'light' : 'vault' }))}
+        isLight={isLight}
+        toggleTheme={() => setState((prev) => ({ ...prev, theme: prev.theme === 'light' ? 'dark' : 'light' }))}
         toggleLang={toggleLang}
         liveLabel={`LIVE · $${fmt(state.spot)}`}
       />
@@ -1264,6 +1278,8 @@ function App() {
             padding: '16px 24px',
             borderBottom: '1px solid var(--border)',
             display: 'flex',
+            flexWrap: 'wrap',
+            rowGap: 8,
             justifyContent: 'space-between',
             alignItems: 'center',
             background: 'var(--surface)',
@@ -1548,7 +1564,7 @@ function App() {
               <Card>
                 <SectionLabel text={t.watchImpliedLbl.toUpperCase()} />
                 <div className="soft-text font-mono" style={{ fontSize: 15, marginBottom: 8 }}>
-                  <span className="up-text">{watchlistCounts.support} {t.siglbl[0]}</span> · <span className="gold-text">{watchlistCounts.monitor} {t.siglbl[1]}</span> · <span className="down-text">{watchlistCounts.risk} {t.siglbl[2]}</span>
+                  <span className="up-text">{watchlistCounts.support} {t.siglbl[0]}</span> · <span className="caution-text">{watchlistCounts.monitor} {t.siglbl[1]}</span> · <span className="down-text">{watchlistCounts.risk} {t.siglbl[2]}</span>
                 </div>
                 <div className="font-mono" style={{ fontSize: 22, fontWeight: 600, color: 'var(--text)', marginBottom: 12 }}>
                   {watchlistImpliedWeights.deesc}% / {watchlistImpliedWeights.base}% / {watchlistImpliedWeights.stag}%
@@ -1634,7 +1650,7 @@ function App() {
           {activeTab === 'ai' && (
             <div>
               <SectionLabel text={t.aiT.toUpperCase()} />
-              <Card>
+              <Card className="instrument-card--ai">
                 <div className="soft-text" style={{ fontSize: 15, marginBottom: 6 }}>
                   {t.aiUsingProvider}: {activeProvider ? `${activeProvider.label} (${providerTypeLabel(activeProvider.provider_type)})` : t.aiNoProvider}
                 </div>
@@ -2605,6 +2621,8 @@ function App() {
           </div>
           </div>
         </div>
+
+        <BottomNav screen={sidebarScreen} setScreen={(s) => setActiveTab(s)} ar={ar} />
       </main>
     </div>
   );
