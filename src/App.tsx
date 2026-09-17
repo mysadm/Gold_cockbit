@@ -253,6 +253,19 @@ function initialTabFromUrl(): TabKey {
 function App() {
   const [state, setState] = useState<AppState>(loadState);
   const [activeTab, setActiveTab] = useState<TabKey>(initialTabFromUrl);
+  // .theme-light must live on <body>, not on an inner div: `body { color:
+  // var(--text); }` is the only rule most unstyled text relies on for its
+  // color (e.g. the Egypt screen's karat/sell columns, which set no color
+  // of their own), and an inherited `color` is resolved to a concrete value
+  // at the point it's declared, not re-evaluated per descendant. Scoping
+  // the class on a div nested inside <body> left that declaration seeing
+  // only :root's (dark) --text regardless of the div's own override, so
+  // light mode rendered that unstyled text in dark-mode's near-white —
+  // invisible against a light background. Toggling the class on body
+  // itself makes body's own --text (and therefore its `color`) correct.
+  useEffect(() => {
+    document.body.classList.toggle('theme-light', state.theme === 'light');
+  }, [state.theme]);
   // Analysis in-flight controls: the AbortController lives in a ref so the
   // Cancel button (rendered while state.ai.loading is true) can reach the
   // exact controller `analyze()` created for the current request, across
@@ -1238,7 +1251,7 @@ function App() {
   const screenTitle = NAV_LABELS[sidebarScreen][ar ? 'ar' : 'en'];
 
   return (
-    <div className={isLight ? 'theme-light' : ''} style={{ height: '100vh', display: 'flex', background: 'var(--bg)', fontFamily: ar ? 'var(--font-arabic)' : 'var(--font-sans)' }} dir={ar ? 'rtl' : 'ltr'}>
+    <div style={{ height: '100vh', display: 'flex', background: 'var(--bg)', fontFamily: ar ? 'var(--font-arabic)' : 'var(--font-sans)' }} dir={ar ? 'rtl' : 'ltr'}>
       <Sidebar
         screen={sidebarScreen}
         setScreen={(s) => setActiveTab(s)}
