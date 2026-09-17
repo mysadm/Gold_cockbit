@@ -155,6 +155,14 @@ function confidenceColor(confidence: AIConfidenceLevel): string {
 // take up to several seconds. 45s was too tight for that chain in practice
 // and caused spurious timeouts on otherwise-successful analyses.
 const ANALYSIS_TIMEOUT_MS = 90000;
+// A local model has no network latency to explain a long wait — every extra
+// second is the machine itself generating tokens — but on ordinary consumer
+// hardware that's still routinely slower than any cloud provider's full
+// round trip. Measured directly against this app's actual prompt size: a
+// local CPU-bound model took 90+ seconds just to respond, before Ollama's
+// own request/generation overhead on top. Cloud providers stay on the
+// tighter budget above, where a long wait is actually worth surfacing.
+const ANALYSIS_TIMEOUT_MS_LOCAL = 300000;
 
 function progressStageLabel(elapsedMs: number, lang: 'ar' | 'en'): string {
   if (elapsedMs < 5000) return lang === 'ar' ? 'بيحضّر السياق' : 'Preparing context';
@@ -1030,7 +1038,8 @@ function App() {
     manualCancelRef.current = false;
     const controller = new AbortController();
     abortControllerRef.current = controller;
-    const timeoutId = window.setTimeout(() => controller.abort(), ANALYSIS_TIMEOUT_MS);
+    const timeoutMs = activeProvider.provider_type === 'ollama' ? ANALYSIS_TIMEOUT_MS_LOCAL : ANALYSIS_TIMEOUT_MS;
+    const timeoutId = window.setTimeout(() => controller.abort(), timeoutMs);
     setState((prev) => ({ ...prev, ai: { ...prev.ai, loading: true, error: null, data: prev.ai.data, at: prev.ai.at, applied: false, startedAt: Date.now(), timedOut: false } }));
     const weightedTarget = SCEN_META.reduce((sum, scenario) => sum + (state.weights[scenario.key] / 100) * ((scenario.lo + scenario.hi) / 2), 0);
     let egyptSnapshot = egypt.data;
@@ -1177,7 +1186,7 @@ function App() {
             loading: false,
             error: wasManualCancel
               ? (state.lang === 'ar' ? 'تم إلغاء التحليل.' : 'Analysis cancelled.')
-              : (state.lang === 'ar' ? `انتهت مهلة التحليل بعد ${ANALYSIS_TIMEOUT_MS / 1000} ثانية.` : `Analysis timed out after ${ANALYSIS_TIMEOUT_MS / 1000}s.`),
+              : (state.lang === 'ar' ? `انتهت مهلة التحليل بعد ${timeoutMs / 1000} ثانية.` : `Analysis timed out after ${timeoutMs / 1000}s.`),
             startedAt: null,
             timedOut: true,
           },
