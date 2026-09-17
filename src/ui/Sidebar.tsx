@@ -59,13 +59,13 @@ export function Sidebar({
 }) {
   return (
     <nav
+      className="app-sidebar"
       style={{
         width: 'var(--sidebar-w)',
         minWidth: 'var(--sidebar-w)',
         background: 'var(--surface)',
         borderRight: ar ? 'none' : '1px solid var(--border)',
         borderLeft: ar ? '1px solid var(--border)' : 'none',
-        display: 'flex',
         flexDirection: 'column',
         padding: '20px 12px',
         height: '100vh',
