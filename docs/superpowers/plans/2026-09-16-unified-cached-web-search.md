@@ -443,13 +443,13 @@ Steps:
 
 Steps:
 
-- [ ] Add a ten-minute in-memory cache keyed by recency version plus query.
-- [ ] Preserve the existing eight-second fetch timeout currently present as an uncommitted change.
-- [ ] Never cache rejected or empty searches.
-- [ ] Use `Promise.allSettled` for facet searches.
-- [ ] Deduplicate, round-robin by facet, cap at two per facet/ten total, and truncate snippets.
-- [ ] Return `ok`, `partial`, `no_results`, or `failed` accurately.
-- [ ] Test cache hits, expiry with fake timers, failures not cached, stable ordering, partial failure, cap enforcement, and identical evidence across provider types.
+- [x] Add a ten-minute in-memory cache keyed by recency version plus query.
+- [x] Preserve the existing eight-second fetch timeout currently present as an uncommitted change.
+- [x] Never cache rejected or empty searches.
+- [x] Use `Promise.allSettled` for facet searches.
+- [x] Deduplicate, round-robin by facet, cap at two per facet/ten total, and truncate snippets.
+- [x] Return `ok`, `partial`, `no_results`, or `failed` accurately.
+- [x] Test cache hits, expiry with fake timers, failures not cached, stable ordering, partial failure, cap enforcement, and identical evidence across provider types.
 
 ### Task 2 — Preserve authoritative source metadata
 
@@ -462,13 +462,13 @@ Steps:
 
 Steps:
 
-- [ ] Return `searchStatus` and `evidenceSources` alongside the existing response.
-- [ ] Keep `usedWebSearch` with unchanged meaning for backward compatibility.
-- [ ] Store search metadata in `AppState['ai']` and reset it on request failure.
-- [ ] Explain disabled, unconfigured, empty, partial, and failed search states bilingually.
-- [ ] Render a source glossary from `evidenceSources` after the analysis.
-- [ ] Use safe external links (`target="_blank"`, `rel="noopener noreferrer"`).
-- [ ] Never render a model-produced URL.
+- [x] Return `searchStatus` and `evidenceSources` alongside the existing response.
+- [x] Keep `usedWebSearch` with unchanged meaning for backward compatibility.
+- [x] Store search metadata in `AppState['ai']` and reset it on request failure.
+- [x] Explain disabled, unconfigured, empty, partial, and failed search states bilingually.
+- [x] Render a source glossary from `evidenceSources` after the analysis.
+- [x] Use safe external links (`target="_blank"`, `rel="noopener noreferrer"`).
+- [x] Never render a model-produced URL.
 
 ### Task 3 — Add snapshot timestamps, alignment, and previous state
 

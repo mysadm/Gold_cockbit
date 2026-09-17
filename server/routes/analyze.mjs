@@ -3,70 +3,7 @@ import { createApiKeyAuthMiddleware } from '../auth.mjs';
 import { runProviderAnalysis } from '../providers/dispatch.mjs';
 import { repairAnalysisJson } from './repairAnalysisJson.mjs';
 import { validateAnalysis, computeConfidence, NUMBER_OR_PERCENT_RE as NUMBER_OR_PERCENT_RE_FOR_COVERAGE } from './validateAnalysis.mjs';
-import { searchWeb } from '../webSearch.mjs';
-
-// No provider_type has any real-time access of its own — Claude's native
-// agentic web_search tool was retired (it could run several searches inside
-// a single open-ended HTTP call with no evidence IDs and no bound on
-// latency), so every provider_type — claude, shared, ollama, openai,
-// openrouter, custom — is on equal footing even though the prompt tells the
-// model to "use your live web search". So for all of them we run real
-// searches ourselves and inject the results into the prompt. A single
-// 5-result snippet-only search still reads as thin and generic, so this
-// runs several targeted queries (one per facet the prompt actually asks
-// about) in parallel and merges/dedupes the results — broader than a single
-// query, though still one static pass rather than an iterative one.
-// No year is hardcoded into these — searchWeb() already restricts results to
-// the past 24 hours (see webSearch.mjs), so a literal year in the query text
-// would just be redundant at best and, come next year, a silent staleness
-// bug at worst (a query for "...policy decision 2026" keeps matching 2026
-// content long after 2026 is over).
-const WEB_SEARCH_QUERIES = [
-  'gold price today news drivers',
-  'Fed interest rate policy decision',
-  'central bank gold buying reserves',
-  'geopolitical tensions news today Iran Russia Ukraine',
-  'Egypt EGP exchange rate gold price today',
-];
-
-function evidenceIdFor(index) {
-  return `EV-${String(index + 1).padStart(3, '0')}`;
-}
-
-// Off only when the user explicitly unchecked the "Web search" toggle in the
-// AI settings card — unset (older rows, never-saved settings) defaults on.
-function isWebSearchEnabled(providerRow) {
-  return providerRow.settings?.webSearch !== false;
-}
-
-function formatSearchResults(results) {
-  return results
-    .map((r, i) => `[${evidenceIdFor(i)}] ${r.title}${r.date ? ` [${r.date}]` : ''} — ${r.snippet} (${r.link})`)
-    .join('\n');
-}
-
-async function augmentPromptWithSearch(prompt) {
-  const apiKey = process.env.SERPAPI_API_KEY;
-  if (!apiKey) return { prompt, usedWebSearch: false, evidenceIds: [] };
-
-  try {
-    const resultsPerQuery = await Promise.all(
-      WEB_SEARCH_QUERIES.map((query) => searchWeb(query, apiKey).catch(() => []))
-    );
-    const seenLinks = new Set();
-    const results = resultsPerQuery.flat().filter((r) => {
-      if (!r.link || seenLinks.has(r.link)) return false;
-      seenLinks.add(r.link);
-      return true;
-    });
-    if (results.length === 0) return { prompt, usedWebSearch: false, evidenceIds: [] };
-    const evidenceIds = results.map((_, i) => evidenceIdFor(i));
-    const augmented = `LIVE WEB SEARCH RESULTS (use these as your source of current market/news context). Each result is tagged with a stable evidence ID like [EV-001]. Whenever you state a time-sensitive fact drawn from these results anywhere in your JSON output, cite the ID(s) it came from in brackets at the end of that sentence, e.g. "...rose 2% today [EV-002]." Never invent an ID that is not listed below, and never attach an ID to a claim these results don't actually support:\n${formatSearchResults(results)}\n\n${prompt}`;
-    return { prompt: augmented, usedWebSearch: true, evidenceIds };
-  } catch {
-    return { prompt, usedWebSearch: false, evidenceIds: [] };
-  }
-}
+import { collectEvidence } from '../evidence.mjs';
 
 // Claude Haiku 4.5 pricing (the fixed model behind the shared tier — see
 // providers/dispatch.mjs), used only to estimate/log spend, not to bill.
@@ -147,16 +84,11 @@ export function createAnalyzeRouter(db, userId) {
     }
 
     try {
-      let effectivePrompt = prompt;
-      let injectedWebSearch = false;
-      let evidenceIds = [];
-      const webSearchEnabled = isWebSearchEnabled(provider);
-      if (webSearchEnabled) {
-        const augmented = await augmentPromptWithSearch(prompt);
-        effectivePrompt = augmented.prompt;
-        injectedWebSearch = augmented.usedWebSearch;
-        evidenceIds = augmented.evidenceIds;
-      }
+      const evidence = await collectEvidence(provider);
+      const { usedWebSearch: injectedWebSearch, evidenceIds, searchStatus, evidenceSources } = evidence;
+      const effectivePrompt = evidence.usedWebSearch
+        ? `LIVE WEB SEARCH RESULTS. Cite the ID(s) supplied. Never invent an ID.\n${evidence.evidencePack.map(r => `[${r.id}] ${r.title} ${r.date} — ${r.snippet}`).join('\n')}\n\n${prompt}`
+        : prompt;
 
       const result = await runProviderAnalysis(provider, effectivePrompt);
       result.usedWebSearch = injectedWebSearch;
@@ -264,7 +196,7 @@ export function createAnalyzeRouter(db, userId) {
         );
       }
 
-      res.json({ ...result, text, validation });
+      res.json({ ...result, text, validation, searchStatus, evidenceSources });
     } catch (err) {
       res.status(502).json({ error: err.message });
     }

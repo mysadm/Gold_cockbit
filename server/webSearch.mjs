@@ -1,3 +1,5 @@
+import { createHash } from 'node:crypto';
+import { getCached, setCached } from './searchCache.mjs';
 const SERPAPI_URL = 'https://serpapi.com/search.json';
 const MAX_RESULTS = 5;
 
@@ -19,26 +21,31 @@ const RECENCY_FILTER = 'qdr:d';
 const SEARCH_TIMEOUT_MS = 8000;
 
 export async function searchWeb(query, apiKey) {
+  const key = `${RECENCY_FILTER}:${createHash('sha256').update(apiKey).digest('hex')}:${query}`;
+  const cached = getCached(key);
+  if (cached) return cached;
   const url = `${SERPAPI_URL}?engine=google&num=${MAX_RESULTS}&q=${encodeURIComponent(query)}&tbs=${RECENCY_FILTER}&api_key=${encodeURIComponent(apiKey)}`;
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), SEARCH_TIMEOUT_MS);
-  let response;
+  let response, data;
   try {
     response = await fetch(url, { signal: controller.signal });
+    data = await response.json();
   } finally {
     clearTimeout(timeout);
   }
-  const data = await response.json();
 
   if (!response.ok) {
     throw new Error(data?.error || `HTTP ${response.status}`);
   }
 
   const results = data?.organic_results || [];
-  return results.slice(0, MAX_RESULTS).map((r) => ({
+  const normalized = results.slice(0, MAX_RESULTS).map((r) => ({
     title: r.title || '',
     snippet: r.snippet || '',
     link: r.link || '',
     date: r.date || '',
   }));
+  setCached(key, normalized);
+  return normalized;
 }

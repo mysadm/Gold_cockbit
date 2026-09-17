@@ -58,7 +58,7 @@ describe('POST /api/analyze', () => {
     const res = await request(app).post('/api/analyze').send({ prompt: 'analyze this' });
 
     expect(res.status).toBe(200);
-    expect(res.body).toEqual({ text: '{"one_liner":"ok"}', usedWebSearch: false, validation: { ok: true, errors: [] } });
+    expect(res.body).toMatchObject({ text: '{"one_liner":"ok"}', usedWebSearch: false, evidenceSources: [], validation: { ok: true, errors: [] } });
     expect(runProviderAnalysis).toHaveBeenCalledWith(
       expect.objectContaining({ id: rows[0].id, provider_type: 'claude' }),
       'analyze this'
@@ -361,6 +361,8 @@ describe('POST /api/analyze — web search augmentation', () => {
 
     expect(res.status).toBe(200);
     expect(res.body.usedWebSearch).toBe(true);
+    expect(res.body.searchStatus).toBe('ok');
+    expect(res.body.evidenceSources).toEqual([{id:'EV-001',title:'Gold hits record high',link:'https://example.com/1',date:''}]);
     expect(searchWeb).toHaveBeenCalledWith(expect.any(String), 'serp-test-key');
     const [, augmentedPrompt] = runProviderAnalysis.mock.calls[0];
     expect(augmentedPrompt).toContain('Gold hits record high');

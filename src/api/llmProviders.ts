@@ -118,7 +118,7 @@ export async function analyzeViaBackend(
   prompt: string,
   snapshot: AnalysisSnapshot,
   signal?: AbortSignal
-): Promise<{ text: string; usedWebSearch: boolean; validation: { ok: boolean; errors: string[] } }> {
+): Promise<{ text: string; usedWebSearch: boolean; searchStatus: SearchStatus; evidenceSources: EvidenceSource[]; validation: { ok: boolean; errors: string[] } }> {
   const response = await fetch('/api/analyze', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -129,6 +129,8 @@ export async function analyzeViaBackend(
 }
 
 export type AnalyzeQuota = { shared: false } | { shared: true; used: number; limit: number };
+export type SearchStatus = 'ok' | 'partial' | 'disabled' | 'no_api_key' | 'no_results' | 'failed';
+export type EvidenceSource = { id: string; title: string; link: string; date: string };
 
 export async function fetchAnalyzeQuota(): Promise<AnalyzeQuota> {
   const response = await fetch('/api/analyze/quota');

@@ -7,6 +7,8 @@ import {
   fetchAnalyzeQuota,
   listProviders,
   type AnalyzeQuota,
+  type SearchStatus,
+  type EvidenceSource,
   type LlmProvider,
   type ProviderType,
 } from './api/llmProviders';
@@ -89,6 +91,8 @@ type AppState = {
     at: string | null;
     applied: boolean;
     usedWebSearch: boolean;
+    searchStatus: SearchStatus | null;
+    evidenceSources: EvidenceSource[];
     validation: { ok: boolean; errors: string[] } | null;
     providerLabel: string | null;
     startedAt: number | null;
@@ -177,7 +181,7 @@ const defaultState: AppState = {
   diag: '',
   goldSource: '',
   aiLevel: 'beginner',
-  ai: { loading: false, error: null, data: null, at: null, applied: false, usedWebSearch: false, validation: null, providerLabel: null, startedAt: null, timedOut: false },
+  ai: { loading: false, error: null, data: null, at: null, applied: false, usedWebSearch: false, searchStatus: null, evidenceSources: [], validation: null, providerLabel: null, startedAt: null, timedOut: false },
   newMonitor: '',
 };
 
@@ -1088,7 +1092,7 @@ function App() {
     const prompt = buildAnalysisPrompt(snapshot, snapshot.watchlist, hasEvidencePack);
 
     try {
-      const { text, usedWebSearch, validation } = await analyzeViaBackend(prompt, snapshot, controller.signal);
+      const { text, usedWebSearch, searchStatus, evidenceSources, validation } = await analyzeViaBackend(prompt, snapshot, controller.signal);
       const fallback = buildFallbackAnalysis({ lang: state.lang, weights: state.weights, spot: state.spot, weightedTarget, walletHasHoldings, walletIntlValue, walletEgyptValue, monitors: state.monitors, dcaPlanData: dcaPlan.data });
       // primary_decision.reasons/dca_read describe their own provenance
       // ("this is a local fallback, not model-generated") — substituting them
@@ -1134,6 +1138,7 @@ function App() {
           at: new Date().toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }),
           applied: false,
           usedWebSearch,
+          searchStatus, evidenceSources,
           validation,
           providerLabel: `${activeProvider.label} · ${activeProvider.model}`,
           startedAt: null,
@@ -1187,7 +1192,7 @@ function App() {
           data: fallback,
           at: new Date().toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }),
           applied: false,
-          usedWebSearch: false,
+          usedWebSearch: false, searchStatus: null, evidenceSources: [],
           validation: null,
           providerLabel: null,
           startedAt: null,
@@ -1812,6 +1817,26 @@ function App() {
                             </div>
                           ))}
                         </div>
+                      </div>
+                    ) : null}
+                    {state.ai.searchStatus && state.ai.searchStatus !== 'ok' ? (
+                      <div className="muted-text">{({
+                        partial: ['بعض مصادر البحث غير متاحة', 'Some search sources were unavailable'],
+                        disabled: ['البحث معطّل', 'Web search disabled'],
+                        no_api_key: ['البحث غير مهيأ على الخادم', 'Search not configured on server'],
+                        no_results: ['لم يُعثر على أدلة حديثة', 'No recent evidence found'],
+                        failed: ['تعذر الوصول للبحث', 'Search unavailable'],
+                      } as const)[state.ai.searchStatus][state.lang === 'ar' ? 0 : 1]}</div>
+                    ) : null}
+                    {state.ai.evidenceSources?.length ? (
+                      <div>
+                        <div className="section-label gold-text">{state.lang === 'ar' ? 'مصادر الأدلة' : 'Sources'}</div>
+                        {state.ai.evidenceSources.filter(s => /^https?:\/\//.test(s.link)).map(source => (
+                          <div key={source.id} className="soft-text" style={{ fontSize: 13, lineHeight: 1.8 }}>
+                            [{source.id}] <a href={source.link} target="_blank" rel="noopener noreferrer">{source.title}</a>
+                            {source.date ? ` — ${source.date}` : ''}
+                          </div>
+                        ))}
                       </div>
                     ) : null}
                     {state.ai.validation && !state.ai.validation.ok ? (

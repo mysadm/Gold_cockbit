@@ -1,9 +1,28 @@
 import { describe, it, expect, afterEach, vi } from 'vitest';
 import { searchWeb } from '../../server/webSearch.mjs';
+import { clearSearchCache } from '../../server/searchCache.mjs';
 
 describe('searchWeb', () => {
   afterEach(() => {
+    clearSearchCache();
+    vi.useRealTimers();
     vi.unstubAllGlobals();
+  });
+
+  it('reuses successful results until expiry but never caches empty results', async () => {
+    vi.useFakeTimers();
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ organic_results: [{ title: 'News', link: 'https://example.com' }] }) });
+    vi.stubGlobal('fetch', fetchMock);
+    const first = await searchWeb('cache', 'key');
+    expect(await searchWeb('cache', 'key')).toEqual(first);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    vi.advanceTimersByTime(600000);
+    await searchWeb('cache', 'key');
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    fetchMock.mockResolvedValue({ ok: true, json: async () => ({ organic_results: [] }) });
+    await searchWeb('empty', 'key');
+    await searchWeb('empty', 'key');
+    expect(fetchMock).toHaveBeenCalledTimes(4);
   });
 
   it('returns up to 5 organic results with title/snippet/link', async () => {
