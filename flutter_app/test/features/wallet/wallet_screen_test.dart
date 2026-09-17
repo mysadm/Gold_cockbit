@@ -99,6 +99,8 @@ void main() {
 
     await tester.enterText(find.byKey(const Key('txAmountField')), '5');
     await tester.enterText(find.byKey(const Key('txPriceField')), '7000');
+    await tester.ensureVisible(find.byKey(const Key('submitTxButton')));
+    await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('submitTxButton')));
     await tester.pumpAndSettle();
 

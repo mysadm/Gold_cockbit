@@ -88,6 +88,7 @@ export type AnalysisSnapshot = {
     status: 'open_now' | 'next_window' | 'all_complete';
     window: { start: string; end: string } | null;
     active_tranche_index: number | null;
+    current_installment_limit_egp: number;
   } | null;
   watchlist: { id: string; label: string; signal: 'supportive' | 'watch' | 'risk' }[];
 };
@@ -127,6 +128,9 @@ function buildDca(input: SnapshotDcaInput | null): AnalysisSnapshot['dca'] {
       ? { start: input.windowStart, end: input.windowEnd }
       : null,
     active_tranche_index: input.activeIndex >= 0 ? input.activeIndex : null,
+    current_installment_limit_egp: status !== 'open_now' ? 0 : input.mode === 'recurring'
+      ? input.monthlyInvestmentEgp ?? 0
+      : round2((input.totalInvestmentEgp ?? 0) * (input.tranchePcts?.[input.activeIndex] ?? 0) / 100),
   };
 }
 

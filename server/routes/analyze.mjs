@@ -101,7 +101,7 @@ export function createAnalyzeRouter(db, userId) {
         let output;
         try {output=await runAnalysisV3(provider,snapshot,runProviderAnalysis,{signal:controller.signal});}
         finally {clearTimeout(timeout);res.off('close',disconnect);}
-        if(isShared && output.usage) {
+        if(isShared) {
           await db.query(`INSERT INTO ai_shared_usage (user_id, used_on, call_count, total_cost_usd)
             VALUES ($1,CURRENT_DATE,1,$2) ON CONFLICT (user_id, used_on)
             DO UPDATE SET call_count=ai_shared_usage.call_count+1,total_cost_usd=ai_shared_usage.total_cost_usd+$2`,[userId,estimateSharedCostUsd(output.usage)]);

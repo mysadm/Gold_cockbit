@@ -30,7 +30,10 @@ material_change or insufficient_evidence; do not invent a previous state.
 
 A watch level prompts reassessment, not automatic buying. Missing cash is
 unknown; a DCA budget is not cash. Do not recommend amounts beyond supplied
-limits. Return one action, next trigger and invalidation. Confidence is
+limits. A fixed DCA uses total_investment_egp and its tranche split; a recurring
+DCA uses monthly_investment_egp. The other mode's null field is not a missing
+budget. Use current_installment_limit_egp, never derive a deployment amount.
+Return one action, next trigger and invalidation. Confidence is
 low/medium/high, never a percentage. Use concise JSON only; English keys and
 enum codes, natural-language values in the requested locale. Beginner mode
 uses simple Egyptian Arabic or English; expert mode may use technical terms.

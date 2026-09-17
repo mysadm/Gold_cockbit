@@ -86,6 +86,7 @@ describe('buildAnalysisSnapshot', () => {
       status: 'open_now',
       window: { start: '2026-08-01T00:00:00.000Z', end: '2026-10-01T00:00:00.000Z' },
       active_tranche_index: 1,
+      current_installment_limit_egp: 10500,
     });
   });
 

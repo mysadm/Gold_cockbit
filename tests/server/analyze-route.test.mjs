@@ -363,7 +363,7 @@ describe('POST /api/analyze — web search augmentation', () => {
     expect(res.body.usedWebSearch).toBe(true);
     expect(res.body.searchStatus).toBe('ok');
     expect(res.body.evidenceSources).toEqual([{id:'EV-001',title:'Gold hits record high',link:'https://example.com/1',date:''}]);
-    expect(searchWeb).toHaveBeenCalledWith(expect.any(String), 'serp-test-key');
+    expect(searchWeb).toHaveBeenCalledWith(expect.any(String), 'serp-test-key', expect.any(Object));
     const [, augmentedPrompt] = runProviderAnalysis.mock.calls[0];
     expect(augmentedPrompt).toContain('Gold hits record high');
     expect(augmentedPrompt).toContain('Prices surged on Fed cut bets');

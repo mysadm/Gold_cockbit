@@ -38,6 +38,13 @@ describe('v3 contract',()=>{
    const r=valid();r.reads.dca='نفذ ٩٩٩٬٩٩٩ جنيه';
    expect(check(r).ok).toBe(false);
  });
+ it('checks currency-prefix amounts and gives completed/future windows no current deployment allowance',()=>{
+   const r=valid();r.reads.dca='Deploy EGP 40001';
+   expect(check(r).ok).toBe(false);
+   r.reads.dca='Deploy 40000 EGP';expect(check(r).ok).toBe(true);
+   expect(check(r,['EV-001'],{...snapshot,dca:{...snapshot.dca,status:'all_complete'}}).ok).toBe(false);
+   expect(alignSnapshot(snapshot).dca.current_installment_limit_egp).toBe(40000);
+ });
  it('parses fenced/prefixed complete JSON but never salvages truncated decision text',()=>{
    expect(parseV3('prefix\n```json\n'+JSON.stringify(valid())+'\n```')).toEqual(valid());
    expect(parseV3('{"primary_decision":{"headline":"cut')).toBeNull();
@@ -50,6 +57,11 @@ describe('v3 contract',()=>{
  });
  it('preserves punctuation inside valid strings and repairs only structural commas',()=>{
    expect(parseV3('{"text":"comma, } stays",}')).toEqual({text:'comma, } stays'});
+ });
+ it('rejects English-only prose for Arabic requests but accepts a fully Arabic safe fallback',()=>{
+   const ar={...snapshot,locale:'ar'};
+   expect(check(valid(),['EV-001'],ar).ok).toBe(false);
+   expect(check(fallbackV3(ar),[],ar).ok).toBe(true);
  });
  it('never throws on malformed read values',()=>{
    const r=valid();r.reads.dca={amount:100};

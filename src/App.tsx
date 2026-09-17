@@ -1014,13 +1014,9 @@ function App() {
 
   const applyAI = () => {
     const sw = state.ai.data?.suggested_weights;
-    if (!sw) return;
-    let deesc = Math.round(sw.deesc || 0);
-    let base = Math.round(sw.base || 0);
-    let stag = Math.round(sw.stag || 0);
-    const sum = deesc + base + stag;
-    if (sum !== 100 && sum > 0) stag = 100 - deesc - base;
-    setState((prev) => ({ ...prev, weights: { deesc: Math.max(1, deesc), base: Math.max(1, base), stag: Math.max(1, stag) }, ai: { ...prev.ai, applied: true } }));
+    if (!sw || state.ai.loading || state.ai.validation?.ok !== true || state.ai.data?.primary_decision.action === 'insufficient_evidence') return;
+    if (![sw.deesc, sw.base, sw.stag].every(n => Number.isFinite(n) && n >= 0 && n <= 100) || Math.abs(sw.deesc + sw.base + sw.stag - 100) > 0.01) return;
+    setState((prev) => ({ ...prev, weights: { ...sw }, ai: { ...prev.ai, applied: true } }));
   };
 
   const analyze = async () => {
@@ -1708,6 +1704,17 @@ function App() {
                       </div>
                       <div style={{ fontSize: 17, fontWeight: 700, color: 'var(--text)', lineHeight: 1.6 }}>{state.ai.data.primary_decision.headline}</div>
                     </div>
+                    {state.ai.data.compact_result ? (
+                      <div className="soft-text" style={{ fontSize: 14, lineHeight: 1.8 }}>
+                        <div className="section-label gold-text">{({
+                          material_change: state.lang === 'ar' ? 'تقييم جديد' : 'New assessment',
+                          no_material_change: state.lang === 'ar' ? 'لا تغيير جوهري' : 'No material change',
+                          insufficient_evidence: state.lang === 'ar' ? 'أدلة غير كافية' : 'Insufficient evidence',
+                        })[state.ai.data.compact_result.status]}</div>
+                        <div>{state.lang === 'ar' ? 'المحفز التالي: ' : 'Next trigger: '}{state.ai.data.compact_result.primary_decision.next_trigger}</div>
+                        <div>{state.lang === 'ar' ? 'ما يغيّر القرار: ' : 'What would reverse this decision: '}{state.ai.data.compact_result.primary_decision.invalidation}</div>
+                      </div>
+                    ) : null}
                     {state.ai.data.primary_decision.reasons.length ? (
                       <div>
                         <div className="section-label gold-text" style={{ marginBottom: 6 }}>{t.aiTrendsH}</div>
@@ -1752,16 +1759,22 @@ function App() {
                             </div>
                           ))}
                         </div>
-                        {renderClaimField(state.ai.data.weights_reasoning)}
+                        {state.ai.data.weights_reasoning.text ? renderClaimField(state.ai.data.weights_reasoning) : null}
+                        {state.ai.data.compact_result && state.ai.validation?.ok === true ? (
+                          <div className="muted-text" style={{ fontSize: 13 }}>
+                            {state.lang === 'ar' ? 'المستهدف المحسوب بهذه الأوزان: ' : 'Application-calculated target at these weights: '}
+                            ${Math.round(SCEN_META.reduce((sum, s) => sum + state.ai.data!.suggested_weights[s.key] / 100 * (s.lo + s.hi) / 2, 0)).toLocaleString('en-US')}
+                          </div>
+                        ) : null}
                         <button
                           className="btn-outline"
                           style={{ marginTop: 8, padding: '6px 14px', fontSize: 14 }}
                           onClick={applyAI}
-                          disabled={state.ai.validation?.ok === false || state.ai.data?.primary_decision?.action === 'insufficient_evidence'}
+                          disabled={state.ai.loading || state.ai.validation?.ok !== true || state.ai.data?.primary_decision?.action === 'insufficient_evidence'}
                         >
                           {state.ai.applied ? t.aiApplied : t.aiApply}
                         </button>
-                        {state.ai.validation?.ok === false || state.ai.data?.primary_decision?.action === 'insufficient_evidence' ? (
+                        {state.ai.validation?.ok !== true || state.ai.data?.primary_decision?.action === 'insufficient_evidence' ? (
                           <div className="down-text" style={{ fontSize: 12, marginTop: 4 }}>{t.aiApplyDisabled}</div>
                         ) : null}
                       </div>

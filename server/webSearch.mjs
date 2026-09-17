@@ -20,10 +20,11 @@ const RECENCY_FILTER = 'qdr:d';
 // results from this query" via .catch(() => []), so timing out here is safe.
 const SEARCH_TIMEOUT_MS = 8000;
 
-export async function searchWeb(query, apiKey) {
+export async function searchWeb(query, apiKey, metrics) {
   const key = `${RECENCY_FILTER}:${createHash('sha256').update(apiKey).digest('hex')}:${query}`;
   const cached = getCached(key);
-  if (cached) return cached;
+  if (cached) { if(metrics)metrics.cacheHits++; return cached; }
+  if(metrics)metrics.cacheMisses++;
   const url = `${SERPAPI_URL}?engine=google&num=${MAX_RESULTS}&q=${encodeURIComponent(query)}&tbs=${RECENCY_FILTER}&api_key=${encodeURIComponent(apiKey)}`;
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), SEARCH_TIMEOUT_MS);

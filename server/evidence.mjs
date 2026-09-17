@@ -16,29 +16,34 @@ function canonicalUrl(value) {
     return url.href;
   } catch { return null; }
 }
-const bounded = (s, n) => String(s ?? '').replace(/https?:\/\/\S+/g, '').slice(0, n);
+const bounded = (s, n) => String(s ?? '').replace(/https?:\/\/\S+/gi, '').slice(0, n);
 
 export async function collectEvidence(provider, search = searchWeb) {
-  const empty = (searchStatus) => ({ searchStatus, usedWebSearch: false, evidenceIds: [], evidenceSources: [], evidencePack: [] });
+  const searchMetrics = { cacheHits: 0, cacheMisses: 0 };
+  const empty = (searchStatus) => ({ searchStatus, usedWebSearch: false, evidenceIds: [], evidenceSources: [], evidencePack: [], searchMetrics });
   if (provider.settings?.webSearch === false) return empty('disabled');
   if (!process.env.SERPAPI_API_KEY) return empty('no_api_key');
-  const settled = await Promise.allSettled(WEB_SEARCH_QUERIES.map(q => search(q, process.env.SERPAPI_API_KEY)));
+  const settled = await Promise.allSettled(WEB_SEARCH_QUERIES.map(q => search(q, process.env.SERPAPI_API_KEY, searchMetrics)));
   const failures = settled.filter(r => r.status === 'rejected').length;
   const seen = new Set();
   const facets = settled.map(result => {
     if (result.status !== 'fulfilled' || !Array.isArray(result.value)) return [];
-    return result.value.flatMap(row => {
+    const selected = [];
+    for (const row of result.value) {
+      if (!row || typeof row !== 'object') continue;
       const link = canonicalUrl(row.link);
-      if (!link || seen.has(link)) return [];
+      if (!link || seen.has(link)) continue;
       seen.add(link);
-      return [{ title: bounded(row.title, 160), date: bounded(row.date, 60), snippet: bounded(row.snippet, 320), link }];
-    }).slice(0, 2);
+      selected.push({ title: bounded(row.title, 160), date: bounded(row.date, 60), snippet: bounded(row.snippet, 320), link });
+      if(selected.length === 2) break;
+    }
+    return selected;
   });
   const selected = [0, 1].flatMap(i => facets.flatMap(rows => rows[i] ? [rows[i]] : []));
   if (!selected.length) return empty(failures ? 'failed' : 'no_results');
   const rows = selected.map((row, i) => ({ ...row, id: `EV-${String(i + 1).padStart(3, '0')}` }));
   return {
-    searchStatus: failures ? 'partial' : 'ok', usedWebSearch: true,
+    searchStatus: failures ? 'partial' : 'ok', usedWebSearch: true, searchMetrics,
     evidenceIds: rows.map(r => r.id),
     evidenceSources: rows.map(({ snippet, ...source }) => source),
     evidencePack: rows.map(({ link, ...evidence }) => evidence),

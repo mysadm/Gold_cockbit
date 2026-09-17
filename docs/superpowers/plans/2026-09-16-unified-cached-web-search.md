@@ -1,6 +1,6 @@
 # Unified Evidence + Token-Efficient Analyst Pipeline — v2 Review Plan
 
-**Status:** Approved; implementation in progress. Checkpoints after Tasks 2, 5, and 8. Default contract stays v2 pending benchmark review.
+**Status:** Implemented through the Task 8 review gate; v3 remains opt-in. Task 7 uses the explicit Flutter rollout hold. See `docs/analyst-benchmark-review.md` for measured results, quality issues, and remaining approvals.
 
 **Supersedes:** The first version of this plan, which covered only search caching, search status, and the evidence glossary
 
@@ -163,7 +163,8 @@ type AnalysisSnapshotV2 = {
     xau_usd: number;
     usd_egp: number;
     weighted_target_usd: number;
-    retrieved_at: string | null;
+    xau_retrieved_at: string | null;
+    fx_retrieved_at: string | null;
   };
 
   price_alignment: {
@@ -198,11 +199,12 @@ type AnalysisSnapshotV2 = {
 
 Rules:
 
-- `market.retrieved_at` is set only after a successful live market pull.
+- `market.xau_retrieved_at` and `market.fx_retrieved_at` are set independently after successful pulls; manual edits invalidate the relevant timestamp.
 - `egypt.retrieved_at` remains the timestamp supplied by the Egypt-price endpoint.
 - `price_alignment` is calculated by the application, never by the model.
-- `premium_reliable` is `true` only when both timestamps exist and their gap is at most 60 minutes.
+- `premium_reliable` requires all three retrieval timestamps (gold, FX, Egypt), no future timestamp, no timestamp older than 60 minutes, and a maximum gap of 60 minutes. These are retrieval times, not a guarantee about a feed's underlying observation time. The server rechecks alignment.
 - `previous_analysis` is the last successfully validated analysis, not the last attempted request.
+- DCA includes application-computed `current_installment_limit_egp`; the server recomputes it. Closed/future windows have no current deployment allowance. Fixed and recurring budgets are distinct; the other mode's null field is not missing cash.
 - Do not add an `available_cash` field until the product actually collects and persists it. Missing cash may be reported through `missing_inputs`; it must not be invented from DCA budget.
 
 ### 7.2 AnalystResultV3
@@ -386,7 +388,7 @@ Implementation policy:
 - Select at most two results per facet and at most ten overall.
 - Truncate each snippet to 320 characters before prompt injection.
 - Assign evidence IDs only after deduplication and final ordering.
-- Preserve deterministic facet order so two providers run within the TTL receive byte-identical evidence packs.
+- Preserve deterministic facet order so two providers using the same cached successful facet set receive byte-identical evidence packs. Failed/empty queries are retried, so recovery or cache expiry can change the pack.
 - Return full source URLs to the UI in `evidenceSources`; do not place URLs in the model prompt or accept URLs from the model output.
 
 ## 10. Validation policy for v3
@@ -425,11 +427,11 @@ The corrective prompt must list only the validation errors and the compact v3 co
 
 Steps:
 
-- [ ] Capture a representative snapshot containing Egypt, wallet, DCA, and watchlist data with invented test-only values.
-- [ ] Generate the current system prompt, runtime prompt, and evidence pack from fixed fixtures.
-- [ ] Record characters, words, evidence count, and provider token usage when usage metadata is available.
-- [ ] Record validation success and response size for at least one hosted model and one local/OpenAI-compatible model.
-- [ ] Check in only synthetic fixtures; never check in real holdings, API keys, or search credentials.
+- [x] Capture a representative snapshot containing Egypt, wallet, DCA, and watchlist data with invented test-only values.
+- [x] Generate the current system prompt, runtime prompt, and evidence pack from fixed fixtures.
+- [x] Record characters, words, evidence count, and provider token usage when usage metadata is available.
+- [x] Record validation success and response size for hosted/OpenAI-compatible models; record the configured local model's timeout explicitly (no successful local output available).
+- [x] Check in only synthetic fixtures; never check in real holdings, API keys, or search credentials.
 
 ### Task 1 — Cache and bound evidence deterministically
 
@@ -541,17 +543,19 @@ Steps:
 
 Steps:
 
-- [ ] Render material status, concise evidence, scenario arrows, reads, trigger, and invalidation.
-- [ ] Calculate and display the resulting weighted target in the application after validation.
-- [ ] Preserve the validation warning and Apply Weights gate.
-- [ ] Default provider output to 4,096 tokens and clamp configuration to 1,024–8,192.
-- [ ] Keep the existing 90-second frontend analysis timeout until measurements justify reducing it.
-- [ ] Normalize usage metadata where providers expose it; use `null` where unavailable.
-- [ ] Log durations, cache hits, token usage, retry count, provider type, and validation result without logging prompts, holdings, API keys, or full model output.
+- [x] Render material status, concise evidence, scenario arrows, reads, trigger, and invalidation.
+- [x] Calculate and display the resulting weighted target in the application after validation.
+- [x] Preserve the validation warning and Apply Weights gate.
+- [x] Default provider output to 4,096 tokens and clamp configuration to 1,024–8,192.
+- [x] Keep the existing 90-second frontend analysis timeout until measurements justify reducing it.
+- [x] Normalize usage metadata where providers expose it; use `null` where unavailable.
+- [x] Log durations, cache hits, token usage, retry count, provider type, and validation result without logging prompts, holdings, API keys, or full model output.
 
 ### Task 7 — Align Flutter or explicitly hold rollout
 
 The Flutter analyst still uses the old v1 prompt/response shape. Production rollout must not silently break it.
+
+**Chosen option:** explicit rollout hold. Flutter migration steps below remain deferred. Its existing tests pass; no Flutter production request/response behavior was changed.
 
 **Files:**
 
@@ -564,18 +568,20 @@ Steps:
 - [ ] Parse `AnalystResultV3` and source metadata.
 - [ ] Render the v3 decision, trigger, invalidation, and evidence sources.
 - [ ] Add repository and widget tests.
-- [ ] If Flutter cannot be migrated in the same release, keep v3 behind `ANALYST_CONTRACT_VERSION=v2` and do not enable it by default.
+- [x] If Flutter cannot be migrated in the same release, keep v3 behind `ANALYST_CONTRACT_VERSION=v2` and do not enable it by default.
 
 ### Task 8 — Benchmark and review gate
 
-- [ ] Run focused tests after each task.
-- [ ] Run `npm test`, `npm run build`, and Flutter tests before rollout.
-- [ ] Run the synthetic fixture through at least: shared Claude, one OpenAI-compatible hosted provider, and Ollama/custom local provider when available.
-- [ ] Compare input/output size, search time, model time, total time, retries, validation, and decision consistency with Task 0.
-- [ ] Confirm Arabic JSON remains valid and concise.
-- [ ] Confirm source links come only from server metadata.
-- [ ] Confirm two providers analyzed within ten minutes receive byte-identical evidence.
-- [ ] Submit benchmark table and sample anonymized outputs for human review before changing the default contract version.
+- [x] Run focused tests after each task.
+- [x] Run `npm test`, `npm run build`, and Flutter tests before rollout.
+- [x] Run the synthetic fixture through at least: shared Claude, one OpenAI-compatible hosted provider, and Ollama/custom local provider when available.
+- [x] Compare input/output size, search time, model time, total time, retries, validation, and decision consistency with Task 0.
+- [x] Confirm Arabic JSON remains valid and concise.
+- [x] Confirm source links come only from server metadata.
+- [x] Confirm two providers analyzed within ten minutes receive byte-identical evidence.
+- [x] Submit benchmark table and sample anonymized outputs for human review before changing the default contract version.
+
+**Review limits:** these are smoke samples, not repeated-run medians. The 50% output-token target is not met in measured GPT-4o samples; the local provider timed out. Structural validation does not establish financial correctness. Production activation and Flutter migration remain pending.
 
 ## 12. Smart Delta Mode — deliberately phase 2
 

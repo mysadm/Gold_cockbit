@@ -1,7 +1,19 @@
 import { lookup } from 'node:dns/promises';
 import net from 'node:net';
+import { completionBudget, normalizeUsage } from './completionBudget.mjs';
 
 const REQUEST_TIMEOUT_MS = 180000;
+
+async function abortable(promise, signal) {
+  signal.throwIfAborted();
+  let onAbort;
+  const cancelled = new Promise((_, reject) => {
+    onAbort = () => reject(signal.reason);
+    signal.addEventListener('abort', onAbort, { once: true });
+  });
+  try { return await Promise.race([promise, cancelled]); }
+  finally { signal.removeEventListener('abort', onAbort); }
+}
 
 function isBlockedAddress(address) {
   const ipVersion = net.isIP(address);
@@ -65,11 +77,9 @@ function extractErrorMessage(data) {
   return data?.error?.message;
 }
 
-async function postChatCompletion(baseUrl, headers, model, messages, signal, temperature, maxTokens) {
-  // 16000 is a floor, not a default: it's sized for this app's fixed multi-field
-  // analysis JSON schema (see claude.mjs for the full rationale). A user-configured
-  // maxTokens can only raise it, never shrink it below that.
-  const body = { model, messages, max_tokens: Math.max(maxTokens || 0, 16000) };
+async function postChatCompletion(baseUrl, headers, model, messages, signal, temperature, maxTokens, compact, tokenLimitParameter) {
+  // Legacy keeps its 16000 floor; compact uses the bounded v3 budget.
+  const body = { model, messages, [tokenLimitParameter]: completionBudget(maxTokens, compact) };
   if (typeof temperature === 'number') body.temperature = temperature;
   const response = await fetch(`${baseUrl}/chat/completions`, {
     method: 'POST',
@@ -87,21 +97,27 @@ async function postChatCompletion(baseUrl, headers, model, messages, signal, tem
     throw new Error(extractErrorMessage(data) || `HTTP ${response.status}`);
   }
 
-  return data?.choices?.[0]?.message?.content || '';
+  return { text: typeof data?.choices?.[0]?.message?.content === 'string' ? data.choices[0].message.content : '',
+    usage: normalizeUsage(data?.usage?.prompt_tokens, data?.usage?.completion_tokens),
+    truncated: ['length', 'content_filter'].includes(data?.choices?.[0]?.finish_reason) };
 }
 
-export async function callOpenAICompatible({ baseUrl, apiKey, model, prompt, temperature, maxTokens, expectJson = true, system }) {
+export async function callOpenAICompatible({ baseUrl, apiKey, model, prompt, temperature, maxTokens, expectJson = true, system, compact = false, signal, tokenLimitParameter = 'max_tokens' }) {
+  signal?.throwIfAborted();
+  if (!['max_tokens', 'max_completion_tokens'].includes(tokenLimitParameter)) throw new Error('Unsupported completion limit parameter');
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
   try {
-    const safeBaseUrl = await validateBaseUrl(baseUrl);
+    const requestSignal = signal ? AbortSignal.any([signal, controller.signal]) : controller.signal;
+    const safeBaseUrl = (await abortable(validateBaseUrl(baseUrl), requestSignal)).replace(/\/+$/, '');
     const headers = { 'Content-Type': 'application/json' };
     if (apiKey) headers.Authorization = `Bearer ${apiKey}`;
 
     let messages = system
       ? [{ role: 'system', content: system }, { role: 'user', content: prompt }]
       : [{ role: 'user', content: prompt }];
-    let text = await postChatCompletion(safeBaseUrl, headers, model, messages, controller.signal, temperature, maxTokens);
+    let result = await postChatCompletion(safeBaseUrl, headers, model, messages, requestSignal, temperature, maxTokens, compact, tokenLimitParameter);
+    let { text, usage } = result;
 
     if (expectJson && !text.includes('{')) {
       messages = [
@@ -109,10 +125,12 @@ export async function callOpenAICompatible({ baseUrl, apiKey, model, prompt, tem
         { role: 'assistant', content: text },
         { role: 'user', content: 'Output ONLY the final JSON object now.' },
       ];
-      text = await postChatCompletion(safeBaseUrl, headers, model, messages, controller.signal, temperature, maxTokens);
+      result = await postChatCompletion(safeBaseUrl, headers, model, messages, requestSignal, temperature, maxTokens, compact, tokenLimitParameter);
+      text = result.text;
+      usage = usage && result.usage ? { input_tokens: usage.input_tokens + result.usage.input_tokens, output_tokens: usage.output_tokens + result.usage.output_tokens } : null;
     }
 
-    return { text, usedWebSearch: false };
+    return { text, usedWebSearch: false, ...(compact ? { usage, truncated: result.truncated } : usage ? { usage } : {}) };
   } finally {
     clearTimeout(timeout);
   }

@@ -33,4 +33,10 @@ describe('provider-neutral evidence', () => {
     expect(result.searchStatus).toBe(status);
     expect(result.usedWebSearch).toBe(false);
   });
+  it('does not discard a later facet result merely because it was beyond an earlier facet cap',async()=>{
+    vi.stubEnv('SERPAPI_API_KEY','test');
+    const rows=['a','b','c'].map(s=>({title:s,link:`https://example.com/${s}`}));
+    const search=vi.fn().mockResolvedValueOnce(rows).mockResolvedValue([rows[2]]);
+    expect((await collectEvidence({},search)).evidenceSources.map(s=>s.title)).toEqual(['a','c','b']);
+  });
 });

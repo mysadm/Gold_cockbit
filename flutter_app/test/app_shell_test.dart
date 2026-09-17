@@ -60,6 +60,12 @@ void main() {
 
     expect(find.text('Market'), findsWidgets);
     expect(find.text('Scenarios'), findsOneWidget);
+    await tester.scrollUntilVisible(
+      find.text('Settings'),
+      300,
+      scrollable: find.descendant(of: find.byType(Drawer), matching: find.byType(Scrollable)).first,
+    );
+    await tester.pumpAndSettle();
     expect(find.text('Settings'), findsOneWidget);
   });
 

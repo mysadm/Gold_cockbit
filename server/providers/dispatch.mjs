@@ -14,10 +14,8 @@ export const DEFAULT_BASE_URLS = {
 const SHARED_TIER_MODEL = 'claude-haiku-4-5';
 
 export async function runProviderAnalysis(providerRow, prompt, { expectJson = true, system = GOLD_MARKET_ANALYST_SYSTEM_PROMPT, compact = false, signal } = {}) {
-  const temperature = typeof providerRow.settings?.temperature === 'number' ? providerRow.settings.temperature : undefined;
-  // maxTokens from user settings is only ever applied as a ceiling *increase* — the
-  // fixed 16000 floor in callClaude/callOpenAICompatible protects the multi-field JSON
-  // schema the analysis prompt returns from being truncated (see comment there).
+  const temperature = !providerRow.settings?.extra?.omitTemperature && typeof providerRow.settings?.temperature === 'number' ? providerRow.settings.temperature : undefined;
+  // The adapter preserves legacy limits and clamps compact output independently.
   const maxTokens = typeof providerRow.settings?.maxTokens === 'number' ? providerRow.settings.maxTokens : undefined;
 
   if (providerRow.provider_type === 'claude') {
@@ -40,6 +38,7 @@ export async function runProviderAnalysis(providerRow, prompt, { expectJson = tr
   }
 
   const baseUrl = providerRow.base_url || DEFAULT_BASE_URLS[providerRow.provider_type];
+  const tokenLimitParameter = providerRow.settings?.extra?.tokenLimitParameter || (compact && providerRow.provider_type === 'openai' ? 'max_completion_tokens' : 'max_tokens');
   return callOpenAICompatible({
     baseUrl,
     apiKey: providerRow.api_key,
@@ -50,5 +49,6 @@ export async function runProviderAnalysis(providerRow, prompt, { expectJson = tr
     expectJson,
     system,
     compact, signal,
+    tokenLimitParameter,
   });
 }

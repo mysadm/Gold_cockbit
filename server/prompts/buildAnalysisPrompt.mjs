@@ -9,6 +9,7 @@ export const OUTPUT_EXAMPLE = {
 };
 export function buildAnalysisPrompt(snapshot, evidencePack) {
   return `Analyze the data below; return the demonstrated JSON shape with actual values.
+Write EVERY prose value in ${snapshot.locale === 'ar' ? 'Egyptian Arabic (العربية المصرية)' : 'English'}. Only JSON keys and enum codes stay in English.
 Allowed status: material_change|no_material_change|insufficient_evidence.
 Action: buy|hold|wait|reduce|review|insufficient_evidence. Horizon: now|next_event|strategic.
 Confidence and strength: low|medium|high. Scenario effect: deesc|base|stag|mixed|neutral.

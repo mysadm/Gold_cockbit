@@ -1,4 +1,7 @@
 import { describe, it, expect, afterEach, vi } from 'vitest';
+// Fetch is mocked: DNS must be deterministic too. Live DNS could outlive a
+// timed-out test and send its delayed fetch through the next test's mock.
+vi.mock('node:dns/promises', () => ({ lookup: vi.fn(async host => [{ address: host === '127.0.0.1' ? host : '203.0.113.1', family: 4 }]) }));
 import {
   listOpenAICompatibleModels,
   listAnthropicModels,

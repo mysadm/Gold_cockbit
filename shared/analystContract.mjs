@@ -30,12 +30,19 @@ export function validateSnapshot(snapshot) {
 }
 export function alignSnapshot(snapshot) {
   const result=structuredClone(snapshot);
+  if(result.dca) result.dca.current_installment_limit_egp=installmentLimit(result.dca);
   const times=[result.market.xau_retrieved_at,result.market.fx_retrieved_at,result.egypt?.retrieved_at].map(t=>t?Date.parse(t):NaN);
   const complete=times.every(Number.isFinite);
   const gap=complete?(Math.max(...times)-Math.min(...times))/60000:null;
   const now=Date.now();
   result.price_alignment={aligned:gap!==null&&gap<=60,premium_reliable:complete&&gap<=60&&times.every(t=>t<=now&&now-t<=3600000),age_gap_minutes:gap,max_gap_minutes:60};
   return result;
+}
+function installmentLimit(dca) {
+  if(dca.status !== 'open_now')return 0;
+  if(dca.mode==='recurring')return dca.monthly_investment_egp;
+  const pct=dca.tranche_split_pct?.[dca.active_tranche_index];
+  return Number.isFinite(pct)?Math.round(dca.total_investment_egp*pct)/100:0;
 }
 export function parseV3(text) {
   if(typeof text!=='string')return null;
@@ -58,7 +65,10 @@ export function validateV3({parsed:r,snapshot,evidenceIds=[]}) {
   if(!object(r))return {ok:false,errors:['response must be a JSON object']};
   const errors=[];const fail=m=>errors.push(m);
   const known=new Set(evidenceIds);
-  const prose=(s,name,max=320)=>{if(typeof s!=='string'||!s.trim()||s.length>max)fail(`${name}: nonempty string up to ${max} characters required`);};
+  const prose=(s,name,max=320)=>{
+    if(typeof s!=='string'||!s.trim()||s.length>max)fail(`${name}: nonempty string up to ${max} characters required`);
+    else if(snapshot.locale==='ar'&&!/[\u0621-\u064A]/u.test(s))fail(`${name}: Arabic prose required; keep only keys and enum codes in English`);
+  };
   const only=(value,keys,name)=>{if(object(value)&&Object.keys(value).some(k=>!keys.includes(k)))fail(`${name}: unknown fields`);};
   only(r,['schema_version','status','primary_decision','evidence','suggested_weights','weight_changes','reads','assumptions','missing_inputs'],'response');
   if(r.schema_version!=='3')fail('schema_version must be 3');
@@ -107,10 +117,9 @@ export function validateV3({parsed:r,snapshot,evidenceIds=[]}) {
     for(const k of ['wallet','dca','watchlist'])if(r.reads[k]!==undefined)prose(r.reads[k],`reads.${k}`);
     const dca=snapshot.dca;
     if(dca&&typeof r.reads.dca==='string') {
-      const total=dca.mode==='fixed'?dca.total_investment_egp:dca.monthly_investment_egp;
-      const cap=dca.mode==='fixed'&&dca.active_tranche_index!==null&&Array.isArray(dca.tranche_split_pct)?total*dca.tranche_split_pct[dca.active_tranche_index]/100:total;
+      const cap=installmentLimit(dca);
       const normalized=r.reads.dca.replace(/[٠-٩]/g,c=>'٠١٢٣٤٥٦٧٨٩'.indexOf(c)).replace(/[٬,]/g,'');
-      const amounts=[...normalized.matchAll(/(\d+(?:\.\d+)?)\s*(?:EGP|جنيه)/gi)].map(m=>Number(m[1]));
+      const amounts=[...normalized.matchAll(/(\d+(?:\.\d+)?)\s*(?:EGP|جنيه)|(?:EGP|جنيه)\s*(\d+(?:\.\d+)?)/gi)].map(m=>Number(m[1]??m[2]));
       if(amounts.some(n=>n>cap))fail('DCA amount exceeds current installment limit');
     }
   }
