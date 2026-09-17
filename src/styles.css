@@ -1,51 +1,40 @@
-@import url('https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&display=swap');
 @import url('https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500;9..40,600;9..40,700&display=swap');
-@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&display=swap');
-@import url('https://fonts.googleapis.com/css2?family=Cairo:wght@300;400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500;700;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700;800&display=swap');
 
 @import 'tailwindcss';
 
 @theme {
-  --font-display: 'DM Serif Display', Georgia, serif;
+  --font-display: 'JetBrains Mono', ui-monospace, 'SFMono-Regular', Menlo, monospace;
   --font-sans: 'DM Sans', system-ui, sans-serif;
-  --font-mono: 'JetBrains Mono', monospace;
-  --font-arabic: 'Cairo', system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, 'SFMono-Regular', Menlo, monospace;
+  --font-arabic: 'Tajawal', system-ui, sans-serif;
 }
 
 :root {
-  --bg: #f0ebe0;
-  --surface: #e8e2d4;
-  --elevated: #ddd8ca;
-  --surface-hover: #d8d2c2;
-  --gold: #3a9ec2;
-  --gold-bright: #4db0d6;
-  --gold-dim: rgba(58, 158, 194, 0.55);
-  --gold-glow: rgba(58, 158, 194, 0.08);
-  --gold-border: rgba(58, 158, 194, 0.28);
-  --text: #0e1210;
-  --text-soft: #4a4540;
-  --text-muted: #8a8480;
-  --border: rgba(14, 18, 16, 0.1);
-  --border-solid: rgba(14, 18, 16, 0.12);
-  --up: #5a9e7a;
-  --up-bg: rgba(90, 158, 122, 0.1);
-  --down: #9e5a5a;
-  --down-bg: rgba(158, 90, 90, 0.1);
-  --sidebar-w: 220px;
-}
-
-.theme-vault {
-  --bg: #0e1210;
-  --surface: #141815;
-  --elevated: #1c2219;
-  --surface-hover: #1f2721;
-  --gold-glow: rgba(58, 158, 194, 0.1);
-  --gold-border: rgba(58, 158, 194, 0.18);
-  --text: #ddd9d0;
-  --text-soft: #aaa69e;
-  --text-muted: #6b6762;
-  --border: rgba(58, 158, 194, 0.13);
-  --border-solid: #252b27;
+  --bg: #0d0c0a;
+  --surface: #1a1611;
+  --elevated: #211c15;
+  --surface-hover: #211c15; /* the source Figma tokens define no separate hover step —
+                                components.css's own :hover rules (e.g. .gc-nav-item:hover)
+                                reuse the "elevated" bg-2 value, so this does too */
+  --gold: #b8841f;         /* accent-gold-strong: primary buttons, big price readout */
+  --gold-bright: #f2b33d;  /* accent-gold: icons, small accents, focus rings */
+  --gold-dim: rgba(184, 132, 31, 0.55);
+  --gold-glow: #241d10;    /* accent-gold-bg: a real pre-tinted panel fill in the source
+                               tokens, not a computed alpha — used for active-nav-item and
+                               AI-panel backgrounds */
+  --gold-border: #4a3d28;  /* border-strong */
+  --text: #f2ecdd;
+  --text-soft: #a69b85;
+  --text-muted: #6e6552;
+  --border: #332a1c;       /* border-default */
+  --border-solid: #332a1c; /* the source tokens have one border color, not a translucent/solid pair */
+  --up: #3ed598;
+  --up-bg: #132621;
+  --down: #e5533d;
+  --down-bg: #2a1712;
+  --sidebar-w: 232px;
 }
 
 * { box-sizing: border-box; }
