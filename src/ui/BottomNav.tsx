@@ -27,10 +27,16 @@ export function BottomNav({
   screen,
   setScreen,
   ar,
+  isLight,
+  toggleTheme,
+  toggleLang,
 }: {
   screen: ScreenKey;
   setScreen: (s: ScreenKey) => void;
   ar: boolean;
+  isLight: boolean;
+  toggleTheme: () => void;
+  toggleLang: () => void;
 }) {
   const [sheetOpen, setSheetOpen] = useState(false);
   const isMoreActive = MORE_SCREENS.some((s) => s.key === screen);
@@ -89,6 +95,20 @@ export function BottomNav({
                 <span>{NAV_LABELS[key][ar ? 'ar' : 'en']}</span>
               </button>
             ))}
+            <div style={{ display: 'flex', gap: 8, paddingTop: 10, marginTop: 6, borderTop: '1px solid var(--border)' }}>
+              <button type="button" className="btn-outline" style={{ flex: 1, padding: '10px 0', fontSize: 15 }} onClick={toggleLang}>
+                {ar ? 'EN' : 'عربي'}
+              </button>
+              <button
+                type="button"
+                className="btn-outline"
+                style={{ flex: 1, padding: '10px 0', display: 'flex', justifyContent: 'center', alignItems: 'center' }}
+                onClick={toggleTheme}
+                aria-label={isLight ? (ar ? 'التحويل للوضع الداكن' : 'Switch to dark mode') : (ar ? 'التحويل للوضع الفاتح' : 'Switch to light mode')}
+              >
+                <Icon name={isLight ? 'moon' : 'sun'} size={16} />
+              </button>
+            </div>
           </div>
         </div>
       )}

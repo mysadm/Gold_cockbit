@@ -2622,7 +2622,14 @@ function App() {
           </div>
         </div>
 
-        <BottomNav screen={sidebarScreen} setScreen={(s) => setActiveTab(s)} ar={ar} />
+        <BottomNav
+          screen={sidebarScreen}
+          setScreen={(s) => setActiveTab(s)}
+          ar={ar}
+          isLight={isLight}
+          toggleTheme={() => setState((prev) => ({ ...prev, theme: prev.theme === 'light' ? 'dark' : 'light' }))}
+          toggleLang={toggleLang}
+        />
       </main>
     </div>
   );
