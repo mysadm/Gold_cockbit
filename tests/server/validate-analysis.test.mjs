@@ -58,6 +58,50 @@ describe('validateAnalysis (v2)', () => {
     expect(result.ok).toBe(true);
   });
 
+  describe('numbers that come from the app snapshot, not from web search', () => {
+    const snapshot = {
+      dca: null,
+      egypt: { implied_gold_market_usd_egp: 52.4, local_premium_pct: 3.42, retail_21k_egp_per_gram: 4820 },
+      wallet: { total_value_egp: 199752.3 },
+    };
+    const parsedWith = (fields) => ({
+      primary_decision: { action: 'hold', horizon: 'now', headline: 'x', confidence: 'medium', reasons: [] },
+      suggested_weights: { deesc: 33, base: 34, stag: 33 },
+      ...fields,
+    });
+    const run = (parsed) => validateAnalysis({ parsed, rawText: JSON.stringify(parsed), evidenceIds: ['EV-001'], snapshot });
+
+    it('does not require a citation for figures that appear in the snapshot (egp_read / wallet_read)', () => {
+      const result = run(parsedWith({
+        egp_read: { text: 'Local premium is 3.42% and the 21k gram sells for 4,820 EGP', evidence_ids: [] },
+        wallet_read: { text: 'Your holding is worth 199,752 EGP', evidence_ids: [] },
+      }));
+      expect(result).toEqual({ ok: true, errors: [] });
+    });
+
+    it('accepts a figure the model rounded from a snapshot value', () => {
+      const result = run(parsedWith({ egp_read: { text: 'the premium is about 3% and 3.4%', evidence_ids: [] } }));
+      expect(result.ok).toBe(true);
+    });
+
+    it('applies to primary_decision.reasons too', () => {
+      const parsed = parsedWith({});
+      parsed.primary_decision.reasons = [{ text: 'Implied market rate is $52.4 vs official', evidence_ids: [] }];
+      expect(run(parsed).ok).toBe(true);
+    });
+
+    it('still requires a citation for a figure that is not in the snapshot', () => {
+      const result = run(parsedWith({ egp_read: { text: 'Premium is 3.42% and the pound weakened 7% this week', evidence_ids: [] } }));
+      expect(result.ok).toBe(false);
+      expect(result.errors.some((e) => e.includes('egp_read'))).toBe(true);
+    });
+
+    it('does not treat a merely nearby number as grounded', () => {
+      const result = run(parsedWith({ wallet_read: { text: 'Your holding is worth 150,000 EGP', evidence_ids: [] } }));
+      expect(result.ok).toBe(false);
+    });
+  });
+
   it('hard-fails a cited evidence ID that was never supplied', () => {
     const parsed = {
       primary_decision: { action: 'hold', horizon: 'now', headline: 'x', confidence: 'medium', reasons: [] },

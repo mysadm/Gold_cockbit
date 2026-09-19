@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { createApiKeyAuthMiddleware } from '../auth.mjs';
 import { runProviderAnalysis } from '../providers/dispatch.mjs';
 import { repairAnalysisJson } from './repairAnalysisJson.mjs';
-import { validateAnalysis, computeConfidence, NUMBER_OR_PERCENT_RE as NUMBER_OR_PERCENT_RE_FOR_COVERAGE } from './validateAnalysis.mjs';
+import { validateAnalysis, computeConfidence, collectSnapshotNumbers, hasUngroundedNumber } from './validateAnalysis.mjs';
 import { collectEvidence } from '../evidence.mjs';
 import { validateSnapshot } from '../analystV3.mjs';
 import { runAnalysisV3 } from '../runAnalysisV3.mjs';
@@ -195,7 +195,8 @@ export function createAnalyzeRouter(db, userId) {
         parsedForValidation?.watchlist_read,
         ...(Array.isArray(parsedForValidation?.primary_decision?.reasons) ? parsedForValidation.primary_decision.reasons : []),
       ].filter(Boolean);
-      const fieldsWithClaims = claimFields.filter((f) => NUMBER_OR_PERCENT_RE_FOR_COVERAGE.test(f?.text || ''));
+      const snapshotNumbers = collectSnapshotNumbers(snapshot);
+      const fieldsWithClaims = claimFields.filter((f) => hasUngroundedNumber(f?.text || '', snapshotNumbers));
       const fieldsWithEvidence = fieldsWithClaims.filter((f) => Array.isArray(f?.evidence_ids) && f.evidence_ids.length > 0);
       const evidenceCoverageRatio = fieldsWithClaims.length === 0 ? 1 : fieldsWithEvidence.length / fieldsWithClaims.length;
       const confidence = computeConfidence({ modelConfidence, errors: validation.errors, evidenceCoverageRatio });

@@ -16,6 +16,41 @@ const WEIGHTS_SUM_TOLERANCE = 1; // absorbs Math.round() rounding, not real drif
 // own numbers.
 const CLAIM_FIELD_KEYS = ['weights_reasoning', 'egp_read', 'wallet_read', 'watchlist_read'];
 export const NUMBER_OR_PERCENT_RE = /(\d{1,3}(?:[.,]\d+)?\s?%)|(\$\s?\d[\d,]*(?:\.\d+)?)|(\b\d[\d,]{2,}(?:\.\d+)?\s?(?:EGP|جنيه)\b)/;
+const NUMBER_OR_PERCENT_RE_GLOBAL = new RegExp(NUMBER_OR_PERCENT_RE.source, 'g');
+
+// The prompt tells the model the snapshot is ground truth and to cite its
+// Egypt/wallet figures directly in egp_read / wallet_read. Those figures have
+// no EV-ID (they aren't search results), so demanding one made correct answers
+// fail. A number is exempt only when it matches a snapshot value at the
+// precision the model wrote it; anything else still needs a citation.
+export function collectSnapshotNumbers(value, out = []) {
+  if (typeof value === 'number' && Number.isFinite(value)) out.push(value);
+  else if (Array.isArray(value)) value.forEach((v) => collectSnapshotNumbers(v, out));
+  else if (value && typeof value === 'object') Object.values(value).forEach((v) => collectSnapshotNumbers(v, out));
+  return out;
+}
+
+function parseMatchedNumber(token) {
+  const isPercent = token.includes('%');
+  const digits = token.replace(/[^\d.,]/g, '');
+  const normalized = isPercent ? digits.replace(',', '.') : digits.replace(/,/g, '');
+  const value = Number(normalized);
+  const decimals = normalized.includes('.') ? normalized.split('.')[1].length : 0;
+  return { value, decimals };
+}
+
+function isGroundedInSnapshot(token, snapshotNumbers) {
+  const { value, decimals } = parseMatchedNumber(token);
+  if (!Number.isFinite(value)) return false;
+  const tolerance = Math.max(0.5 * 10 ** -decimals, Math.abs(value) * 0.005);
+  return snapshotNumbers.some((n) => Math.abs(n - value) <= tolerance);
+}
+
+export function hasUngroundedNumber(text, snapshotNumbers) {
+  const matches = String(text || '').match(NUMBER_OR_PERCENT_RE_GLOBAL);
+  if (!matches) return false;
+  return matches.some((token) => !isGroundedInSnapshot(token, snapshotNumbers));
+}
 
 function checkWeightsSum(parsed) {
   const weights = parsed?.suggested_weights;
@@ -55,24 +90,25 @@ function checkEvidenceIdsKnown(key, field, knownIds, errors) {
 // demanding citations there would hard-fail every numeric claim
 // unconditionally. The "cited ID must be known" check stays unconditional
 // regardless: with zero known IDs, any cited ID is still fabricated.
-function checkClaimField(key, field, knownIds, errors, requireCitations) {
+function checkClaimField(key, field, knownIds, errors, requireCitations, snapshotNumbers) {
   if (!field) return;
   const text = fieldText(field);
   const ids = fieldEvidenceIds(field);
-  if (requireCitations && NUMBER_OR_PERCENT_RE.test(text) && ids.length === 0) {
+  if (requireCitations && ids.length === 0 && hasUngroundedNumber(text, snapshotNumbers)) {
     errors.push(`${key} states a number/percentage/price with no evidence_ids attached`);
   }
   checkEvidenceIdsKnown(key, field, knownIds, errors);
 }
 
-function checkClaimFields(parsed, evidenceIds) {
+function checkClaimFields(parsed, evidenceIds, snapshot) {
   const errors = [];
   const known = new Set(evidenceIds || []);
   const requireCitations = known.size > 0;
-  for (const key of CLAIM_FIELD_KEYS) checkClaimField(key, parsed?.[key], known, errors, requireCitations);
+  const snapshotNumbers = collectSnapshotNumbers(snapshot);
+  for (const key of CLAIM_FIELD_KEYS) checkClaimField(key, parsed?.[key], known, errors, requireCitations, snapshotNumbers);
   const reasons = parsed?.primary_decision?.reasons;
   if (Array.isArray(reasons)) {
-    reasons.forEach((reason, i) => checkClaimField(`primary_decision.reasons[${i}]`, reason, known, errors, requireCitations));
+    reasons.forEach((reason, i) => checkClaimField(`primary_decision.reasons[${i}]`, reason, known, errors, requireCitations, snapshotNumbers));
   }
   // dca_read is excluded from CLAIM_FIELD_KEYS (its numeric content is the
   // user's own plan data, not an evidence-citation claim — see the comment
@@ -101,7 +137,7 @@ export function validateAnalysis({ parsed, rawText, evidenceIds, snapshot }) {
   }
   const errors = [
     ...checkWeightsSum(parsed),
-    ...checkClaimFields(parsed, evidenceIds),
+    ...checkClaimFields(parsed, evidenceIds, snapshot),
     ...checkDcaAmountWithinSnapshot(parsed, snapshot),
   ];
   return { ok: errors.length === 0, errors };
