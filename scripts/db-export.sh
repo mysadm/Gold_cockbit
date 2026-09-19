@@ -37,7 +37,7 @@ EXTRA=()
 [[ $NO_KEYS -eq 1 ]] && EXTRA+=(--exclude-table-data=llm_providers)
 
 umask 077
-pg_dump "$DATABASE_URL" --clean --if-exists --no-owner --no-privileges "${EXTRA[@]}" > "$OUT"
+pg_dump "$DATABASE_URL" --clean --if-exists --no-owner --no-privileges ${EXTRA[@]+"${EXTRA[@]}"} > "$OUT"
 
 echo "Exported to $OUT ($(wc -c < "$OUT" | tr -d ' ') bytes, mode 600)"
 if [[ $NO_KEYS -eq 1 ]]; then
