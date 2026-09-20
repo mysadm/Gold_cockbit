@@ -68,7 +68,8 @@ const EN = {
   stag: { name: 'Stagflation Trap', thesis: 'Fed hikes into weakness, dollar squeeze, forced selling' },
 };
 
-const strip = ({ generated_at, price_alignment, previous_analysis, ...rest }) => rest;
+// analysis_scope is a deliberate server-only mark (see market-scope-prompt.test.mjs); everything else must match the client.
+const strip = ({ generated_at, price_alignment, previous_analysis, analysis_scope, ...rest }) => rest;
 
 describe('SCENARIO_META', () => {
   it('matches the English scenario names and theses used by the client', () => {

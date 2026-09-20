@@ -87,6 +87,7 @@ export function buildMarketSnapshot({ now = () => new Date(), prices, egypt = nu
 
   return {
     schema_version: '2',
+    analysis_scope: 'market',
     generated_at: generatedAt,
     locale,
     explanation_level: 'beginner',
