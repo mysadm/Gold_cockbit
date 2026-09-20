@@ -42,6 +42,25 @@ export async function listProviders(): Promise<LlmProvider[]> {
   return parseJsonOrThrow(response);
 }
 
+// Non-admins can't list providers; this returns just the admin's active one
+// (display fields only) so they can still see and run the shared analyst.
+export async function fetchActiveProvider(): Promise<LlmProvider | null> {
+  const response = await fetch('/api/analyze/provider');
+  const { provider } = await parseJsonOrThrow(response);
+  if (!provider) return null;
+  return {
+    id: provider.id,
+    provider_type: provider.provider_type,
+    label: provider.label,
+    model: provider.model,
+    settings: provider.settings ?? {},
+    is_active: true,
+    base_url: null,
+    created_at: '',
+    updated_at: '',
+  };
+}
+
 export async function createProvider(input: LlmProviderInput): Promise<LlmProvider> {
   const response = await fetch('/api/llm-providers', {
     method: 'POST',

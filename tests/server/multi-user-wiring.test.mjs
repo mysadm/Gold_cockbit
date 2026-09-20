@@ -49,6 +49,31 @@ describe('admin-only areas', () => {
   });
 });
 
+describe('shared analyst provider for regular users', () => {
+  it("shows a regular user the admin's active provider, while /api/llm-providers stays 403", async () => {
+    await client.query(
+      `INSERT INTO llm_providers (user_id, provider_type, label, base_url, api_key, model, is_active)
+       VALUES ($1, 'openai', 'Admin Provider', 'http://secret.internal', 'sk-secret', 'gpt-x', true)`,
+      [admin.id]
+    );
+    await client.query(
+      `INSERT INTO llm_providers (user_id, provider_type, label, model, is_active)
+       VALUES ($1, 'claude', 'Alice Own', 'm', true)`,
+      [alice.id]
+    );
+    const agent = await signIn(app, alice);
+    const res = await agent.get('/api/analyze/provider');
+    expect(res.status).toBe(200);
+    expect(res.body.provider.label).toBe('Admin Provider');
+    expect(JSON.stringify(res.body)).not.toMatch(/sk-secret|secret\.internal/);
+    expect((await agent.get('/api/llm-providers')).status).toBe(403);
+  });
+
+  it('requires a session', async () => {
+    expect((await request(app).get('/api/analyze/provider')).status).toBe(401);
+  });
+});
+
 describe('data isolation between users', () => {
   it("each user sees only their own scenarios, and edits don't leak", async () => {
     const a = await signIn(app, alice);

@@ -119,6 +119,20 @@ export function createAnalyzeRouter(db, userId, { providerOwnerId = userId } = {
     res.json({ capped: true, used: await getUsedToday(db, userId), limit: cap.limit });
   });
 
+  // Every approved user analyses on the admin's active provider but can't read
+  // /api/llm-providers, so expose only the display fields the UI needs — never
+  // api_key, base_url or the rest of settings.
+  router.get('/provider', async (req, res) => {
+    const { rows } = await db.query(
+      'SELECT id, provider_type, label, model, settings FROM llm_providers WHERE user_id = $1 AND is_active = true',
+      [providerOwnerId]
+    );
+    if (rows.length === 0) return res.json({ provider: null });
+    const { id, provider_type, label, model, settings } = rows[0];
+    const webSearch = typeof settings?.webSearch === 'boolean' ? settings.webSearch : undefined;
+    res.json({ provider: { id, provider_type, label, model, settings: { webSearch }, is_active: true } });
+  });
+
   router.post('/', async (req, res) => {
     const cap = await getUserCap(db, userId);
     if (cap.capped) {

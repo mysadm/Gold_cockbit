@@ -254,6 +254,63 @@ describe('GET /api/analyze/quota', () => {
   });
 });
 
+describe('GET /api/analyze/provider', () => {
+  const insertAdmin = async () => {
+    const { rows } = await client.query(
+      `INSERT INTO users (email, role, status) VALUES ('admin@x.com', 'admin', 'active') RETURNING id`
+    );
+    return rows[0].id;
+  };
+
+  it("returns the provider owned by providerOwnerId with only whitelisted fields", async () => {
+    const adminId = await insertAdmin();
+    await client.query(
+      `INSERT INTO llm_providers (user_id, provider_type, label, base_url, api_key, model, settings, is_active)
+       VALUES ($1, 'openai', 'Admin OpenAI', 'http://secret.internal', 'sk-secret', 'gpt-x',
+               '{"webSearch": false, "extra": {"token": "t"}, "temperature": 0.3}', true)`,
+      [adminId]
+    );
+    await client.query(
+      `INSERT INTO llm_providers (user_id, provider_type, label, model, is_active)
+       VALUES ($1, 'claude', 'Caller Own', 'm', true)`,
+      [userId]
+    );
+    const adminApp = express();
+    adminApp.use(express.json());
+    adminApp.use('/api/analyze', createAnalyzeRouter(client, userId, { providerOwnerId: adminId }));
+
+    const res = await request(adminApp).get('/api/analyze/provider');
+
+    expect(res.status).toBe(200);
+    expect(Object.keys(res.body)).toEqual(['provider']);
+    expect(Object.keys(res.body.provider).sort()).toEqual(['id', 'is_active', 'label', 'model', 'provider_type', 'settings']);
+    expect(res.body.provider).toMatchObject({ provider_type: 'openai', label: 'Admin OpenAI', model: 'gpt-x', is_active: true, settings: { webSearch: false } });
+    expect(Object.keys(res.body.provider.settings)).toEqual(['webSearch']);
+    expect(JSON.stringify(res.body)).not.toMatch(/sk-secret|secret\.internal|api_key|base_url|token/);
+  });
+
+  it('omits webSearch when the provider does not set it', async () => {
+    await client.query(
+      `INSERT INTO llm_providers (user_id, provider_type, label, model, is_active)
+       VALUES ($1, 'claude', 'Plain', 'm', true)`,
+      [userId]
+    );
+    const res = await request(app).get('/api/analyze/provider');
+    expect(res.body.provider.settings).toEqual({});
+  });
+
+  it('returns { provider: null } when none is active', async () => {
+    await client.query(
+      `INSERT INTO llm_providers (user_id, provider_type, label, model, is_active)
+       VALUES ($1, 'claude', 'Inactive', 'm', false)`,
+      [userId]
+    );
+    const res = await request(app).get('/api/analyze/provider');
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ provider: null });
+  });
+});
+
 describe('POST /api/analyze — per-user daily cap', () => {
   const insertProvider = (type = 'claude', label = 'My Claude', owner = userId) =>
     client.query(
