@@ -65,6 +65,22 @@ daily analysis limit and reset their password there.
 Behind a reverse proxy that terminates HTTPS, set `TRUST_PROXY=1` so the session
 cookie is marked `Secure` and login rate limiting sees real client addresses.
 
+The old `GOLD_COCKPIT_API_KEY` variable is no longer supported: the server ignores it
+(and prints a warning) because sessions replace it.
+
+Operational notes:
+
+- **Run `create-admin` before the first start after upgrading.** The API exits with a
+  clear message when no admin exists, which under a process supervisor such as pm2
+  shows up as a restart loop.
+- **Restart the server after changing which account is the admin.** The admin is read
+  once at start-up.
+- **Docker:** on a fresh database, create the admin before the first `docker compose up`.
+  The `app` service applies migrations only when it starts, so run both steps in one
+  throwaway container (it starts the `db` service and prompts for the password):
+
+      docker compose run --rm app sh -c "node db/migrate.mjs && node scripts/create-admin.mjs you@example.com"
+
 ## Disclaimer
 
 Personal analysis tool — not financial advice. Built-in allocation rule: gold at 15–25% of total wealth, maximum.

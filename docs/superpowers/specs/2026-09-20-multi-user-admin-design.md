@@ -87,7 +87,9 @@ configuration, with a per-user daily cap protecting the admin's credits.
   and the admin routes below.
 - The old optional `GOLD_COCKPIT_API_KEY` header check inside each router is left
   untouched: it does nothing when the variable is unset, and the browser never
-  sent it.
+  sent it. Because the client would then 401 into a login loop, the server
+  warns and deletes the variable at start-up (`neutralizeLegacyApiKey`), so the
+  check always stays a no-op.
 
 ### Admin routes
 
@@ -218,6 +220,11 @@ password (admin reset only), user deletion, multiple organisations.
   admin can read them through the API.
 - `adminId` is captured once at server start. Restart the server after
   changing which user is the admin.
+- Any approved user may write the shared price history (`POST
+  /api/international-prices`; last writer per UTC day wins), because the client
+  posts prices whenever any user views the market. Values are range-validated
+  (`spot_usd` in (0, 100000], `usd_egp` in (0, 10000], `source` a string of at
+  most 100 characters).
 - There is no self-service password reset; the admin resets passwords.
 - Approving a user is not transactional: default provisioning runs before the
   status change, so a failure part-way through leaves some defaults created and
