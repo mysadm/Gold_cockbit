@@ -6,17 +6,36 @@ import { createApiKeyAuthMiddleware } from '../auth.mjs';
 // several free keyless feeds with failover (see pullLive() in src/App.tsx) —
 // there's no server-side fetch to piggyback history recording onto. Instead
 // the client POSTs here after each successful pull.
+const MAX_SPOT_USD = 100000;
+const MAX_USD_EGP = 10000;
+const MAX_SOURCE_LENGTH = 100;
+
 export function createInternationalPricesRouter(db) {
   const router = Router();
   router.use(createApiKeyAuthMiddleware());
 
   router.post('/', async (req, res) => {
     const { spot_usd, usd_egp, source } = req.body;
-    if (typeof spot_usd !== 'number' || Number.isNaN(spot_usd)) {
+    // Every approved user can post here (the client posts after each live price pull) and the
+    // row is shared by everyone, so values are range-checked.
+    if (typeof spot_usd !== 'number' || !Number.isFinite(spot_usd)) {
       return res.status(400).json({ error: 'spot_usd is required and must be a number' });
     }
-    if (usd_egp !== undefined && usd_egp !== null && (typeof usd_egp !== 'number' || Number.isNaN(usd_egp))) {
-      return res.status(400).json({ error: 'usd_egp must be a number when provided' });
+    if (spot_usd <= 0 || spot_usd > MAX_SPOT_USD) {
+      return res.status(400).json({ error: `spot_usd must be greater than 0 and at most ${MAX_SPOT_USD}` });
+    }
+    if (usd_egp !== undefined && usd_egp !== null) {
+      if (typeof usd_egp !== 'number' || !Number.isFinite(usd_egp)) {
+        return res.status(400).json({ error: 'usd_egp must be a number when provided' });
+      }
+      if (usd_egp <= 0 || usd_egp > MAX_USD_EGP) {
+        return res.status(400).json({ error: `usd_egp must be greater than 0 and at most ${MAX_USD_EGP}` });
+      }
+    }
+    if (source !== undefined && source !== null) {
+      if (typeof source !== 'string' || source.length > MAX_SOURCE_LENGTH) {
+        return res.status(400).json({ error: `source must be a string of at most ${MAX_SOURCE_LENGTH} characters` });
+      }
     }
 
     const { rows } = await db.query(
