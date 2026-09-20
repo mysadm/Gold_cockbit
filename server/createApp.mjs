@@ -2,6 +2,7 @@ import express from 'express';
 import { createRequireAuth, requireAdmin, perUserRouter } from './auth/middleware.mjs';
 import { createRateLimiter } from './auth/rateLimit.mjs';
 import { createAuthRouter } from './routes/auth.mjs';
+import { createAdminUsersRouter } from './routes/adminUsers.mjs';
 import { createLlmProvidersRouter } from './routes/llmProviders.mjs';
 import { createAnalyzeRouter } from './routes/analyze.mjs';
 import { createEgyptPricesRouter } from './routes/egyptPrices.mjs';
@@ -31,7 +32,7 @@ export function createApp(db, { adminId, authRateLimit = { max: 20, windowMs: 15
 
   app.use('/api', requireAuth);
 
-  app.use('/api/admin', requireAdmin, createAdminPlaceholderRouter());
+  app.use('/api/admin', requireAdmin, createAdminUsersRouter(db));
   app.use('/api/llm-providers', requireAdmin, createLlmProvidersRouter(db, adminId));
   app.use('/api/software-review', requireAdmin, createSoftwareReviewRouter());
 
@@ -52,10 +53,4 @@ export function createApp(db, { adminId, authRateLimit = { max: 20, windowMs: 15
   });
 
   return app;
-}
-
-// Replaced by the real admin router in a later task; until then every /api/admin
-// path is still behind requireAdmin and falls through to 404.
-function createAdminPlaceholderRouter() {
-  return express.Router();
 }
