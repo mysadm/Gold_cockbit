@@ -1,0 +1,15 @@
+// The retry prompt used to repeat only the validator's error text. These two mistakes are
+// the ones models make most often, and the plain text does not say how to fix them, so the
+// second attempt tended to repeat them and the run fell back to "insufficient evidence".
+export function correctionHints(errors, snapshot) {
+  const hints = [];
+  for (const error of errors) {
+    if (error === 'suggested_weights must be numeric percentages totaling 100') {
+      hints.push('suggested_weights: deesc + base + stag must equal exactly 100 (whole numbers). Add them up before answering; if you are not changing the weights, copy the snapshot weights exactly.');
+    } else if (error === 'DCA amount exceeds current installment limit') {
+      const limit = snapshot?.dca?.current_installment_limit_egp;
+      hints.push(`reads.dca: do not write or mention the total plan budget or any other currency amount. The only amount you may state is current_installment_limit_egp (${limit ?? 0} EGP) or less; otherwise describe the installment by its percentage or tranche number.`);
+    }
+  }
+  return hints;
+}

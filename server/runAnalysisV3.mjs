@@ -3,6 +3,7 @@ import {alignSnapshot,parseV3,validateV3,fallbackV3} from './analystV3.mjs';
 import {buildAnalysisPrompt} from './prompts/buildAnalysisPrompt.mjs';
 import {GOLD_MARKET_ANALYST_SYSTEM_PROMPT} from './prompts/goldMarketAnalyst.mjs';
 import {computeConfidence} from './routes/validateAnalysis.mjs';
+import {correctionHints} from './prompts/correctionHints.mjs';
 
 export async function runAnalysisV3(provider, input, runProvider, {signal,evidenceCollector=collectEvidence}={}) {
   const started=Date.now();
@@ -15,7 +16,7 @@ export async function runAnalysisV3(provider, input, runProvider, {signal,eviden
   const options={system:GOLD_MARKET_ANALYST_SYSTEM_PROMPT,expectJson:false,compact:true,signal};
   {
     for(let attempt=0;attempt<2;attempt++) {
-      const correction=attempt===0?'':`\nCORRECTION: ${validation.errors.join('; ')}. Fix only these failures using the same supplied data and schema.`;
+      const correction=attempt===0?'':`\nCORRECTION: ${validation.errors.join('; ')}. Fix only these failures using the same supplied data and schema.${correctionHints(validation.errors,snapshot).map(h=>`\n- ${h}`).join('')}`;
       signal?.throwIfAborted();
       const result=await runProvider(provider,prompt+correction,options);
       signal?.throwIfAborted();
