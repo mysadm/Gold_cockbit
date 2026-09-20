@@ -1,4 +1,8 @@
 import { describe, it, expect, afterEach, vi } from 'vitest';
+// Fetch is mocked, so DNS must be too: the SSRF guard resolves the provider
+// host, and a slow or stalled real lookup of api.openai.com / googleapis.com
+// (5 of these tests) shows up as a 15s test timeout.
+vi.mock('node:dns/promises', () => ({ lookup: vi.fn(async host => [{ address: host === '127.0.0.1' ? host : '203.0.113.1', family: 4 }]) }));
 import { callOpenAICompatible } from '../../server/providers/openaiCompatible.mjs';
 
 describe('callOpenAICompatible', () => {

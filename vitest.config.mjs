@@ -14,7 +14,7 @@ export default defineConfig({
   },
   test: {
     environment: 'node',
-    setupFiles: ['dotenv/config'],
+    setupFiles: ['dotenv/config', './tests/helpers/loopback-listen.mjs'],
     testTimeout: 15000,
     fileParallelism: false,
   },
