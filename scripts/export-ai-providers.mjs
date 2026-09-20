@@ -4,6 +4,9 @@
 // re-import them (e.g. POST each entry to its own /api/llm-providers, or
 // insert them directly).
 //
+// Exports the providers of the admin user (the one whose active provider runs
+// every analysis).
+//
 // By default API keys are left out — pass --with-keys to include them in
 // plaintext (see the warning that prints when you do).
 //
@@ -12,7 +15,6 @@
 
 import { writeFile } from 'node:fs/promises';
 import { getPool } from '../server/pool.mjs';
-import { ensureDefaultUser } from '../server/ensureDefaultUser.mjs';
 
 const args = process.argv.slice(2);
 const withKeys = args.includes('--with-keys');
@@ -26,7 +28,12 @@ if (!process.env.DATABASE_URL) {
 const pool = getPool(process.env.DATABASE_URL);
 
 try {
-  const userId = await ensureDefaultUser(pool);
+  const admin = await pool.query("SELECT id FROM users WHERE role = 'admin' ORDER BY created_at LIMIT 1");
+  if (admin.rows.length === 0) {
+    console.error('No admin user exists. Run: node scripts/create-admin.mjs you@example.com');
+    process.exit(1);
+  }
+  const userId = admin.rows[0].id;
   const columns = withKeys
     ? 'provider_type, label, base_url, api_key, model, settings, is_active'
     : 'provider_type, label, base_url, model, settings, is_active';

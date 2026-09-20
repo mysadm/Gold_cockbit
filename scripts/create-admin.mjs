@@ -33,7 +33,7 @@ function promptHidden(questions) {
     const answers = [];
     let done = false;
     rl._writeToOutput = (text) => {
-      if (questions.some((q) => text.includes(q)) || text === '\r\n' || text === '\n') process.stdout.write(text);
+      if (questions.includes(text) || text === '\r\n' || text === '\n') process.stdout.write(text);
     };
     rl.on('SIGINT', () => rl.close());
     rl.on('close', () => {
