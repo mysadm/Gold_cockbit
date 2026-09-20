@@ -30,13 +30,29 @@ export function createAdminUsersRouter(db) {
     if (rows.length === 0) return res.status(404).json({ error: 'User not found' });
     if (rows[0].status !== from) return res.status(409).json({ error: `User is ${rows[0].status}, not ${from}` });
     if (before) await before();
-    const updated = await db.query(`UPDATE users SET status = $1 WHERE id = $2 RETURNING ${PUBLIC_COLUMNS}`, [to, req.params.id]);
+    // The status predicate makes the change atomic: a concurrent request that already
+    // moved this user leaves 0 rows here, so the loser gets a 409 instead of a false success.
+    const updated = await db.query(
+      `UPDATE users SET status = $1 WHERE id = $2 AND status = $3 RETURNING ${PUBLIC_COLUMNS}`,
+      [to, req.params.id, from]
+    );
+    if (updated.rows.length === 0) return res.status(409).json({ error: 'User was changed by another request' });
     res.json(updated.rows[0]);
   }
 
-  router.post('/users/:id/approve', (req, res) =>
-    transition(req, res, { from: 'pending', to: 'active', before: () => provisionUserDefaults(db, req.params.id) })
-  );
+  // provisionUserDefaults is check-then-insert, so two overlapping approvals of one user
+  // would both insert (duplicate rows or a primary-key 500). Let only one run at a time.
+  const approving = new Set();
+  router.post('/users/:id/approve', async (req, res) => {
+    const id = req.params.id;
+    if (approving.has(id)) return res.status(409).json({ error: 'User is already being approved' });
+    approving.add(id);
+    try {
+      await transition(req, res, { from: 'pending', to: 'active', before: () => provisionUserDefaults(db, id) });
+    } finally {
+      approving.delete(id);
+    }
+  });
 
   router.post('/users/:id/enable', (req, res) => transition(req, res, { from: 'disabled', to: 'active' }));
 
@@ -44,10 +60,14 @@ export function createAdminUsersRouter(db) {
     if (req.params.id === req.user.id) return res.status(400).json({ error: 'You cannot disable your own account' });
     const { rows } = await db.query('SELECT status FROM users WHERE id = $1', [req.params.id]);
     if (rows.length === 0) return res.status(404).json({ error: 'User not found' });
+    // Only active users can be disabled: disabling a pending user would let enable
+    // activate them without ever provisioning their defaults.
+    if (rows[0].status !== 'active') return res.status(409).json({ error: `User is ${rows[0].status}, not active` });
     const updated = await db.query(
-      `UPDATE users SET status = 'disabled' WHERE id = $1 RETURNING ${PUBLIC_COLUMNS}`,
+      `UPDATE users SET status = 'disabled' WHERE id = $1 AND status = 'active' RETURNING ${PUBLIC_COLUMNS}`,
       [req.params.id]
     );
+    if (updated.rows.length === 0) return res.status(409).json({ error: 'User was changed by another request' });
     await deleteSessionsForUser(db, req.params.id);
     res.json(updated.rows[0]);
   });

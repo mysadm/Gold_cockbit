@@ -64,6 +64,39 @@ describe('approve / disable / enable', () => {
     expect(res.status).toBe(409);
   });
 
+  it('disable 409s on a pending user and leaves them pending', async () => {
+    const res = await adminAgent.post(`/api/admin/users/${pending.id}/disable`);
+    expect(res.status).toBe(409);
+    expect((await client.query('SELECT status FROM users WHERE id = $1', [pending.id])).rows[0].status).toBe('pending');
+  });
+
+  it('a pending user cannot reach active through disable then enable', async () => {
+    await adminAgent.post(`/api/admin/users/${pending.id}/disable`);
+    expect((await adminAgent.post(`/api/admin/users/${pending.id}/enable`)).status).toBe(409);
+    expect((await client.query('SELECT status FROM users WHERE id = $1', [pending.id])).rows[0].status).toBe('pending');
+    expect((await client.query('SELECT count(*)::int n FROM scenarios WHERE user_id = $1', [pending.id])).rows[0].n).toBe(0);
+  });
+
+  it('disable 409s on an already disabled user', async () => {
+    const u = await createTestUser(client, { email: 'd@x.com', status: 'disabled' });
+    expect((await adminAgent.post(`/api/admin/users/${u.id}/disable`)).status).toBe(409);
+  });
+
+  it('approve 409s on an already active user after a first approve', async () => {
+    expect((await adminAgent.post(`/api/admin/users/${pending.id}/approve`)).status).toBe(200);
+    expect((await adminAgent.post(`/api/admin/users/${pending.id}/approve`)).status).toBe(409);
+    expect((await client.query('SELECT count(*)::int n FROM scenarios WHERE user_id = $1', [pending.id])).rows[0].n).toBe(3);
+  });
+
+  it('two simultaneous approves yield exactly one 200 and one 409, without duplicate defaults', async () => {
+    const [a, b] = await Promise.all([
+      adminAgent.post(`/api/admin/users/${pending.id}/approve`),
+      adminAgent.post(`/api/admin/users/${pending.id}/approve`),
+    ]);
+    expect([a.status, b.status].sort()).toEqual([200, 409]);
+    expect((await client.query('SELECT count(*)::int n FROM scenarios WHERE user_id = $1', [pending.id])).rows[0].n).toBe(3);
+  });
+
   it('404s for an unknown or malformed id', async () => {
     expect((await adminAgent.post('/api/admin/users/00000000-0000-0000-0000-000000000000/approve')).status).toBe(404);
     expect((await adminAgent.post('/api/admin/users/not-a-uuid/approve')).status).toBe(404);
