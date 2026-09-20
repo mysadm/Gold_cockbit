@@ -2,13 +2,13 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans. Steps use checkbox (`- [ ]`) syntax.
 
-**Goal:** Cut AI cost and give every user a ready analysis. The server runs one **standard market analysis** in the background on a schedule the admin sets (default twice a day) and keeps every run in the database. Users see the latest one on a **Standard market analysis** card (no wallet, no DCA). Each user also has a **My personalized analysis** card (includes their wallet and DCA plan) that they run on request, limited to their daily allowance (default 3, admin-adjustable per user — unchanged). If a background run fails, the admin is notified.
+**Goal:** Cut AI cost and give every user a ready analysis. The server runs one **standard market analysis** in the background on a schedule the admin sets (default twice a day) and keeps every run in the database. Users see the latest one on a **Standard market analysis** card (no wallet, no DCA). Each user also has a **My personalized analysis** card (includes their wallet and DCA plan) that they run on request, limited to their daily allowance (default 3, admin-adjustable per user — unchanged). If a background run fails, the admin is notified **inside the app** (banner + badge).
 
 **Approved design (chat, 2026-09-21, revision 2):**
 - **True background run** inside the API process: a 60-second tick checks the schedule; when the current time slot has no successful run, it runs. Missed slots (server was down) are caught up on the next tick after start. No browser is involved.
 - **The server builds the analysis input itself:** live prices from the same public feeds the app already uses (gold spot, USD/EGP), Egypt local prices via the existing `fetchEgyptGoldPrices()`, and the **admin's** scenario weights/bands as the framework. Wallet, DCA and watchlist are always empty in this analysis.
 - **Runs on the admin's active provider with the compact v3 contract** (`runAnalysisV3`). Not charged to any user; nothing is written to `ai_shared_usage`.
-- **Retries and failure notification:** up to 3 attempts per slot, at least 5 minutes apart. The first failure opens an admin notification (updated on each attempt, shown as a banner in the app for admins); a successful run closes it. A missing provider counts as a final failure at once.
+- **Retries and failure notification:** up to 3 attempts per slot, at least 5 minutes apart. The first failure opens an admin notification (updated on each attempt, shown as a banner and a Settings badge in the app for admins; in-app only for now); a successful run closes it. A missing provider counts as a final failure at once.
 - **Personalized analysis:** the existing flow, untouched (daily limit, wallet + DCA included); only its card title and hint change.
 - **Off by default:** the schedule ships disabled; the admin turns it on in Settings.
 
@@ -246,9 +246,58 @@ export function currentSlot(now, schedule) {
 
 ---
 
-## Task 8 (optional — only if the user wants notifications outside the app): Webhook notifier
+## Out of scope for now
 
-`schedule.notify_webhook_url` (optional `https://` URL in the same settings object; validate as a public URL with the same SSRF guard the AI provider base URLs use — reuse/extract the existing guard in `server/providers/openaiCompatible.mjs`) and a `notify` dep that POSTs `{ event, slot, error, attempts, final, message }` as JSON with a 5-second timeout on the FINAL failure (and on "no provider configured"); failures of the webhook are logged, never thrown, never retried. Lets the admin forward to Telegram/email/n8n. Tests with an injected `fetch`; add the field to the schedule panel; document it.
+Notification outside the app (webhook/email/Telegram) is NOT part of this plan: failures are shown **inside the app only** (admin banner + Settings badge). `runStandardAnalysis` keeps an injectable `deps.notify` hook (default no-op) so an outside channel can be added later without touching the runner.
+
+---
+
+## Multi-Agent Execution Plan
+
+**Principle:** parallel lanes only where files and contracts are disjoint; everything that shares the browser, the test database or `src/App.tsx` is serialized or isolated. The controller (main session) owns setup, merges, rulings and the ledger; implementer/reviewer agents never spawn agents and never merge.
+
+### Lanes, ownership and dependencies
+
+| Lane | Agent (model) | Tasks | Owns (writes only these) | Needs before start |
+|---|---|---|---|---|
+| **S1** | sonnet | Task 1 | `migrations/0025_*`, `server/analysisSchedule.mjs`, `server/appSettings.mjs`, their tests | nothing |
+| **S2** | sonnet | Task 2 | `server/marketPrices.mjs`, `server/marketSnapshot.mjs`, their tests | nothing (uses existing `scenarios` table, `shared/analystContract.mjs`, `src/lib/analysisSnapshot.ts`) |
+| **C1** | sonnet | Task 5 | `src/api/sharedAnalysis.ts`, `src/ui/StandardAnalysisCard.tsx`, `tests/lib/shared-analysis-api.test.ts`, the Analyst-screen region of `src/App.tsx` | only the frozen JSON contracts below (mocked `fetch`, fixtures) |
+| **C2** | sonnet | Task 6 | `src/ui/SchedulePanel.tsx`, `src/ui/AdminAlerts.tsx`, badge wiring in `Sidebar.tsx`/`BottomNav.tsx`, the Settings-tab/top-of-app/badge regions of `src/App.tsx` | the same frozen contracts; imports `fetchSchedule/saveSchedule/runNow/fetchLatest` from C1's `src/api/sharedAnalysis.ts` → **C2 creates that file's function signatures first if C1 has not merged (see Contract file)** |
+| **S3** | sonnet (same agent continues into S4) | Tasks 3 → 4 | `server/adminNotifications.mjs`, `server/standardAnalysis.mjs`, `server/analysisScheduler.mjs`, `server/routes/analysis.mjs`, `server/index.mjs`, `server/createApp.mjs`, `server/routes/adminUsers.mjs` (notification routes), their tests | S1 and S2 merged into the integration branch |
+| **V** | sonnet | end-to-end browser verification + Task 7 docs | `README.md`, `.env.example` (+ fixes only if a check fails, reported to the controller first) | all lanes merged |
+| **R** | sonnet reviewers; **opus** for the final whole-branch review | per-wave reviews | read-only | the wave's merged range |
+
+### Contract file (freeze before Wave 1)
+The controller writes `src/api/sharedAnalysis.ts` types + function signatures as a stub in the integration branch BEFORE dispatching Wave 1 (types `AnalysisSchedule`, `StandardRun`, `LatestResponse`; functions `fetchLatest`, `fetchSchedule`, `saveSchedule`, `runNow` throwing `Error('not implemented')`), copied from Task 4's response shapes, plus `fetchNotifications()`/`dismissNotification(id)` for admin alerts. C1 fills in the bodies; C2 imports the same signatures. This removes the only cross-lane compile dependency.
+
+### Isolation setup (controller, before Wave 1)
+1. Integration branch: `git worktree add .claude/worktrees/analysis-int -b analysis-standard main`; commit the contract stub there.
+2. One worktree per lane branched from `analysis-standard`: `analysis-s1`, `analysis-s2`, `analysis-c1`, `analysis-c2` (later `analysis-s3` from the merged head).
+3. **One private test database per lane** (`gold_cockpit_test_s1`, `_s2`, `_c1`, `_c2`, `_s3`, `_int`): `psql postgres://localhost:5432/postgres -c 'create database <name>'`, and each worktree's git-ignored `.env` gets `DATABASE_URL` = the real dev URL (never used by tests) and its own `TEST_DATABASE_URL`. This is what makes parallel `npm test` runs safe (every test file drops the schema of ITS database only). `node_modules` is a symlink to the main checkout's.
+4. **Browser and scratch servers are serialized:** only lane **V** (and the controller) may use the Playwright browser, and only with the scratch DB `gold_cockpit_ui_try`, API :8788, UI :3588. Lanes S1/S2/S3/C1/C2 verify with unit/route tests and mocked `fetch` only.
+5. Standing rules for every agent: worktree only; never touch `gold_cockpit_dev` or ports 3577/8787; explicit `git add <paths>`; no `git add -A`; commit messages end with `Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>`; no `npm install`; report file + short status contract.
+
+### Waves
+
+**Wave 1 (parallel, 4 agents):** S1 (Task 1), S2 (Task 2), C1 (Task 5 code + unit tests), C2 (Task 6 code; its App.tsx edits are small and in different regions from C1's). Each finishes with its own `npx tsc -b` + full `npm test` on ITS test DB and reports.
+  - **Gate 1 (controller, per lane):** a task review per lane runs in parallel (reviewers R1–R4, read-only, one diff file each); fix rounds go back to the same implementer (max 5, as before). Nothing merges before its lane review is clean.
+  - **Merge 1:** into `analysis-standard` in this order: S1, S2, C1, C2. Expected textual conflicts: only `src/App.tsx` between C1 and C2 (different regions) — the controller resolves and re-runs `tsc -b` + the full suite on the `_int` DB; any semantic conflict is a controller ruling.
+
+**Wave 2 (agent S3, with a parallel reviewer):** Tasks 3 → 4 on `analysis-s3` (branched from the merged integration head). In parallel, reviewer R5 does the combined client review (C1+C2 merged diff, including the App.tsx merge) so client findings are fixed by C1/C2 while S3 works (fix commits on new branches merged after Gate 2).
+  - **Gate 2:** review S3 (one unit for Tasks 3+4; the runner/claim SQL, retries, notifications and permissions are the risky parts) → fix rounds → merge.
+
+**Wave 3 (serial):** lane V: browser verification of every check listed in Tasks 5–6 against the real merged server on the scratch DB (including the scheduler run with a failing fake provider and 3 attempts), plus Task 7 docs → report; controller fixes go back to the owning lane's agent (not V). Then the **final whole-branch review (opus)** on `analysis-standard` vs `main`, ONE fix wave, one scoped re-review, then the finish step (merge/PR choice is the user's).
+
+### Agent briefs (controller writes one file per lane, containing exactly)
+1. The task text from this plan (via the SDD `task-brief` script) + the frozen contract stub path.
+2. Lane rules: files the lane may write (table above); files it must NOT touch (everything else); its worktree path and private `TEST_DATABASE_URL`; the standing rules; "ask by returning NEEDS_CONTEXT, do not guess across lanes".
+3. Report contract: full report to `<workspace>/<lane>-report.md`; reply ≤ 15 lines: status, commits, one-line test summary, concerns, report path.
+
+### Ledger, rulings, stop conditions
+- The controller keeps `.superpowers/sdd/<plan>/progress.md` (git-ignored) with lane state, base/head SHAs per merge, every ruling (`Ruling: … — why — cost if wrong`) and deferred minors; it is the recovery map after compaction.
+- The controller stops and asks the user only for: a destructive/irreversible operation, a security-sensitive decision, an external side effect (push, publish, merge to `main`), or a plan so broken that every path is a guess. Everything else is a logged ruling.
+- Budget guardrail: at most 5 fix rounds per lane; a lane that trips the breaker is adjudicated by the controller, not looped.
 
 ---
 
