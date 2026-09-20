@@ -1,7 +1,8 @@
-import { useEffect, useState } from 'preact/hooks';
+import { useEffect, useRef, useState } from 'preact/hooks';
 import {
   approveUser, disableUser, enableUser, listUsers, resetPassword, setDailyLimit, type AdminUser,
 } from '../api/adminUsers';
+import { mergeLimits } from '../lib/mergeLimits';
 import { Card, SectionLabel } from './primitives';
 
 const TEXT = {
@@ -25,29 +26,51 @@ export function UsersPanel({ ar, currentUserId, onPendingCount }: { ar: boolean;
   const [limits, setLimits] = useState<Record<string, string>>({});
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  // One action at a time: the ref guards two clicks in the same tick, before the disabled state renders.
+  const [busy, setBusy] = useState(false);
+  const inFlight = useRef(false);
+  // Limits as last loaded from the server, to tell an untouched input from an unsaved edit.
+  const loadedLimits = useRef<Record<string, string>>({});
+  // Only the newest refresh may write state; an older response can resolve later.
+  const refreshSeq = useRef(0);
 
-  async function refresh() {
+  async function refresh(savedIds: readonly string[] = []) {
+    const seq = ++refreshSeq.current;
     try {
       const list = await listUsers();
+      if (seq !== refreshSeq.current) return;
+      const nextLoaded = Object.fromEntries(list.map((u) => [u.id, String(u.daily_ai_limit)]));
+      const prevLoaded = loadedLimits.current;
+      loadedLimits.current = nextLoaded;
       setUsers(list);
-      setLimits(Object.fromEntries(list.map((u) => [u.id, String(u.daily_ai_limit)])));
+      setLimits((inputs) => mergeLimits(prevLoaded, inputs, nextLoaded, savedIds));
       onPendingCount(list.filter((u) => u.status === 'pending').length);
     } catch (err) {
+      if (seq !== refreshSeq.current) return;
       setError(err instanceof Error ? err.message : String(err));
     }
   }
 
   useEffect(() => { void refresh(); }, []);
 
-  async function act(action: () => Promise<unknown>, message?: string) {
+  async function act(userId: string, action: () => Promise<unknown>, message?: string, savedLimit = false) {
+    if (inFlight.current) return;
+    inFlight.current = true;
+    setBusy(true);
     setError(null);
     setNotice(null);
+    let ok = false;
     try {
       await action();
+      ok = true;
       if (message) setNotice(message);
-      await refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      // Also after a failure (e.g. a 409 because the user changed elsewhere), so the row's buttons re-sync.
+      await refresh(ok && savedLimit ? [userId] : []);
+      inFlight.current = false;
+      setBusy(false);
     }
   }
 
@@ -66,12 +89,14 @@ export function UsersPanel({ ar, currentUserId, onPendingCount }: { ar: boolean;
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
           {users.map((u) => {
             const self = u.id === currentUserId;
+            const name = u.display_name || u.email;
             const limitText = limits[u.id] ?? '';
             // Blank/negative would coerce to 0 or be rejected server-side; don't offer Save for them.
             const limitValid = /^\d+$/.test(limitText) && Number(limitText) <= 1000;
             const limitChanged = limitText !== String(u.daily_ai_limit);
             return (
-              <Card key={u.id} style={{ padding: 14 }}>
+              <div key={u.id} role="group" aria-label={name}>
+              <Card style={{ padding: 14 }}>
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, justifyContent: 'space-between', alignItems: 'baseline' }}>
                   <div style={{ minWidth: 0 }}>
                     <div style={{ fontWeight: 700, color: 'var(--text)' }}>
@@ -96,13 +121,13 @@ export function UsersPanel({ ar, currentUserId, onPendingCount }: { ar: boolean;
                     <>
                       <label className="muted-text" style={{ fontSize: 13 }} htmlFor={`limit-${u.id}`}>{t.limit}</label>
                       <input
-                        id={`limit-${u.id}`}
+                        id={`limit-${u.id}`} aria-label={`${t.limit}: ${name}`}
                         type="number" min={0} max={1000} style={{ width: 80 }}
                         value={limitText}
                         onInput={(e) => setLimits({ ...limits, [u.id]: (e.target as HTMLInputElement).value })}
                       />
-                      <button type="button" className="btn-outline" style={{ padding: '6px 10px' }} disabled={!limitChanged || !limitValid}
-                        onClick={() => act(() => setDailyLimit(u.id, Number(limitText)))}>
+                      <button type="button" className="btn-outline" style={{ padding: '6px 10px' }} disabled={busy || !limitChanged || !limitValid} aria-label={`${t.save}: ${name}`}
+                        onClick={() => act(u.id, () => setDailyLimit(u.id, Number(limitText)), undefined, true)}>
                         {t.save}
                       </button>
                       <span className="muted-text" style={{ fontSize: 13 }}>{u.ai_used_today} {t.used}</span>
@@ -112,26 +137,30 @@ export function UsersPanel({ ar, currentUserId, onPendingCount }: { ar: boolean;
 
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 10 }}>
                   {u.status === 'pending' && (
-                    <button type="button" className="btn-primary" style={{ padding: '8px 14px' }} onClick={() => act(() => approveUser(u.id))}>{t.approve}</button>
+                    <button type="button" className="btn-primary" style={{ padding: '8px 14px' }} disabled={busy} aria-label={`${t.approve}: ${name}`}
+                      onClick={() => act(u.id, () => approveUser(u.id))}>{t.approve}</button>
                   )}
                   {/* The server only allows disabling an active user (409 otherwise), and never oneself. */}
                   {u.status === 'active' && !self && (
-                    <button type="button" className="btn-outline" style={{ padding: '8px 14px' }} onClick={() => act(() => disableUser(u.id))}>{t.disable}</button>
+                    <button type="button" className="btn-outline" style={{ padding: '8px 14px' }} disabled={busy} aria-label={`${t.disable}: ${name}`}
+                      onClick={() => act(u.id, () => disableUser(u.id))}>{t.disable}</button>
                   )}
                   {u.status === 'disabled' && (
-                    <button type="button" className="btn-outline" style={{ padding: '8px 14px' }} onClick={() => act(() => enableUser(u.id))}>{t.enable}</button>
+                    <button type="button" className="btn-outline" style={{ padding: '8px 14px' }} disabled={busy} aria-label={`${t.enable}: ${name}`}
+                      onClick={() => act(u.id, () => enableUser(u.id))}>{t.enable}</button>
                   )}
                   <button
-                    type="button" className="btn-outline" style={{ padding: '8px 14px' }}
+                    type="button" className="btn-outline" style={{ padding: '8px 14px' }} disabled={busy} aria-label={`${t.reset}: ${name}`}
                     onClick={() => {
                       const password = window.prompt(`${t.newPassword} ${u.email}\n${t.minPw}`);
-                      if (password) void act(() => resetPassword(u.id, password), t.done);
+                      if (password) void act(u.id, () => resetPassword(u.id, password), t.done);
                     }}
                   >
                     {t.reset}
                   </button>
                 </div>
               </Card>
+              </div>
             );
           })}
         </div>

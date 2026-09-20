@@ -285,9 +285,17 @@ function App({ user, onLogout }: { user: CurrentUser; onLogout: () => void }) {
   }, [isAdmin, activeTab]);
 
   const [pendingCount, setPendingCount] = useState(0);
+  // The panel's own (fresher) count wins over a slower mount-time seed.
+  const panelReportedCount = useRef(false);
+  const reportPendingCount = (n: number) => {
+    panelReportedCount.current = true;
+    setPendingCount(n);
+  };
   useEffect(() => {
     if (!isAdmin) return;
-    listUsers().then((list) => setPendingCount(list.filter((u) => u.status === 'pending').length)).catch(() => {});
+    listUsers()
+      .then((list) => { if (!panelReportedCount.current) setPendingCount(list.filter((u) => u.status === 'pending').length); })
+      .catch(() => {});
   }, [isAdmin]);
 
   // Analysis in-flight controls: the AbortController lives in a ref so the
@@ -2635,7 +2643,7 @@ function App({ user, onLogout }: { user: CurrentUser; onLogout: () => void }) {
             <div>
               <SectionLabel text={t.settingsHeading.toUpperCase()} />
               <AIModelSettingsManager adapter={aiSettingsAdapter} />
-              <UsersPanel ar={ar} currentUserId={user.id} onPendingCount={setPendingCount} />
+              <UsersPanel ar={ar} currentUserId={user.id} onPendingCount={reportPendingCount} />
             </div>
           )}
 
