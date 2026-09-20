@@ -1,4 +1,4 @@
-// Stops supertest requests from landing on other processes' servers.
+// Stops supertest requests from landing on other processes' servers (HTTP only).
 //
 // supertest starts each app with `app.listen(0)` (wildcard `::`) and then
 // connects to http://127.0.0.1:<port>. On macOS the kernel lets that wildcard
@@ -28,7 +28,10 @@ Test.prototype.serverAddress = function loopbackServerAddress(app, path) {
   this._loopbackPath = path;
   this._loopbackListening = new Promise((resolve, reject) => {
     app.once('error', reject);
-    app.listen(0, '127.0.0.1', resolve);
+    app.listen(0, '127.0.0.1', () => {
+      app.removeListener('error', reject); // a reused http.Server would otherwise pile these up
+      resolve();
+    });
   });
   this._loopbackListening.catch(() => {}); // surfaced by end() below
   return `http://127.0.0.1:0${path}`;
@@ -41,7 +44,7 @@ Test.prototype.end = function loopbackEnd(fn) {
       this.url = `http://127.0.0.1:${this._server.address().port}${this._loopbackPath}`;
       end.call(this, fn);
     },
-    (err) => fn(err)
+    (err) => (typeof fn === 'function' ? fn(err) : undefined)
   );
   return this;
 };
