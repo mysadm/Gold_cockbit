@@ -229,8 +229,8 @@ export function SchedulePanel({ ar, failureMessage }: { ar: boolean; failureMess
                   : t.noRun}
             </div>
             {failureMessage && (
-              <div style={{ fontSize: 13, marginTop: 6, color: 'var(--down)', overflowWrap: 'anywhere' }}>
-                {t.failed}: {failureMessage}
+              <div dir="auto" style={{ fontSize: 13, marginTop: 6, color: 'var(--down)', overflowWrap: 'anywhere' }}>
+                {t.failed}: <span dir="auto">{failureMessage}</span>
               </div>
             )}
           </div>

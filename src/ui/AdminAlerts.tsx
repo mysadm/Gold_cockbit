@@ -25,6 +25,7 @@ export function AdminAlerts({ ar, onOpenSettings, onChange }: { ar: boolean; onO
       const list = await fetchNotifications();
       if (seq !== loadSeq.current) return;
       setItems(list);
+      if (list.length === 0) setDismissError(false);
       onChangeRef.current(list);
     } catch {
       // Keep whatever is showing; the next poll retries.
@@ -44,6 +45,10 @@ export function AdminAlerts({ ar, onOpenSettings, onChange }: { ar: boolean; onO
     setDismissError(false);
     try {
       await dismissNotification(id);
+      // Reflect the dismissal at once (badge and banner); the reload below confirms it.
+      const remaining = items.filter((n) => n.id !== id);
+      setItems(remaining);
+      onChangeRef.current(remaining);
     } catch {
       // The reload below re-shows the item, so say why nothing happened.
       setDismissError(true);
@@ -69,7 +74,7 @@ export function AdminAlerts({ ar, onOpenSettings, onChange }: { ar: boolean; onO
         <div key={n.id} style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center', justifyContent: 'space-between' }}>
           <div style={{ minWidth: 0, flex: '1 1 220px' }}>
             <div style={{ fontWeight: 700, color: 'var(--down)' }}>{t.heading}</div>
-            <div style={{ fontSize: 14, overflowWrap: 'anywhere' }}>{n.message}</div>
+            <div dir="auto" style={{ fontSize: 14, overflowWrap: 'anywhere' }}>{n.message}</div>
           </div>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
             <button type="button" className="btn-outline" style={{ padding: '6px 12px' }} onClick={onOpenSettings}>{t.settings}</button>
