@@ -1,6 +1,9 @@
 import 'dotenv/config';
 import { getPool } from './pool.mjs';
 import { createApp } from './createApp.mjs';
+import { neutralizeLegacyApiKey } from './legacyApiKey.mjs';
+
+neutralizeLegacyApiKey();
 
 const PORT = process.env.SERVER_PORT || 8787;
 
