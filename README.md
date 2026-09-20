@@ -81,6 +81,65 @@ Operational notes:
 
       docker compose run --rm app sh -c "node db/migrate.mjs && node scripts/create-admin.mjs you@example.com"
 
+## Standard and personalized analysis
+
+The Analyst screen shows two cards.
+
+- **Standard market analysis** is one shared analysis for everybody. The API server
+  builds its input itself (live gold and USD/EGP prices, the local Egypt dealer prices
+  and the **admin's** scenario weights and bands as the framework), runs it on the
+  admin's active AI provider with the compact v3 contract, and stores every run in the
+  database. Users only read the latest successful run, with a small **Apply these
+  weights** button that changes their own scenario weights. It contains no wallet and
+  no DCA data ("Not personalized"), it is not charged to anyone's daily allowance, and
+  it needs `SERPAPI_API_KEY` to gather evidence like every other analysis.
+- **My personalized analysis** is the existing flow: it includes the user's wallet and
+  DCA plan, runs when the user asks, and uses one of their daily analyses (default 3,
+  set per user in Settings → Users).
+
+**Scheduling (admin).** The standard analysis is **off by default**. Turn it on in
+Settings → Analysis schedule: choose 1 to 4 run times (24-hour `HH:MM`, the panel shows
+two), the timezone (default `Africa/Cairo`) and the language of the analysis (`ar` or
+`en`), then Save. **Run now** starts one run immediately, ignores the on/off switch and
+does not raise a failure banner; its error is shown in the panel.
+
+The background run lives inside the API process: a 60-second tick checks the schedule
+and, when the current time slot has no successful run, runs it. It starts with the API
+and stops with it. If the server was down at a slot time, the run is caught up on the
+first tick after the API starts. No browser is involved.
+
+**Failures.** A slot is tried up to 3 times, at least 5 minutes apart. A missing
+provider fails immediately without retries. The first failure opens an in-app
+notification for the admin: a red banner at the top of every screen and a count badge
+on the Settings tab (on the More tab on phones). It is updated on each attempt and
+closes itself when a run succeeds, or the admin can dismiss it. Notification is
+in-app only for now; nothing is sent by email or chat.
+
+**Cost tips.**
+
+- Keep two slots a day (the defaults are 08:00 and 16:00).
+- The standard analysis always uses the compact v3 contract. Set
+  `ANALYST_CONTRACT_VERSION=v3` in `.env` and restart the API to make personalized
+  analyses use it as well: the model output budget becomes 4,096 tokens by default (at
+  most 8,192) instead of a 16,000-token floor.
+
+**Operational cautions.**
+
+- **After deploying this version, run `npm run migrate` (migration 0025) and restart
+  the API.** The scheduler is part of the API process, so it does not exist until the
+  restart.
+- **Avoid scheduling within about an hour of midnight in a timezone that observes
+  daylight saving time.** Slot times close to a clock change are a known edge case. The
+  defaults (08:00 and 16:00) are safe.
+- **Some public price feeds may block some server IP ranges** (for example Binance). The
+  run tries four gold feeds and two USD/EGP feeds in order. If all of one kind fail, the
+  attempt fails, is retried and is reported to the admin. The local Egypt prices are
+  optional: if they cannot be fetched the run continues without them.
+- **Run now can take up to about 90 seconds** (the model call is cut off at 85 seconds
+  after the prices are fetched). A reverse proxy timeout below 2 minutes shows a gateway
+  error in the browser while the run still completes on the server; reload the panel to
+  see the result.
+
 ## Disclaimer
 
 Personal analysis tool — not financial advice. Built-in allocation rule: gold at 15–25% of total wealth, maximum.
