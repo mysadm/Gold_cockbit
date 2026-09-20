@@ -28,6 +28,10 @@ describe('users table', () => {
       'theme',
       'created_at',
       'updated_at',
+      'password_hash',
+      'role',
+      'status',
+      'daily_ai_limit',
     ]);
 
     const preferredLang = columns.find((c) => c.column_name === 'preferred_lang');
@@ -35,6 +39,15 @@ describe('users table', () => {
 
     const theme = columns.find((c) => c.column_name === 'theme');
     expect(theme.column_default).toBe("'light'::text");
+
+    const role = columns.find((c) => c.column_name === 'role');
+    expect(role.column_default).toBe("'user'::text");
+
+    const status = columns.find((c) => c.column_name === 'status');
+    expect(status.column_default).toBe("'pending'::text");
+
+    const daily_ai_limit = columns.find((c) => c.column_name === 'daily_ai_limit');
+    expect(daily_ai_limit.column_default).toBe('3');
   });
 
   it('rejects duplicate emails', async () => {
