@@ -33,7 +33,7 @@ export async function runAnalysisV3(provider, input, runProvider, {signal,eviden
     if(evidence.searchStatus==='partial'&&parsed.primary_decision.confidence==='high')parsed.primary_decision.confidence='medium';
   }
   if(!usageComplete)usage=null;
-  const metrics={contract:'3',providerType:provider.provider_type,searchMs,modelMs:Date.now()-modelStarted,totalMs:Date.now()-started,cacheHits:evidence.searchMetrics?.cacheHits??0,cacheMisses:evidence.searchMetrics?.cacheMisses??0,retries,usage,validationOk:validation.ok,inputCharacters:GOLD_MARKET_ANALYST_SYSTEM_PROMPT.length+prompt.length,outputCharacters:JSON.stringify(parsed).length};
+  const metrics={contract:'3',providerType:provider.provider_type,searchMs,modelMs:Date.now()-modelStarted,totalMs:Date.now()-started,cacheHits:evidence.searchMetrics?.cacheHits??0,cacheMisses:evidence.searchMetrics?.cacheMisses??0,retries,usage,validationOk:validation.ok,validationErrors:validation.errors.slice(0,6),inputCharacters:GOLD_MARKET_ANALYST_SYSTEM_PROMPT.length+prompt.length,outputCharacters:JSON.stringify(parsed).length};
   console.info('[analyst-metrics]',JSON.stringify(metrics));
   return {text:JSON.stringify(parsed),result:parsed,validation,usage,usedWebSearch:evidence.usedWebSearch,searchStatus:evidence.searchStatus,evidenceSources:evidence.evidenceSources,metrics};
 }

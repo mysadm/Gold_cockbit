@@ -30,6 +30,17 @@ describe('compact pipeline', () => {
     expect(calls[0][2]).toMatchObject({ expectJson: false, compact: true });
     expect(calls[0][1]).not.toContain('https://example.com');
   });
+  it('records why validation failed in the metrics, and nothing when it passed', async () => {
+    const ok = await runAnalysisV3(provider, snapshot, runProviderAnalysis);
+    expect(ok.metrics.validationErrors).toEqual([]);
+
+    runProviderAnalysis.mockReset();
+    runProviderAnalysis.mockResolvedValue({ text: 'not json', usage: { input_tokens: 10, output_tokens: 3 } });
+    const bad = await runAnalysisV3(provider, snapshot, runProviderAnalysis);
+    expect(bad.validation.ok).toBe(false);
+    expect(bad.metrics.validationErrors).toEqual(bad.validation.errors.slice(0, 6));
+    expect(bad.metrics.validationErrors).toContain('response must be a JSON object');
+  });
   it('retries once and sums reported usage', async () => {
     runProviderAnalysis.mockResolvedValueOnce({ text: '{}', usage: { input_tokens: 40, output_tokens: 2 } });
     const out = await runAnalysisV3(provider, snapshot, runProviderAnalysis);
