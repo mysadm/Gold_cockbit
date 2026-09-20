@@ -71,6 +71,21 @@ describe('runDueAnalysis', () => {
     expect(await runs()).toEqual([]);
   });
 
+  it('sweeps a stranded final attempt at the start of every tick, even when the schedule is disabled', async () => {
+    await enable({ enabled: false });
+    await client.query(
+      `INSERT INTO shared_analysis_runs (slot_key, status, attempts, started_at) VALUES ($1, 'running', 3, now() - interval '10 minutes')`, [SLOT_08]
+    );
+    const deps = makeDeps();
+    expect(await tick(deps)).toMatchObject({ ran: false, reason: 'disabled' });
+    expect(await runs()).toEqual([{ slot_key: SLOT_08, status: 'failed', attempts: 3 }]);
+    const { rows } = await client.query(`SELECT message FROM admin_notifications WHERE resolved_at IS NULL`);
+    expect(rows).toHaveLength(1);
+    expect(rows[0].message).toContain('not retried');
+    expect(deps.notify).toHaveBeenCalledWith(expect.objectContaining({ slot: SLOT_08, attempts: 3, final: true }));
+    expect(deps.fetchPrices).not.toHaveBeenCalled();
+  });
+
   it('runs the current slot once across two ticks', async () => {
     await enable();
     const deps = makeDeps();

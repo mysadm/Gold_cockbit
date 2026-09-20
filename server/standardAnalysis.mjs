@@ -92,7 +92,41 @@ async function previousAnalysisFrom(db) {
   return null;
 }
 
-class FinalFailure extends Error {}
+// A failure that is never retried. `banner` is the text shown in the admin's notification.
+class FinalFailure extends Error {
+  constructor(message, banner = message) {
+    super(message);
+    this.banner = banner;
+  }
+}
+
+const STRANDED_ERROR = 'The server stopped during the last attempt';
+
+// A run that died during its last attempt (crash or SIGTERM) stays 'running' with
+// attempts = MAX_ATTEMPTS, which the claim path deliberately never picks up again. After the
+// same 4 minutes that make a claim dead, mark it failed and tell the admin (adhoc runs are
+// only marked: they show their own error).
+export async function sweepStrandedRuns({ db, deps = {} }) {
+  const { rows } = await db.query(
+    `UPDATE shared_analysis_runs SET status = 'failed', error = $1, finished_at = now()
+      WHERE status = 'running' AND attempts >= ${MAX_ATTEMPTS} AND started_at < now() - interval '4 minutes'
+      RETURNING slot_key, attempts`,
+    [STRANDED_ERROR]
+  );
+  for (const { slot_key: slot, attempts } of rows) {
+    if (slot.startsWith('adhoc:')) continue;
+    await raiseNotification(db, {
+      kind: FAILURE_KIND,
+      message: `${slot}: ${STRANDED_ERROR} (not retried)`,
+      detail: { slot, error: STRANDED_ERROR, attempts, final: true },
+    });
+    try {
+      await (deps.notify ?? (async () => {}))({ event: FAILURE_KIND, slot, error: STRANDED_ERROR, attempts, final: true });
+    } catch (hookError) {
+      console.error('[standard-analysis] notify hook failed:', hookError);
+    }
+  }
+}
 
 async function attempt({ db, adminId, slotKey, schedule, deps }, attempts) {
   const {
@@ -101,7 +135,7 @@ async function attempt({ db, adminId, slotKey, schedule, deps }, attempts) {
   } = deps;
 
   const { rows: providers } = await db.query('SELECT * FROM llm_providers WHERE user_id = $1 AND is_active = true', [adminId]);
-  if (!providers.length) throw new FinalFailure('No active AI provider is configured for the admin account');
+  if (!providers.length) throw new FinalFailure('No active AI provider is configured for the admin account', 'No active AI provider — not retried');
   const provider = providers[0];
 
   const prices = await fetchPrices({ now });
@@ -139,11 +173,17 @@ async function attempt({ db, adminId, slotKey, schedule, deps }, attempts) {
   };
   const { rows } = await db.query(
     `UPDATE shared_analysis_runs SET status = 'done', result = $2::jsonb, error = NULL, finished_at = now()
-      WHERE slot_key = $1 AND attempts = $3 RETURNING id`,
+      WHERE slot_key = $1 AND attempts = $3 AND status = 'running' RETURNING id`,
     [slotKey, JSON.stringify(result), attempts]
   );
-  if (!rows.length) throw new Error('This run was superseded by a newer attempt');
-  await resolveNotifications(db, FAILURE_KIND);
+  // Superseded by a newer claim (or already marked failed): the caller reports 'skipped'.
+  if (!rows.length) return null;
+  // The run is stored; closing the failure banner is best effort and must not undo that.
+  try {
+    await resolveNotifications(db, FAILURE_KIND);
+  } catch (error) {
+    console.error('[standard-analysis] could not resolve the failure notification:', error);
+  }
   return Number(rows[0].id);
 }
 
@@ -153,6 +193,7 @@ export async function runStandardAnalysis({ db, adminId, slotKey, schedule, deps
 
   try {
     const id = await attempt({ db, adminId, slotKey, schedule, deps }, claimed.attempts);
+    if (id === null) return { status: 'skipped', reason: 'superseded by a newer attempt' };
     return { status: 'done', id };
   } catch (err) {
     const error = String(err?.message || err).slice(0, ERROR_MAX);
@@ -170,7 +211,7 @@ export async function runStandardAnalysis({ db, adminId, slotKey, schedule, deps
     if (!slotKey.startsWith('adhoc:')) {
       await raiseNotification(db, {
         kind: FAILURE_KIND,
-        message: `${slotKey}: ${error} (attempt ${attempts} of ${MAX_ATTEMPTS})`,
+        message: isFinal ? `${slotKey}: ${err.banner}` : `${slotKey}: ${error} (attempt ${attempts} of ${MAX_ATTEMPTS})`,
         detail: { slot: slotKey, error, attempts, final: attempts >= MAX_ATTEMPTS },
       });
     }

@@ -3,7 +3,7 @@
 // (server down) is therefore caught up on the first tick after start.
 import { getSetting } from './appSettings.mjs';
 import { DEFAULT_SCHEDULE, normalizeSchedule, currentSlot } from './analysisSchedule.mjs';
-import { runStandardAnalysis, slotState } from './standardAnalysis.mjs';
+import { runStandardAnalysis, slotState, sweepStrandedRuns } from './standardAnalysis.mjs';
 
 export const SCHEDULE_SETTING = 'analysis_schedule';
 
@@ -21,6 +21,8 @@ export async function loadSchedule(db) {
 
 export async function runDueAnalysis({ db, adminId, now, deps = {} }) {
   const clock = typeof now === 'function' ? now : now instanceof Date ? () => now : (deps.now ?? (() => new Date()));
+  // First, so a run stranded by a crash is reported even if the schedule was switched off since.
+  await sweepStrandedRuns({ db, deps });
   const schedule = await loadSchedule(db);
   if (!schedule.enabled) return { ran: false, reason: 'disabled' };
 

@@ -2,7 +2,8 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { resetAndMigrate } from '../helpers/test-db.mjs';
 import { createTestUser } from '../helpers/users.mjs';
 import { provisionUserDefaults } from '../../server/provisionUserDefaults.mjs';
-import { claimSlot, slotState, latestDone, runStandardAnalysis } from '../../server/standardAnalysis.mjs';
+import pg from 'pg';
+import { claimSlot, slotState, latestDone, runStandardAnalysis, sweepStrandedRuns } from '../../server/standardAnalysis.mjs';
 import { listOpen, raiseNotification } from '../../server/adminNotifications.mjs';
 import { DEFAULT_SCHEDULE } from '../../server/analysisSchedule.mjs';
 
@@ -103,9 +104,116 @@ describe('claimSlot', () => {
     expect(await claimSlot(client, SLOT)).toBeNull();
   });
 
-  it('two concurrent claims produce exactly one id', async () => {
-    const results = await Promise.all([claimSlot(client, SLOT), claimSlot(client, SLOT)]);
-    expect(results.filter((r) => r !== null)).toHaveLength(1);
+  // A single pg.Client serializes its queries, so these use a real pool: the claims run on
+  // separate connections and Postgres (not the client) has to pick the single winner.
+  describe('concurrent claims on separate connections', () => {
+    let pool;
+    beforeEach(() => { pool = new pg.Pool({ connectionString: process.env.TEST_DATABASE_URL, max: 4 }); });
+    afterEach(async () => { await pool.end(); });
+
+    it('two concurrent claims of a fresh slot produce exactly one id', async () => {
+      const results = await Promise.all([claimSlot(pool, SLOT), claimSlot(pool, SLOT)]);
+      expect(results.filter((r) => r !== null)).toHaveLength(1);
+      expect((await row()).attempts).toBe(1);
+    });
+
+    it('many concurrent claims of a fresh slot produce exactly one id', async () => {
+      const results = await Promise.all(Array.from({ length: 8 }, () => claimSlot(pool, SLOT)));
+      expect(results.filter((r) => r !== null)).toHaveLength(1);
+      expect((await row()).attempts).toBe(1);
+    });
+
+    it('several concurrent claims of a re-claimable failed row produce exactly one id and one attempt', async () => {
+      await claimSlot(client, SLOT);
+      await client.query(`UPDATE shared_analysis_runs SET status = 'failed', finished_at = now() - interval '6 minutes', error = 'x'`);
+      const results = await Promise.all(Array.from({ length: 6 }, () => claimSlot(pool, SLOT)));
+      expect(results.filter((r) => r !== null)).toHaveLength(1);
+      expect(await row()).toMatchObject({ status: 'running', attempts: 2 });
+    });
+  });
+});
+
+describe('sweepStrandedRuns', () => {
+  const insert = (slot, { status = 'running', attempts = 3, startedMin = 10 } = {}) => client.query(
+    `INSERT INTO shared_analysis_runs (slot_key, status, attempts, started_at, finished_at)
+     VALUES ($1, $2, $3, now() - ($4 || ' minutes')::interval, CASE WHEN $2 = 'running' THEN NULL ELSE now() END)`,
+    [slot, status, attempts, String(startedMin)]
+  );
+  const sweep = (deps = makeDeps()) => sweepStrandedRuns({ db: client, deps });
+
+  it('fails a running attempt-3 claim older than 4 minutes, raises one notification and calls notify(final:true)', async () => {
+    await insert(SLOT);
+    const deps = makeDeps();
+    await sweep(deps);
+    expect(await row()).toMatchObject({ status: 'failed', attempts: 3, error: 'The server stopped during the last attempt' });
+    expect((await row()).finished_at).not.toBeNull();
+    const open = await listOpen(client);
+    expect(open).toHaveLength(1);
+    expect(open[0].kind).toBe(KIND);
+    expect(open[0].message).toContain(SLOT);
+    expect(open[0].message).toContain('not retried');
+    expect(deps.notify).toHaveBeenCalledTimes(1);
+    expect(deps.notify).toHaveBeenCalledWith({
+      event: KIND, slot: SLOT, error: 'The server stopped during the last attempt', attempts: 3, final: true,
+    });
+  });
+
+  it('leaves a running attempt-3 claim younger than 4 minutes alone', async () => {
+    await insert(SLOT, { startedMin: 2 });
+    const deps = makeDeps();
+    await sweep(deps);
+    expect(await row()).toMatchObject({ status: 'running', attempts: 3 });
+    expect(await listOpen(client)).toEqual([]);
+    expect(deps.notify).not.toHaveBeenCalled();
+  });
+
+  it('leaves running attempt 1 and 2 claims alone (the reclaim path handles them)', async () => {
+    await insert('2026-09-20@08:00', { attempts: 1 });
+    await insert('2026-09-20@16:00', { attempts: 2 });
+    const deps = makeDeps();
+    await sweep(deps);
+    const { rows } = await client.query('SELECT status FROM shared_analysis_runs');
+    expect(rows.map((r) => r.status)).toEqual(['running', 'running']);
+    expect(await listOpen(client)).toEqual([]);
+    expect(deps.notify).not.toHaveBeenCalled();
+  });
+
+  it('leaves done and failed rows alone', async () => {
+    await insert('2026-09-20@08:00', { status: 'done' });
+    await insert('2026-09-20@16:00', { status: 'failed' });
+    const deps = makeDeps();
+    await sweep(deps);
+    const { rows } = await client.query('SELECT status, error FROM shared_analysis_runs ORDER BY slot_key');
+    expect(rows).toEqual([{ status: 'done', error: null }, { status: 'failed', error: null }]);
+    expect(await listOpen(client)).toEqual([]);
+    expect(deps.notify).not.toHaveBeenCalled();
+  });
+
+  it('marks a stranded adhoc row failed but raises no notification', async () => {
+    await insert('adhoc:1789000000000');
+    await sweep();
+    expect(await row('adhoc:1789000000000')).toMatchObject({ status: 'failed', error: 'The server stopped during the last attempt' });
+    expect(await listOpen(client)).toEqual([]);
+  });
+
+  it('a second sweep raises no second notification', async () => {
+    await insert(SLOT);
+    const deps = makeDeps();
+    await sweep(deps);
+    await client.query(`UPDATE admin_notifications SET message = 'edited'`);
+    await sweep(deps);
+    const open = await listOpen(client);
+    expect(open).toHaveLength(1);
+    expect(open[0].message).toBe('edited');
+    expect(deps.notify).toHaveBeenCalledTimes(1);
+  });
+
+  it('a throwing notify hook never escapes the sweep', async () => {
+    await insert(SLOT);
+    const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    await expect(sweep(makeDeps({ notify: async () => { throw new Error('hook down'); } }))).resolves.toBeUndefined();
+    expect(await row()).toMatchObject({ status: 'failed' });
+    errSpy.mockRestore();
   });
 });
 
@@ -220,6 +328,35 @@ describe('runStandardAnalysis: success', () => {
   });
 });
 
+describe('runStandardAnalysis: terminal write symmetry', () => {
+  it('a failing resolveNotifications after a successful run still reports done', async () => {
+    await addProvider();
+    // Make the best-effort notification cleanup fail for real: the relation is gone.
+    await client.query('DROP TABLE admin_notifications');
+    const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const out = await run(makeDeps());
+    expect(out.status).toBe('done');
+    expect(await row()).toMatchObject({ status: 'done', attempts: 1, error: null });
+    expect(errSpy).toHaveBeenCalled();
+    errSpy.mockRestore();
+  });
+
+  it('a done write that finds the row no longer running is a supersession: skipped, row untouched', async () => {
+    await addProvider();
+    const deps = makeDeps({
+      runAnalysis: async () => {
+        await client.query(`UPDATE shared_analysis_runs SET status = 'failed', error = 'reaped', finished_at = now()`);
+        return analysisOutput();
+      },
+    });
+    await raiseNotification(client, { kind: KIND, message: 'earlier failure' });
+    expect(await run(deps)).toMatchObject({ status: 'skipped' });
+    expect(await row()).toMatchObject({ status: 'failed', error: 'reaped', result: null });
+    // a superseded run must not close the admin's open failure notification
+    expect(await listOpen(client)).toHaveLength(1);
+  });
+});
+
 describe('runStandardAnalysis: skipping', () => {
   it('skips when the slot is done, running or exhausted, without calling any dependency', async () => {
     await addProvider();
@@ -242,7 +379,8 @@ describe('runStandardAnalysis: failures', () => {
     const open = await listOpen(client);
     expect(open).toHaveLength(1);
     expect(open[0].kind).toBe(KIND);
-    expect(open[0].message).toContain(SLOT);
+    expect(open[0].message).toBe(`${SLOT}: No active AI provider — not retried`);
+    expect(open[0].message).not.toMatch(/attempt/i);
     expect(deps.notify).toHaveBeenCalledWith({ event: KIND, slot: SLOT, error: out.error, attempts: 3, final: true });
     expect(deps.fetchPrices).not.toHaveBeenCalled();
     expect((await slotState(client, SLOT)).claimable).toBe(false);
