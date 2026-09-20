@@ -1,7 +1,7 @@
 # Multi-user with admin-only Settings — Design
 
 **Date:** 2026-09-20
-**Status:** Draft for review (approved section by section in conversation)
+**Status:** Implemented. This spec was updated after the build to describe what was actually built; deviations from the original draft are noted inline.
 
 ## Goal
 
@@ -65,6 +65,9 @@ configuration, with a per-user daily cap protecting the admin's credits.
 - `POST /api/auth/login` `{email, password}` → sets the session cookie.
   `pending` → 403 "waiting for admin approval"; `disabled` → 403 "account
   disabled"; unknown email and wrong password return the same 401.
+- Input caps: email at most 254 characters, password at most 1024. Register
+  rejects over-limit input with a 400; login treats over-limit input as a plain
+  401 (no distinct error).
 - `POST /api/auth/logout` → deletes the session, clears the cookie.
 - `GET /api/auth/me` → `{id, email, display_name, role, daily_ai_limit,
   ai_used_today}` or 401.
@@ -76,12 +79,15 @@ configuration, with a per-user daily cap protecting the admin's credits.
   looks up the session by token hash, checks `expires_at` and that the
   user's `status` is `active` **on every request** (so disabling a user locks
   them out immediately), and sets `req.user`.
-- Routers stop taking a boot-time `userId`; handlers use `req.user.id`.
-  Shared market-data routes (egypt/international prices, software review)
+- The router factories keep their `(db, userId)` signature; `perUserRouter`
+  builds one router per logged-in user and delegates to it, so routers and their
+  tests are unchanged. Shared market-data routes (egypt/international prices)
   require login but are not user-scoped.
 - `requireAdmin` (403 otherwise) guards the whole `/api/llm-providers` group
   and the admin routes below.
-- The old `GOLD_COCKPIT_API_KEY` middleware is removed.
+- The old optional `GOLD_COCKPIT_API_KEY` header check inside each router is left
+  untouched: it does nothing when the variable is unset, and the browser never
+  sent it.
 
 ### Admin routes
 
@@ -89,23 +95,40 @@ configuration, with a per-user daily cap protecting the admin's credits.
 - `POST /api/admin/users/:id/approve` — sets `active` and provisions the
   user's defaults (`ensureDefaultScenarios/Tranches/DcaPlan/WalletHoldings`,
   now called per user).
-- `POST /api/admin/users/:id/disable`, `/enable`
+- `POST /api/admin/users/:id/disable`, `/enable`. `disable` applies only to
+  `active` users (409 otherwise), `enable` only to `disabled` ones. Every status
+  transition is a conditional update (`WHERE status = <expected>`), so two
+  concurrent requests cannot both succeed; the loser gets a 409.
 - `PATCH /api/admin/users/:id` — `daily_ai_limit` only.
 - `POST /api/admin/users/:id/reset-password` — admin supplies a new password.
 - The admin cannot disable or demote themselves. No user deletion.
+- `/api/software-review` is admin-only (it drives a server-side tool and the
+  client never calls it).
 
 ### Analysis
 
 `POST /api/analyze` is available to every active user. The server resolves
-the admin's active provider, rejects a regular user who has reached
-`daily_ai_limit` with a clear error (HTTP 429), and records usage after a
-successful call. `GET /api/analyze/quota` reports used/limit for the current
-user. Both the v2 and compact v3 paths use the same gate.
+the admin's active provider. For a regular user it first takes an atomic
+reservation against `daily_ai_limit` (a single conditional upsert on
+`ai_shared_usage`) **before** the provider call, and releases the reservation if
+the call fails, so a failed analysis does not consume quota and concurrent
+requests cannot overshoot the cap. At the limit the response is HTTP 429
+`Daily analysis limit reached`. `GET /api/analyze/quota` returns
+`{ capped: false }` for the admin and `{ capped: true, used, limit }` for
+regular users. Both the v2 and compact v3 paths use the same gate.
+
+`GET /api/analyze/provider` (new; any logged-in user) returns only `id`,
+`provider_type`, `label`, `model` and `settings.webSearch` of the admin's active
+provider, never the API key or `base_url`. Regular users cannot call
+`/api/llm-providers`, and the client needs this to run an analysis.
 
 ### Security
 
 - `scrypt` (Node `crypto`) with a random per-user salt, compared with
   `timingSafeEqual`.
+- `TRUST_PROXY` is honoured only for the values `1` or `true`. Any other
+  value leaves proxy trust off, so a mistyped value cannot make the app trust
+  spoofed `X-Forwarded-*` headers.
 - Session token: 32 random bytes; cookie `HttpOnly; SameSite=Lax; Path=/`,
   `Secure` when the request arrived over HTTPS (honouring
   `X-Forwarded-Proto`); 30-day lifetime.
@@ -138,7 +161,9 @@ user. Both the v2 and compact v3 paths use the same gate.
 
 - Migrations apply with `npm run migrate` (already run by
   `scripts/db-import.sh`).
-- `scripts/create-admin.mjs <email>` prompts for a password, then converts
+- `scripts/create-admin.mjs <email>` prompts for a password (twice, hidden; the
+  two entries must match; `ADMIN_PASSWORD` in the environment skips the prompt),
+  then converts
   the `default@local` user into the admin (role `admin`, status `active`,
   email and hash set), preserving its data; on an empty database it creates
   a fresh admin and its defaults.
@@ -166,7 +191,7 @@ user. Both the v2 and compact v3 paths use the same gate.
 - Password hash/verify, session expiry, logout invalidation, rate limiting.
 - Client: Settings hidden for regular users, login screen on 401, storage
   keyed by user, legacy state migrated for the admin.
-- The existing 358 tests keep passing after the router-construction tests are
+- The existing tests keep passing after the router-construction tests are
   updated.
 
 ## Out of scope
@@ -177,7 +202,24 @@ password (admin reset only), user deletion, multiple organisations.
 ## Risks and notes
 
 - Step 3 touches about ten routers and their tests; it is mechanical but
-  wide, hence its own step.
+  wide, hence its own step. In the build, `perUserRouter` avoided editing the
+  routers at all.
 - Provider API keys stay in the database as plaintext (unchanged); the
   attack surface shrinks because only the admin can read them.
 - The analysis prompt and validator are unaffected.
+
+## Known limitations
+
+- `register` reveals whether an email is already taken (409). Accepted for an
+  approval-gated internal tool.
+- Daily cap accounting uses `CURRENT_DATE` per statement, so an analysis that
+  spans midnight can be attributed to the wrong day.
+- Provider API keys are still stored in plaintext in the database; only the
+  admin can read them through the API.
+- `adminId` is captured once at server start. Restart the server after
+  changing which user is the admin.
+- There is no self-service password reset; the admin resets passwords.
+- Approving a user is not transactional: default provisioning runs before the
+  status change, so a failure part-way through leaves some defaults created and
+  the user still `pending`. Retrying the approval is safe. A per-process guard
+  stops overlapping approvals of the same user.

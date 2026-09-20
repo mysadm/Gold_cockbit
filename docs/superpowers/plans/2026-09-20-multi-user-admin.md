@@ -61,7 +61,7 @@
 **Interfaces:**
 - Produces: `users.password_hash TEXT NULL`, `users.role`, `users.status`, `users.daily_ai_limit`; table `sessions(id UUID PK, user_id UUID FK cascade, token_hash TEXT UNIQUE, expires_at TIMESTAMPTZ, created_at TIMESTAMPTZ)`.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```js
 // tests/server/multi-user-migration.test.mjs
@@ -109,12 +109,12 @@ describe('migration 0024 (multi-user auth)', () => {
 });
 ```
 
-- [ ] **Step 2: Run it and confirm it fails**
+- [x] **Step 2: Run it and confirm it fails**
 
 Run: `npx vitest run tests/server/multi-user-migration.test.mjs`
 Expected: FAIL (`column "role" of relation "users" does not exist`).
 
-- [ ] **Step 3: Write the migration**
+- [x] **Step 3: Write the migration**
 
 ```sql
 -- migrations/0024_add_multi_user_auth.sql
@@ -139,12 +139,12 @@ CREATE TABLE sessions (
 CREATE INDEX sessions_user_id_idx ON sessions (user_id);
 ```
 
-- [ ] **Step 4: Run the test, then the whole server suite**
+- [x] **Step 4: Run the test, then the whole server suite**
 
 Run: `npx vitest run tests/server/multi-user-migration.test.mjs && npx vitest run tests/server`
 Expected: PASS everywhere (existing tests use `ensureDefaultUser`, which inserts with the column defaults; nothing reads `status` yet).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add migrations/0024_add_multi_user_auth.sql tests/server/multi-user-migration.test.mjs
@@ -162,7 +162,7 @@ git commit -m "feat: add multi-user columns to users and a sessions table"
 **Interfaces:**
 - Produces: `hashPassword(password: string): Promise<string>` → `"scrypt$<saltHex>$<hashHex>"`; `verifyPassword(password: string, stored: unknown): Promise<boolean>` (false for malformed/null `stored`); `burnPasswordTime(password: string): Promise<void>` (a dummy verify used to equalise timing for unknown emails); `MIN_PASSWORD_LENGTH = 8`.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```js
 // tests/server/password.test.mjs
@@ -197,9 +197,9 @@ describe('password hashing', () => {
 });
 ```
 
-- [ ] **Step 2: Run and confirm failure** — `npx vitest run tests/server/password.test.mjs` → FAIL (module not found).
+- [x] **Step 2: Run and confirm failure** — `npx vitest run tests/server/password.test.mjs` → FAIL (module not found).
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 ```js
 // server/auth/password.mjs
@@ -236,8 +236,8 @@ export async function burnPasswordTime(password) {
 }
 ```
 
-- [ ] **Step 4: Run** — `npx vitest run tests/server/password.test.mjs` → PASS.
-- [ ] **Step 5: Commit**
+- [x] **Step 4: Run** — `npx vitest run tests/server/password.test.mjs` → PASS.
+- [x] **Step 5: Commit**
 
 ```bash
 git add server/auth/password.mjs tests/server/password.test.mjs
@@ -257,7 +257,7 @@ git commit -m "feat: add scrypt password hashing"
 - Produces (`middleware.mjs`): `createRequireAuth(db)` → Express middleware setting `req.user` and `req.sessionToken` or replying 401 `{error:'Not signed in'}`; `requireAdmin` → 403 `{error:'Admin only'}`; `perUserRouter(factory: (userId) => RequestHandler): RequestHandler` (one cached router per `req.user.id`).
 - Produces (`tests/helpers/users.mjs`): `createTestUser(db, { email, password='password123', role='user', status='active', displayName=null, dailyAiLimit? }) → {id,email,password}`; `signIn(app, {email,password}) → supertest agent` holding the session cookie (uses `POST /api/auth/login`, so it only works once Task 4's router is mounted).
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 ```js
 // tests/server/sessions.test.mjs
@@ -422,9 +422,9 @@ describe('perUserRouter', () => {
 });
 ```
 
-- [ ] **Step 2: Run and confirm failure** — `npx vitest run tests/server/sessions.test.mjs tests/server/auth-middleware.test.mjs` → FAIL (modules not found).
+- [x] **Step 2: Run and confirm failure** — `npx vitest run tests/server/sessions.test.mjs tests/server/auth-middleware.test.mjs` → FAIL (modules not found).
 
-- [ ] **Step 3: Implement the test helper**
+- [x] **Step 3: Implement the test helper**
 
 ```js
 // tests/helpers/users.mjs
@@ -453,7 +453,7 @@ export async function signIn(app, { email, password }) {
 }
 ```
 
-- [ ] **Step 4: Implement sessions**
+- [x] **Step 4: Implement sessions**
 
 ```js
 // server/auth/sessions.mjs
@@ -526,7 +526,7 @@ export async function deleteExpiredSessions(db) {
 }
 ```
 
-- [ ] **Step 5: Implement the middleware**
+- [x] **Step 5: Implement the middleware**
 
 ```js
 // server/auth/middleware.mjs
@@ -567,8 +567,8 @@ export function perUserRouter(factory) {
 }
 ```
 
-- [ ] **Step 6: Run** — `npx vitest run tests/server/sessions.test.mjs tests/server/auth-middleware.test.mjs` → PASS.
-- [ ] **Step 7: Commit**
+- [x] **Step 6: Run** — `npx vitest run tests/server/sessions.test.mjs tests/server/auth-middleware.test.mjs` → PASS.
+- [x] **Step 7: Commit**
 
 ```bash
 git add server/auth/sessions.mjs server/auth/middleware.mjs tests/helpers/users.mjs tests/server/sessions.test.mjs tests/server/auth-middleware.test.mjs
@@ -587,7 +587,7 @@ git commit -m "feat: add session storage, cookies and auth middleware"
 - Consumes: `hashPassword`, `verifyPassword`, `burnPasswordTime`, `MIN_PASSWORD_LENGTH`; `createSession`, `deleteSession`, `deleteExpiredSessions`, `sessionCookie`, `clearedSessionCookie`, `isSecureRequest`, `createRequireAuth`.
 - Produces: `createRateLimiter({ max, windowMs, now? }) → middleware` (429 `{error:'Too many attempts, try again later'}` + `Retry-After`); `createAuthRouter(db, { requireAuth, rateLimit }) → Router` with `POST /register`, `POST /login`, `POST /logout`, `GET /me`. The `me` shape is `{ id, email, display_name, role, daily_ai_limit, ai_used_today }`; register returns `201 { status: 'pending' }`; login errors carry `code: 'pending' | 'disabled'` for the two 403 cases.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 ```js
 // tests/server/rate-limit.test.mjs
@@ -731,9 +731,9 @@ describe('GET /api/auth/me and POST /api/auth/logout', () => {
 });
 ```
 
-- [ ] **Step 2: Run and confirm failure** — `npx vitest run tests/server/rate-limit.test.mjs tests/server/auth-routes.test.mjs` → FAIL (modules not found).
+- [x] **Step 2: Run and confirm failure** — `npx vitest run tests/server/rate-limit.test.mjs tests/server/auth-routes.test.mjs` → FAIL (modules not found).
 
-- [ ] **Step 3: Implement the limiter**
+- [x] **Step 3: Implement the limiter**
 
 ```js
 // server/auth/rateLimit.mjs
@@ -757,7 +757,7 @@ export function createRateLimiter({ max, windowMs, now = () => Date.now() }) {
 }
 ```
 
-- [ ] **Step 4: Implement the auth router**
+- [x] **Step 4: Implement the auth router**
 
 ```js
 // server/routes/auth.mjs
@@ -844,8 +844,8 @@ export function createAuthRouter(db, { requireAuth, rateLimit }) {
 }
 ```
 
-- [ ] **Step 5: Run** — `npx vitest run tests/server/rate-limit.test.mjs tests/server/auth-routes.test.mjs` → PASS.
-- [ ] **Step 6: Commit**
+- [x] **Step 5: Run** — `npx vitest run tests/server/rate-limit.test.mjs tests/server/auth-routes.test.mjs` → PASS.
+- [x] **Step 6: Commit**
 
 ```bash
 git add server/auth/rateLimit.mjs server/routes/auth.mjs tests/server/rate-limit.test.mjs tests/server/auth-routes.test.mjs
@@ -864,7 +864,7 @@ git commit -m "feat: add register, login, logout and me endpoints with rate limi
 - Consumes: existing `ensureDefaultScenarios/Tranches/DcaPlan/WalletHoldings(db, userId)`, `ensureDefaultLlmProvider(db, userId)`, `ensureDefaultUser(db)`, `hashPassword`.
 - Produces: `provisionUserDefaults(db, userId): Promise<void>` (idempotent); `createAdmin(db, { email, password, displayName? }): Promise<{ id: string, converted: boolean }>` — throws `Error('An admin already exists (<email>)')` if any admin exists; throws on password shorter than 8; converts the `default@local` user if present (keeping its data), otherwise creates a fresh admin with defaults and a default Ollama provider.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 ```js
 // tests/server/provision-user-defaults.test.mjs
@@ -950,9 +950,9 @@ describe('createAdmin', () => {
 });
 ```
 
-- [ ] **Step 2: Run and confirm failure** — `npx vitest run tests/server/provision-user-defaults.test.mjs tests/server/create-admin.test.mjs` → FAIL (modules not found).
+- [x] **Step 2: Run and confirm failure** — `npx vitest run tests/server/provision-user-defaults.test.mjs tests/server/create-admin.test.mjs` → FAIL (modules not found).
 
-- [ ] **Step 3: Implement provisioning**
+- [x] **Step 3: Implement provisioning**
 
 ```js
 // server/provisionUserDefaults.mjs
@@ -969,7 +969,7 @@ export async function provisionUserDefaults(db, userId) {
 }
 ```
 
-- [ ] **Step 4: Implement `createAdmin`**
+- [x] **Step 4: Implement `createAdmin`**
 
 ```js
 // server/auth/createAdmin.mjs
@@ -1015,7 +1015,7 @@ export async function createAdmin(db, { email, password, displayName }) {
 }
 ```
 
-- [ ] **Step 5: Implement the CLI**
+- [x] **Step 5: Implement the CLI**
 
 ```js
 #!/usr/bin/env node
@@ -1074,8 +1074,8 @@ try {
 }
 ```
 
-- [ ] **Step 6: Run tests** — `npx vitest run tests/server/provision-user-defaults.test.mjs tests/server/create-admin.test.mjs` → PASS.
-- [ ] **Step 7: Try the CLI on a scratch database**
+- [x] **Step 6: Run tests** — `npx vitest run tests/server/provision-user-defaults.test.mjs tests/server/create-admin.test.mjs` → PASS.
+- [x] **Step 7: Try the CLI on a scratch database**
 
 ```bash
 psql postgres://localhost:5432/postgres -qc 'create database gold_cockpit_admin_try'
@@ -1089,7 +1089,7 @@ psql postgres://localhost:5432/postgres -qc 'drop database gold_cockpit_admin_tr
 ```
 Expected: `Created admin try@example.com.`, then the "already exists" failure, then one admin row.
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add server/provisionUserDefaults.mjs server/auth/createAdmin.mjs scripts/create-admin.mjs tests/server/provision-user-defaults.test.mjs tests/server/create-admin.test.mjs
@@ -1110,7 +1110,7 @@ git commit -m "feat: add per-user defaults and the create-admin script"
 - Produces: `createApp(db, { adminId, authRateLimit? = { max: 20, windowMs: 15*60*1000 } }): express.Express` (no `listen`). Route protection: `/api/auth/*` open; every other `/api/*` requires a session; `/api/llm-providers`, `/api/admin`, `/api/software-review` admin-only; `/api/llm-providers` operates on `adminId`; the personal routers and `/api/analyze` are per-user via `perUserRouter`. `/api/admin` is mounted here with a placeholder that Task 7 replaces (see Step 3).
 - `server/index.mjs` refuses to start (exit 1, clear message) when no active admin exists.
 
-- [ ] **Step 1: Write the failing wiring test**
+- [x] **Step 1: Write the failing wiring test**
 
 ```js
 // tests/server/multi-user-wiring.test.mjs
@@ -1200,9 +1200,9 @@ describe('data isolation between users', () => {
 });
 ```
 
-- [ ] **Step 2: Run and confirm failure** — `npx vitest run tests/server/multi-user-wiring.test.mjs` → FAIL (`createApp` not found).
+- [x] **Step 2: Run and confirm failure** — `npx vitest run tests/server/multi-user-wiring.test.mjs` → FAIL (`createApp` not found).
 
-- [ ] **Step 3: Implement `createApp`** (the admin router is added in Task 7; until then `/api/admin` is a minimal stub that returns 404 for everything but is still behind `requireAdmin`, which is what these tests need)
+- [x] **Step 3: Implement `createApp`** (the admin router is added in Task 7; until then `/api/admin` is a minimal stub that returns 404 for everything but is still behind `requireAdmin`, which is what these tests need)
 
 ```js
 // server/createApp.mjs
@@ -1269,7 +1269,7 @@ function createAdminPlaceholderRouter() {
 
 Note: `createAnalyzeRouter(db, userId, { providerOwnerId })` gets its third argument in Task 8; until then the extra argument is ignored by JavaScript, so this task's tests (which never call `/api/analyze` successfully) pass.
 
-- [ ] **Step 4: Replace `server/index.mjs`**
+- [x] **Step 4: Replace `server/index.mjs`**
 
 ```js
 import 'dotenv/config';
@@ -1294,10 +1294,10 @@ app.listen(PORT, () => {
 });
 ```
 
-- [ ] **Step 5: Run the wiring tests, then everything** — `npx vitest run tests/server/multi-user-wiring.test.mjs && npm test`
+- [x] **Step 5: Run the wiring tests, then everything** — `npx vitest run tests/server/multi-user-wiring.test.mjs && npm test`
 Expected: PASS. `index-routes-smoke.test.mjs` still passes (it builds its own app and does not import `index.mjs`).
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add server/createApp.mjs server/index.mjs tests/server/multi-user-wiring.test.mjs
@@ -1323,7 +1323,7 @@ git commit -m "feat: require login on every API route and gate admin-only areas"
   - `POST /users/:id/reset-password` `{ password }` (min 8; deletes the user's sessions)
   - Unknown or malformed id → 404.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 ```js
 // tests/server/admin-users-routes.test.mjs
@@ -1426,9 +1426,9 @@ describe('PATCH daily limit and reset password', () => {
 });
 ```
 
-- [ ] **Step 2: Run and confirm failure** — `npx vitest run tests/server/admin-users-routes.test.mjs` → FAIL (404s: placeholder router).
+- [x] **Step 2: Run and confirm failure** — `npx vitest run tests/server/admin-users-routes.test.mjs` → FAIL (404s: placeholder router).
 
-- [ ] **Step 3: Implement the router**
+- [x] **Step 3: Implement the router**
 
 ```js
 // server/routes/adminUsers.mjs
@@ -1517,10 +1517,10 @@ export function createAdminUsersRouter(db) {
 }
 ```
 
-- [ ] **Step 4: Mount it.** In `server/createApp.mjs`: add `import { createAdminUsersRouter } from './routes/adminUsers.mjs';`, change the line to `app.use('/api/admin', requireAdmin, createAdminUsersRouter(db));`, and delete the `createAdminPlaceholderRouter` function.
+- [x] **Step 4: Mount it.** In `server/createApp.mjs`: add `import { createAdminUsersRouter } from './routes/adminUsers.mjs';`, change the line to `app.use('/api/admin', requireAdmin, createAdminUsersRouter(db));`, and delete the `createAdminPlaceholderRouter` function.
 
-- [ ] **Step 5: Run** — `npx vitest run tests/server/admin-users-routes.test.mjs tests/server/multi-user-wiring.test.mjs` → PASS.
-- [ ] **Step 6: Commit**
+- [x] **Step 5: Run** — `npx vitest run tests/server/admin-users-routes.test.mjs tests/server/multi-user-wiring.test.mjs` → PASS.
+- [x] **Step 6: Commit**
 
 ```bash
 git add server/routes/adminUsers.mjs server/createApp.mjs tests/server/admin-users-routes.test.mjs
@@ -1539,7 +1539,7 @@ git commit -m "feat: add admin routes to approve, disable, limit and reset users
 - Consumes: `users.role`, `users.daily_ai_limit`, `ai_shared_usage`.
 - Produces: `createAnalyzeRouter(db, userId, { providerOwnerId = userId } = {})`. `GET /quota` → `{ capped: false }` for an admin, else `{ capped: true, used, limit }`. `POST /` → `429 { error: 'Daily analysis limit reached', used, limit }` when a regular user is at their limit (checked before anything else; provider is not called). After a **successful** analysis by a regular user (or any analysis on the `shared` provider type) one use is recorded in `ai_shared_usage` (cost `0` unless the provider type is `shared`, whose Haiku-priced cost is kept). The env `SHARED_AI_DAILY_LIMIT` and the shared-tier 402 are removed. The provider looked up is the active provider of `providerOwnerId`.
 
-- [ ] **Step 1: Rewrite the two quota `describe` blocks in the test (they will fail against the current code).**
+- [x] **Step 1: Rewrite the two quota `describe` blocks in the test (they will fail against the current code).**
 In `tests/server/analyze-route.test.mjs`, delete everything from `describe('GET /api/analyze/quota', () => {` up to (not including) `describe('POST /api/analyze — web search augmentation', () => {`, and insert:
 
 ```js
@@ -1664,9 +1664,9 @@ describe('POST /api/analyze — per-user daily cap', () => {
 
 ```
 
-- [ ] **Step 2: Run and confirm the new tests fail** — `npx vitest run tests/server/analyze-route.test.mjs` → the new `quota` and cap tests FAIL (`shared:false` returned, no 429, etc.).
+- [x] **Step 2: Run and confirm the new tests fail** — `npx vitest run tests/server/analyze-route.test.mjs` → the new `quota` and cap tests FAIL (`shared:false` returned, no 429, etc.).
 
-- [ ] **Step 3: Implement in `server/routes/analyze.mjs`.** Read the file first, then make these edits:
+- [x] **Step 3: Implement in `server/routes/analyze.mjs`.** Read the file first, then make these edits:
 
 (a) Delete the line `const SHARED_DAILY_LIMIT = Number(process.env.SHARED_AI_DAILY_LIMIT) || 2;` and the `import { createApiKeyAuthMiddleware }` line **stays** (the router keeps its existing no-op-when-unset key check).
 
@@ -1746,8 +1746,8 @@ async function recordUsage(db, userId, costUsd) {
       }
 ```
 
-- [ ] **Step 4: Run** — `npx vitest run tests/server/analyze-route.test.mjs` → PASS. Then `npm test`. Any other pre-existing analyze tests that failed because the default test user is now capped at 3 calls per test must not exist (each test resets the DB); if one does, it is calling analyze more than 3 times: raise that test's user limit with `UPDATE users SET daily_ai_limit = 100 WHERE id = $1` rather than changing behaviour.
-- [ ] **Step 5: Commit**
+- [x] **Step 4: Run** — `npx vitest run tests/server/analyze-route.test.mjs` → PASS. Then `npm test`. Any other pre-existing analyze tests that failed because the default test user is now capped at 3 calls per test must not exist (each test resets the DB); if one does, it is calling analyze more than 3 times: raise that test's user limit with `UPDATE users SET daily_ai_limit = 100 WHERE id = $1` rather than changing behaviour.
+- [x] **Step 5: Commit**
 
 ```bash
 git add server/routes/analyze.mjs tests/server/analyze-route.test.mjs
@@ -1769,7 +1769,7 @@ git commit -m "feat: run analyses on the admin's provider with a per-user daily 
 - Produces (`userStorage.ts`): `type StorageKeys = { state: string; monitors: string; level: string }`; `LEGACY_KEYS`; `storageKeysFor(userId): StorageKeys`; `migrateLegacyStorage(storage, user)`: for an **admin** whose per-user state key is empty, copies the three legacy keys to the per-user keys and removes the legacy ones; a regular user's browser is never migrated.
 - Changes `AnalyzeQuota` to `{ capped: false } | { capped: true; used: number; limit: number }`.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 ```ts
 // tests/lib/user-storage.test.ts
@@ -1903,9 +1903,9 @@ describe('installUnauthorizedHandler', () => {
 });
 ```
 
-- [ ] **Step 2: Run and confirm failure** — `npx vitest run tests/lib/auth-api.test.ts tests/lib/user-storage.test.ts` → FAIL (modules not found).
+- [x] **Step 2: Run and confirm failure** — `npx vitest run tests/lib/auth-api.test.ts tests/lib/user-storage.test.ts` → FAIL (modules not found).
 
-- [ ] **Step 3: Implement `userStorage.ts`**
+- [x] **Step 3: Implement `userStorage.ts`**
 
 ```ts
 // src/lib/userStorage.ts
@@ -1944,7 +1944,7 @@ export function migrateLegacyStorage(storage: StorageLike, user: { id: string; r
 }
 ```
 
-- [ ] **Step 4: Implement `auth.ts`**
+- [x] **Step 4: Implement `auth.ts`**
 
 ```ts
 // src/api/auth.ts
@@ -2014,7 +2014,7 @@ export function installUnauthorizedHandler(onUnauthorized: () => void): () => vo
 }
 ```
 
-- [ ] **Step 5: Implement `adminUsers.ts`**
+- [x] **Step 5: Implement `adminUsers.ts`**
 
 ```ts
 // src/api/adminUsers.ts
@@ -2050,7 +2050,7 @@ export const resetPassword = (id: string, password: string) =>
   call<{ ok: true }>(`/api/admin/users/${id}/reset-password`, 'POST', { password });
 ```
 
-- [ ] **Step 6: Update the quota type.** In `src/api/llmProviders.ts` change
+- [x] **Step 6: Update the quota type.** In `src/api/llmProviders.ts` change
 
 `export type AnalyzeQuota = { shared: false } | { shared: true; used: number; limit: number };`
 to
@@ -2058,10 +2058,10 @@ to
 
 Then run `grep -rn "\.shared" src tests/lib tests/client` and fix any other reader of the old field. (`src/App.tsx` is fixed in Task 10; `tsc` will flag it until then, so **do not run `tsc` between this step and Task 10 Step 4**; the commit for this task therefore leaves `tsc` red on that one line. To keep every commit green, apply the one-line `analyzeQuota?.shared` → `analyzeQuota?.capped` change in `src/App.tsx` (line ~1657) here as well.)
 
-- [ ] **Step 7: Make the dev proxy target configurable** (so a second dev server can point at a scratch API without touching your real one). In `vite.config.ts` change `target: 'http://localhost:8787',` to `target: process.env.API_TARGET || 'http://localhost:8787',` and add `port: Number(process.env.DEV_PORT) || 3577,` in place of `port: 3577,`.
+- [x] **Step 7: Make the dev proxy target configurable** (so a second dev server can point at a scratch API without touching your real one). In `vite.config.ts` change `target: 'http://localhost:8787',` to `target: process.env.API_TARGET || 'http://localhost:8787',` and add `port: Number(process.env.DEV_PORT) || 3577,` in place of `port: 3577,`.
 
-- [ ] **Step 8: Run** — `npx vitest run tests/lib tests/client && npx tsc -b` → PASS/clean.
-- [ ] **Step 9: Commit**
+- [x] **Step 8: Run** — `npx vitest run tests/lib tests/client && npx tsc -b` → PASS/clean.
+- [x] **Step 9: Commit**
 
 ```bash
 git add src/api/auth.ts src/api/adminUsers.ts src/lib/userStorage.ts src/api/llmProviders.ts src/App.tsx vite.config.ts tests/lib/auth-api.test.ts tests/lib/user-storage.test.ts
@@ -2081,9 +2081,9 @@ git commit -m "feat: add client auth API, per-user storage keys and admin API cl
 - Produces: `<AuthGate />` (default export of `main.tsx`'s render target) which renders `LoginScreen` when signed out and `<App key={user.id} user={user} onLogout={...} />` when signed in. `App` now takes props `{ user: CurrentUser; onLogout: () => void }` and reads/writes browser state through `storageKeysFor(user.id)`.
 - `LoginScreen` props: `{ onSignedIn: (user: CurrentUser) => void }`. Modes: `login`, `register`, `pending` (after registering, or after a login that returned `code: 'pending'`). Persists its own pre-login language/theme choice in `localStorage['gold-cockpit-login-prefs']` (`{ lang: 'ar' | 'en', theme: 'dark' | 'light' }`, default `ar`/`dark`) and toggles `body.theme-light` itself.
 
-- [ ] **Step 1: Style the new input types.** In `src/styles.css`, change the selector line `input[type="text"], input[type="number"], input[type="date"], select {` to `input[type="text"], input[type="number"], input[type="date"], input[type="email"], input[type="password"], select {` (check the neighbouring `:focus` rule and extend its selector list the same way).
+- [x] **Step 1: Style the new input types.** In `src/styles.css`, change the selector line `input[type="text"], input[type="number"], input[type="date"], select {` to `input[type="text"], input[type="number"], input[type="date"], input[type="email"], input[type="password"], select {` (check the neighbouring `:focus` rule and extend its selector list the same way).
 
-- [ ] **Step 2: Create `LoginScreen.tsx`**
+- [x] **Step 2: Create `LoginScreen.tsx`**
 
 ```tsx
 import { useEffect, useState } from 'preact/hooks';
@@ -2218,7 +2218,7 @@ export function LoginScreen({ onSignedIn }: { onSignedIn: (user: CurrentUser) =>
 
 (If `.down-text` or `.soft-text` do not exist as classes, use the existing equivalents — `grep -n "^\.soft-text\|^\.down-text\|^\.muted-text" src/styles.css` — or inline `style={{ color: 'var(--down)' }}` / `var(--text-soft)`.)
 
-- [ ] **Step 3: Create `AuthGate.tsx`**
+- [x] **Step 3: Create `AuthGate.tsx`**
 
 ```tsx
 import { useEffect, useState } from 'preact/hooks';
@@ -2263,7 +2263,7 @@ export function AuthGate() {
 }
 ```
 
-- [ ] **Step 4: Render the gate.** Replace `src/main.tsx` with:
+- [x] **Step 4: Render the gate.** Replace `src/main.tsx` with:
 
 ```tsx
 import { render } from 'preact';
@@ -2273,7 +2273,7 @@ import './styles.css';
 render(<AuthGate />, document.getElementById('app')!);
 ```
 
-- [ ] **Step 5: Give `App` a user and per-user storage.** In `src/App.tsx`:
+- [x] **Step 5: Give `App` a user and per-user storage.** In `src/App.tsx`:
   1. Add imports: `import type { CurrentUser } from './api/auth';` and `import { storageKeysFor, type StorageKeys } from './lib/userStorage';`.
   2. Delete the three constants `STORAGE_KEY`, `MONITORS_KEY`, `LEVEL_KEY` (lines ~202-204).
   3. Change `function loadState(): AppState {` to `function loadState(keys: StorageKeys): AppState {` and replace inside it `STORAGE_KEY` → `keys.state`, `MONITORS_KEY` → `keys.monitors`, `LEVEL_KEY` → `keys.level`.
@@ -2285,8 +2285,8 @@ render(<AuthGate />, document.getElementById('app')!);
   5. In the save effect replace the three `setItem` keys the same way (`storageKeys.state`, `storageKeys.monitors`, `storageKeys.level`) and add `storageKeys` to that effect's dependency array.
   6. `onLogout` and `user` are used in Task 11; to keep `tsc` free of unused-parameter errors right now, reference them in the `Sidebar` call in Task 11 in the same commit? No: this task ends with `App` receiving them; destructure only what is used (`user`) and add `onLogout` in Task 11. So use `function App({ user }: { user: CurrentUser; onLogout: () => void }) {` here.
 
-- [ ] **Step 6: Type-check and test** — `npx tsc -b && npm test` → clean/green.
-- [ ] **Step 7: Verify in the browser against a scratch database** (do not touch your real database or server):
+- [x] **Step 6: Type-check and test** — `npx tsc -b && npm test` → clean/green.
+- [x] **Step 7: Verify in the browser against a scratch database** (do not touch your real database or server):
 
 ```bash
 psql postgres://localhost:5432/postgres -qc 'create database gold_cockpit_ui_try'
@@ -2298,7 +2298,7 @@ API_TARGET=http://localhost:8788 DEV_PORT=3588 npx vite &   # UI on 3588
 ```
 With Playwright at `http://localhost:3588/`, confirm: (1) the login screen shows (RTL Arabic by default); language and theme toggles work and persist across reload; (2) signing in as `admin@try.com` shows the cockpit; (3) reload keeps you signed in; (4) registering `bob@try.com` shows the "waiting for approval" screen and signing in as bob shows the same; (5) a wrong password shows the error. Screenshot the login screen at 390px and 1280px in both languages and both themes. Leave the servers running for Tasks 11-12 (stop them in Task 12).
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add src/ui/LoginScreen.tsx src/ui/AuthGate.tsx src/main.tsx src/App.tsx src/styles.css
@@ -2316,7 +2316,7 @@ git commit -m "feat: add login/register screen and per-user browser storage"
 - `Sidebar` gains props `isAdmin: boolean`, `userName: string`, `onLogout: () => void`, `settingsBadge?: number` (renders a small count badge on the Settings item when > 0). `BottomNav` gains `isAdmin`, `userName`, `onLogout`, `settingsBadge?`. Non-admins never see Settings in either.
 - `App`: `isAdmin = user.role === 'admin'`; the `settings` tab renders only for admins, and a non-admin whose active tab is `settings` (e.g. from `?tab=settings`) is moved to `home`. `onLogout` is now used. The Analyst screen already shows the quota line via `analyzeQuota?.capped` (Task 9); make sure its wording reads as a daily quota for the signed-in user.
 
-- [ ] **Step 1: Sidebar.** In `src/ui/Sidebar.tsx`: add the four props to the destructuring and type; derive `const screens = isAdmin ? SCREEN_ORDER : SCREEN_ORDER.filter((s) => s !== 'settings');` and map over `screens` instead of `SCREEN_ORDER`. After the language/theme row in the footer (above the live dot) add a user row:
+- [x] **Step 1: Sidebar.** In `src/ui/Sidebar.tsx`: add the four props to the destructuring and type; derive `const screens = isAdmin ? SCREEN_ORDER : SCREEN_ORDER.filter((s) => s !== 'settings');` and map over `screens` instead of `SCREEN_ORDER`. After the language/theme row in the footer (above the live dot) add a user row:
 
 ```tsx
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, paddingInlineStart: 4 }}>
@@ -2331,7 +2331,7 @@ git commit -m "feat: add login/register screen and per-user browser storage"
 
 For the badge, inside the `nav-item` button after the label span add, only when `s === 'settings' && settingsBadge`: `<span style={{ marginInlineStart: 'auto', background: 'var(--gold)', color: 'var(--bg)', borderRadius: 999, padding: '0 7px', fontSize: 12, fontWeight: 700 }}>{settingsBadge}</span>`.
 
-- [ ] **Step 2: BottomNav.** In `src/ui/BottomNav.tsx`: add the same four props; `const moreScreens = isAdmin ? MORE_SCREENS : MORE_SCREENS.filter((s) => s.key !== 'settings');` and use `moreScreens` for both the `isMoreActive` check and the sheet list; append the badge to the Settings entry as above; in the sheet, after the list and above the language/theme row add:
+- [x] **Step 2: BottomNav.** In `src/ui/BottomNav.tsx`: add the same four props; `const moreScreens = isAdmin ? MORE_SCREENS : MORE_SCREENS.filter((s) => s.key !== 'settings');` and use `moreScreens` for both the `isMoreActive` check and the sheet list; append the badge to the Settings entry as above; in the sheet, after the list and above the language/theme row add:
 
 ```tsx
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, padding: '10px 4px 0' }}>
@@ -2342,7 +2342,7 @@ For the badge, inside the `nav-item` button after the label span add, only when 
             </div>
 ```
 
-- [ ] **Step 3: App.** In `src/App.tsx`: destructure `{ user, onLogout }`; add `const isAdmin = user.role === 'admin';` and `const userName = user.display_name || user.email;`. Pass `isAdmin`, `userName`, `onLogout` (and `settingsBadge={pendingCount}` once Task 12 defines it — for now omit) to both `<Sidebar>` and `<BottomNav>`. Change `{activeTab === 'settings' && (` to `{activeTab === 'settings' && isAdmin && (`. Add, next to the other `useEffect`s:
+- [x] **Step 3: App.** In `src/App.tsx`: destructure `{ user, onLogout }`; add `const isAdmin = user.role === 'admin';` and `const userName = user.display_name || user.email;`. Pass `isAdmin`, `userName`, `onLogout` (and `settingsBadge={pendingCount}` once Task 12 defines it — for now omit) to both `<Sidebar>` and `<BottomNav>`. Change `{activeTab === 'settings' && (` to `{activeTab === 'settings' && isAdmin && (`. Add, next to the other `useEffect`s:
 
 ```tsx
   useEffect(() => {
@@ -2350,8 +2350,8 @@ For the badge, inside the `nav-item` button after the label span add, only when 
   }, [isAdmin, activeTab]);
 ```
 
-- [ ] **Step 4: Verify** — `npx tsc -b && npm test`, then in the browser (servers from Task 10 still running): approve bob via the API for now using the admin session is not possible from the browser yet, so approve directly: `psql "$DATABASE_URL" -c "update users set status='active' where email='bob@try.com'"` and confirm: (1) admin sees Settings in the sidebar and the More sheet; (2) bob sees neither, and `http://localhost:3588/?tab=settings` lands on Market for bob; (3) Log out returns to the login screen from both the sidebar (desktop) and the More sheet (390px); (4) bob's Analyst screen shows the quota line and the admin's does not; (5) as bob, `fetch('/api/llm-providers')` in the console returns 403. Screenshot both roles at 1280px and 390px.
-- [ ] **Step 5: Commit**
+- [x] **Step 4: Verify** — `npx tsc -b && npm test`, then in the browser (servers from Task 10 still running): approve bob via the API for now using the admin session is not possible from the browser yet, so approve directly: `psql "$DATABASE_URL" -c "update users set status='active' where email='bob@try.com'"` and confirm: (1) admin sees Settings in the sidebar and the More sheet; (2) bob sees neither, and `http://localhost:3588/?tab=settings` lands on Market for bob; (3) Log out returns to the login screen from both the sidebar (desktop) and the More sheet (390px); (4) bob's Analyst screen shows the quota line and the admin's does not; (5) as bob, `fetch('/api/llm-providers')` in the console returns 403. Screenshot both roles at 1280px and 390px.
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/ui/Sidebar.tsx src/ui/BottomNav.tsx src/App.tsx
@@ -2371,7 +2371,7 @@ git commit -m "feat: hide Settings from regular users and add identity and logou
 - Produces: `<UsersPanel ar={boolean} currentUserId={string} onPendingCount={(n: number) => void} />`. Loads on mount, refreshes after every action, reports the pending count upward, disables actions on the current admin's own row, shows errors inline, and is fully bilingual.
 - `App` (admin only): keeps `pendingCount` state, initialised by a `listUsers()` call on mount, updated by `onPendingCount`; passes it as `settingsBadge` to `Sidebar` and `BottomNav`; renders `<UsersPanel …/>` below `<AIModelSettingsManager …/>` in the Settings tab.
 
-- [ ] **Step 1: Create `UsersPanel.tsx`**
+- [x] **Step 1: Create `UsersPanel.tsx`**
 
 ```tsx
 import { useEffect, useState } from 'preact/hooks';
@@ -2512,7 +2512,7 @@ export function UsersPanel({ ar, currentUserId, onPendingCount }: { ar: boolean;
 }
 ```
 
-- [ ] **Step 2: Mount it and wire the badge in `App.tsx`.** Import `UsersPanel` and `listUsers`. Add `const [pendingCount, setPendingCount] = useState(0);` and
+- [x] **Step 2: Mount it and wire the badge in `App.tsx`.** Import `UsersPanel` and `listUsers`. Add `const [pendingCount, setPendingCount] = useState(0);` and
 
 ```tsx
   useEffect(() => {
@@ -2523,8 +2523,8 @@ export function UsersPanel({ ar, currentUserId, onPendingCount }: { ar: boolean;
 
 Pass `settingsBadge={pendingCount}` to `Sidebar` and `BottomNav`. In the Settings tab, below `<AIModelSettingsManager adapter={aiSettingsAdapter} />` add `<UsersPanel ar={ar} currentUserId={user.id} onPendingCount={setPendingCount} />`.
 
-- [ ] **Step 3: Verify** — `npx tsc -b && npm test`, then in the browser (servers from Task 10 still running; register a fresh `carol@try.com` first so there is a pending user): (1) admin sees a badge `1` on Settings; (2) the Users panel lists carol as pending first; **Approve** makes her active and drops the badge; (3) set her daily limit to 1, Save, then sign in as carol in a second browser context and run one analysis attempt against a stub provider (or confirm the quota line reads `1/1`, then `0/1` after the 429 path via a direct `fetch('/api/analyze', {method:'POST', ...})` returning 429 once the count is 1 — set `ai_shared_usage` by SQL if no provider is reachable); (4) **Disable** carol, then her open session gets back to the login screen on its next request; **Enable** restores her; (5) **Reset password** (accept the prompt with a new 8+ char password) lets carol sign in with it; (6) the admin's own row has no Disable button; (7) the panel is usable at 390px in Arabic (no horizontal overflow). Screenshot desktop + mobile, both languages.
-- [ ] **Step 4: Commit**
+- [x] **Step 3: Verify** — `npx tsc -b && npm test`, then in the browser (servers from Task 10 still running; register a fresh `carol@try.com` first so there is a pending user): (1) admin sees a badge `1` on Settings; (2) the Users panel lists carol as pending first; **Approve** makes her active and drops the badge; (3) set her daily limit to 1, Save, then sign in as carol in a second browser context and run one analysis attempt against a stub provider (or confirm the quota line reads `1/1`, then `0/1` after the 429 path via a direct `fetch('/api/analyze', {method:'POST', ...})` returning 429 once the count is 1 — set `ai_shared_usage` by SQL if no provider is reachable); (4) **Disable** carol, then her open session gets back to the login screen on its next request; **Enable** restores her; (5) **Reset password** (accept the prompt with a new 8+ char password) lets carol sign in with it; (6) the admin's own row has no Disable button; (7) the panel is usable at 390px in Arabic (no horizontal overflow). Screenshot desktop + mobile, both languages.
+- [x] **Step 4: Commit**
 
 ```bash
 git add src/ui/UsersPanel.tsx src/App.tsx
@@ -2539,7 +2539,7 @@ git commit -m "feat: add the admin Users panel with approvals, limits and passwo
 - Modify: `README.md`, `docs/superpowers/specs/2026-09-20-multi-user-admin-design.md`
 - Modify: `docs/superpowers/plans/2026-09-20-multi-user-admin.md` (check off completed steps)
 
-- [ ] **Step 1: Stop the scratch servers and drop the scratch database**
+- [x] **Step 1: Stop the scratch servers and drop the scratch database**
 
 ```bash
 pkill -f "SERVER_PORT=8788" || true
@@ -2548,7 +2548,7 @@ unset DATABASE_URL SERVER_PORT
 psql postgres://localhost:5432/postgres -qc 'drop database if exists gold_cockpit_ui_try'
 ```
 
-- [ ] **Step 2: Upgrade path check on a copy of your real data** (proves the migration and `create-admin` keep your data). The dump is made with `--no-keys` so no API keys are written to disk:
+- [x] **Step 2: Upgrade path check on a copy of your real data** (proves the migration and `create-admin` keep your data). The dump is made with `--no-keys` so no API keys are written to disk:
 
 ```bash
 scripts/db-export.sh --no-keys --out db-export/upgrade-check.sql
@@ -2568,7 +2568,7 @@ psql postgres://localhost:5432/postgres -qc 'drop database gold_cockpit_upgrade_
 rm -f db-export/upgrade-check.sql
 ```
 
-- [ ] **Step 3: README section.** Append to `README.md`:
+- [x] **Step 3: README section.** Append to `README.md`:
 
 ```markdown
 ## Users and admin
@@ -2597,15 +2597,15 @@ Behind a reverse proxy that terminates HTTPS, set `TRUST_PROXY=1` so the session
 cookie is marked `Secure` and login rate limiting sees real client addresses.
 ```
 
-- [ ] **Step 4: Update the spec** (`docs/superpowers/specs/2026-09-20-multi-user-admin-design.md`) so it matches what was built. Make exactly these four edits:
+- [x] **Step 4: Update the spec** (`docs/superpowers/specs/2026-09-20-multi-user-admin-design.md`) so it matches what was built. Make exactly these four edits:
   1. Under "Access control", replace "Routers stop taking a boot-time `userId`; handlers use `req.user.id`." with "The router factories keep their `(db, userId)` signature; `perUserRouter` builds one router per logged-in user and delegates to it, so routers and their tests are unchanged."
   2. In the same section replace "The old `GOLD_COCKPIT_API_KEY` middleware is removed." with "The old optional `GOLD_COCKPIT_API_KEY` header check inside each router is left untouched: it does nothing when the variable is unset, and the browser never sent it."
   3. Under "Analysis": replace "(HTTP 429)" wording so it reads: quota endpoint returns `{ capped: false }` for the admin and `{ capped: true, used, limit }` for regular users; the cap returns HTTP 429 `Daily analysis limit reached`.
   4. Under "Admin routes" add a line: "`/api/software-review` is admin-only (it drives a server-side tool and the client never calls it)."
 
-- [ ] **Step 5: Final verification** — `npx tsc -b && npm test` (expect all green; note the new total), and `git status --short` shows only the known unrelated files.
+- [x] **Step 5: Final verification** — `npx tsc -b && npm test` (expect all green; note the new total), and `git status --short` shows only the known unrelated files.
 
-- [ ] **Step 6: Check off this plan and commit**
+- [x] **Step 6: Check off this plan and commit**
 
 ```bash
 sed -i '' 's/^- \[ \]/- [x]/' docs/superpowers/plans/2026-09-20-multi-user-admin.md

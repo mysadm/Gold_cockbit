@@ -40,6 +40,31 @@ Data and AI calls: free keyless price feeds; direct browser → Anthropic API wi
 - Page calls only: price feeds, Google Fonts, api.anthropic.com
 - Position/budget data never leaves the browser except inside the analyst prompt under the user's own account
 
+## Users and admin
+
+Gold Cockpit is multi-user. Everyone signs in; only the admin can open **Settings**
+(AI model configuration and the Users panel). Every user has their own wallet, DCA
+plan, scenario weights, watchlist and alerts. All analyses run on the admin's
+active AI provider; each regular user has a daily analysis limit (default 3) that
+the admin can change per user in Settings → Users.
+
+**First-time setup (once per machine, before starting the server):**
+
+    npm run migrate
+    node scripts/create-admin.mjs you@example.com     # prompts for a password
+
+On an existing single-user database this converts the old `default@local` user into
+the admin and keeps all its data. The server refuses to start until an admin exists.
+If you restore a database exported from another machine that already has an admin,
+skip this step.
+
+**New users** register on the login screen and stay "pending" until the admin
+approves them in Settings → Users. The admin can also disable a user, change their
+daily analysis limit and reset their password there.
+
+Behind a reverse proxy that terminates HTTPS, set `TRUST_PROXY=1` so the session
+cookie is marked `Secure` and login rate limiting sees real client addresses.
+
 ## Disclaimer
 
 Personal analysis tool — not financial advice. Built-in allocation rule: gold at 15–25% of total wealth, maximum.
