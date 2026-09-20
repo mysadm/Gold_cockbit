@@ -30,6 +30,10 @@ export function BottomNav({
   isLight,
   toggleTheme,
   toggleLang,
+  isAdmin,
+  userName,
+  onLogout,
+  settingsBadge,
 }: {
   screen: ScreenKey;
   setScreen: (s: ScreenKey) => void;
@@ -37,9 +41,14 @@ export function BottomNav({
   isLight: boolean;
   toggleTheme: () => void;
   toggleLang: () => void;
+  isAdmin: boolean;
+  userName: string;
+  onLogout: () => void;
+  settingsBadge?: number;
 }) {
   const [sheetOpen, setSheetOpen] = useState(false);
-  const isMoreActive = MORE_SCREENS.some((s) => s.key === screen);
+  const moreScreens = isAdmin ? MORE_SCREENS : MORE_SCREENS.filter((s) => s.key !== 'settings');
+  const isMoreActive = moreScreens.some((s) => s.key === screen);
 
   return (
     <>
@@ -80,7 +89,7 @@ export function BottomNav({
             aria-label={MORE_LABEL[ar ? 'ar' : 'en']}
             onClick={(e) => e.stopPropagation()}
           >
-            {MORE_SCREENS.map(({ key, icon }) => (
+            {moreScreens.map(({ key, icon }) => (
               <button
                 key={key}
                 type="button"
@@ -93,8 +102,17 @@ export function BottomNav({
               >
                 <Icon name={icon} size={16} />
                 <span>{NAV_LABELS[key][ar ? 'ar' : 'en']}</span>
+                {key === 'settings' && settingsBadge ? (
+                  <span style={{ marginInlineStart: 'auto', background: 'var(--gold)', color: 'var(--bg)', borderRadius: 999, padding: '0 7px', fontSize: 12, fontWeight: 700 }}>{settingsBadge}</span>
+                ) : null}
               </button>
             ))}
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, padding: '10px 4px 0' }}>
+              <span className="muted-text" style={{ fontSize: 14, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{userName}</span>
+              <button type="button" className="btn-outline" style={{ padding: '6px 12px', fontSize: 14 }} onClick={() => { setSheetOpen(false); void onLogout(); }}>
+                {ar ? 'خروج' : 'Log out'}
+              </button>
+            </div>
             <div style={{ display: 'flex', gap: 8, paddingTop: 10, marginTop: 6, borderTop: '1px solid var(--border)' }}>
               <button type="button" className="btn-outline" style={{ flex: 1, padding: '10px 0', fontSize: 15 }} onClick={toggleLang}>
                 {ar ? 'EN' : 'عربي'}

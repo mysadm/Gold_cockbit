@@ -48,6 +48,10 @@ export function Sidebar({
   toggleTheme,
   toggleLang,
   liveLabel,
+  isAdmin,
+  userName,
+  onLogout,
+  settingsBadge,
 }: {
   screen: ScreenKey;
   setScreen: (s: ScreenKey) => void;
@@ -56,7 +60,12 @@ export function Sidebar({
   toggleTheme: () => void;
   toggleLang: () => void;
   liveLabel: string;
+  isAdmin: boolean;
+  userName: string;
+  onLogout: () => void;
+  settingsBadge?: number;
 }) {
+  const screens = isAdmin ? SCREEN_ORDER : SCREEN_ORDER.filter((s) => s !== 'settings');
   return (
     <nav
       className="app-sidebar"
@@ -97,7 +106,7 @@ export function Sidebar({
       </div>
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 2, flex: 1, overflowY: 'auto' }}>
-        {SCREEN_ORDER.map((s) => (
+        {screens.map((s) => (
           <button
             key={s}
             type="button"
@@ -107,6 +116,9 @@ export function Sidebar({
           >
             <Icon name={SCREEN_ICONS[s]} size={16} />
             <span>{NAV_LABELS[s][ar ? 'ar' : 'en']}</span>
+            {s === 'settings' && settingsBadge ? (
+              <span style={{ marginInlineStart: 'auto', background: 'var(--gold)', color: 'var(--bg)', borderRadius: 999, padding: '0 7px', fontSize: 12, fontWeight: 700 }}>{settingsBadge}</span>
+            ) : null}
           </button>
         ))}
       </div>
@@ -124,6 +136,14 @@ export function Sidebar({
             aria-label={isLight ? (ar ? 'التحويل للوضع الداكن' : 'Switch to dark mode') : (ar ? 'التحويل للوضع الفاتح' : 'Switch to light mode')}
           >
             <Icon name={isLight ? 'moon' : 'sun'} size={12} />
+          </button>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, paddingInlineStart: 4 }}>
+          <span className="muted-text" style={{ fontSize: 14, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={userName}>
+            {userName}
+          </span>
+          <button type="button" className="btn-outline" style={{ padding: '4px 10px', fontSize: 13 }} onClick={() => void onLogout()}>
+            {ar ? 'خروج' : 'Log out'}
           </button>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, paddingInlineStart: 4 }}>
