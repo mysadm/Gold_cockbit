@@ -1,8 +1,8 @@
-import { useEffect, useState } from 'preact/hooks';
+import { useEffect, useLayoutEffect, useState } from 'preact/hooks';
 import App from '../App';
 import { fetchMe, logout, installUnauthorizedHandler, type CurrentUser } from '../api/auth';
 import { migrateLegacyStorage } from '../lib/userStorage';
-import { LoginScreen } from './LoginScreen';
+import { LoginScreen, loadLoginPrefs } from './LoginScreen';
 
 type Phase = { kind: 'loading' } | { kind: 'anon' } | { kind: 'authed'; user: CurrentUser };
 
@@ -13,6 +13,9 @@ function enter(user: CurrentUser): Phase {
 
 export function AuthGate() {
   const [phase, setPhase] = useState<Phase>({ kind: 'loading' });
+
+  // Apply the stored login theme before first paint so light-mode users don't flash dark while loading.
+  useLayoutEffect(() => { document.body.classList.toggle('theme-light', loadLoginPrefs().theme === 'light'); }, []);
 
   useEffect(() => {
     fetchMe()
@@ -33,7 +36,14 @@ export function AuthGate() {
       key={phase.user.id}
       user={phase.user}
       onLogout={async () => {
-        try { await logout(); } finally { setPhase({ kind: 'anon' }); }
+        try {
+          await logout();
+        } catch (err) {
+          // The UI still returns to the login screen; the session cookie expires server-side.
+          console.warn('Logout request failed', err instanceof Error ? err.message : err);
+        } finally {
+          setPhase({ kind: 'anon' });
+        }
       }}
     />
   );

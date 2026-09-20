@@ -265,7 +265,10 @@ function App({ user, onLogout }: { user: CurrentUser; onLogout: () => void }) {
   const userName = user.display_name || user.email;
   const storageKeys = useMemo(() => storageKeysFor(user.id), [user.id]);
   const [state, setState] = useState<AppState>(() => loadState(storageKeys));
-  const [activeTab, setActiveTab] = useState<TabKey>(initialTabFromUrl);
+  const [activeTab, setActiveTab] = useState<TabKey>(() => {
+    const t = initialTabFromUrl();
+    return !isAdmin && t === 'settings' ? 'home' : t;
+  });
   // .theme-light must live on <body>, not on an inner div: `body { color:
   // var(--text); }` is the only rule most unstyled text relies on for its
   // color (e.g. the Egypt screen's karat/sell columns, which set no color

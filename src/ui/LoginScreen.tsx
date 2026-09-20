@@ -15,6 +15,7 @@ const TEXT = {
     backToLogin: 'Back to sign in', minPw: 'At least 8 characters', busy: 'Please wait…',
     langBtn: 'عربي', toDark: 'Switch to dark mode', toLight: 'Switch to light mode',
     disabled: 'This account is disabled. Contact the admin.',
+    network: 'Could not reach the server, try again',
   },
   ar: {
     title: 'كوكبيت الذهب', signIn: 'تسجيل الدخول', createAccount: 'إنشاء حساب', email: 'البريد الإلكتروني', password: 'كلمة المرور',
@@ -24,10 +25,20 @@ const TEXT = {
     backToLogin: 'العودة لتسجيل الدخول', minPw: '٨ أحرف على الأقل', busy: 'لحظة…',
     langBtn: 'EN', toDark: 'التحويل للوضع الداكن', toLight: 'التحويل للوضع الفاتح',
     disabled: 'هذا الحساب معطّل. تواصل مع المدير.',
+    network: 'تعذّر الوصول إلى الخادم، حاول مرة أخرى',
   },
 } as const;
 
-function loadPrefs(): Prefs {
+// Known, stable server messages -> bilingual text. Unknown messages show as-is.
+const SERVER_ERRORS: Record<string, { en: string; ar: string }> = {
+  'Invalid email or password': { en: 'Invalid email or password', ar: 'البريد الإلكتروني أو كلمة المرور غير صحيحة' },
+  'Email already registered': { en: 'This email is already registered', ar: 'هذا البريد الإلكتروني مسجّل بالفعل' },
+  'Too many attempts, try again later': { en: 'Too many attempts, try again later', ar: 'محاولات كثيرة، حاول مرة أخرى لاحقاً' },
+  'Password must be at least 8 characters': { en: 'Password must be at least 8 characters', ar: 'يجب ألا تقل كلمة المرور عن ٨ أحرف' },
+  'A valid email is required': { en: 'A valid email is required', ar: 'يرجى إدخال بريد إلكتروني صحيح' },
+};
+
+export function loadLoginPrefs(): Prefs {
   try {
     const raw = window.localStorage.getItem(PREFS_KEY);
     const parsed = raw ? JSON.parse(raw) : null;
@@ -37,7 +48,7 @@ function loadPrefs(): Prefs {
 }
 
 export function LoginScreen({ onSignedIn }: { onSignedIn: (user: CurrentUser) => void }) {
-  const [prefs, setPrefs] = useState<Prefs>(loadPrefs);
+  const [prefs, setPrefs] = useState<Prefs>(loadLoginPrefs);
   const [mode, setMode] = useState<'login' | 'register' | 'pending'>('login');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -59,14 +70,18 @@ export function LoginScreen({ onSignedIn }: { onSignedIn: (user: CurrentUser) =>
     try {
       if (mode === 'register') {
         await register(email, password, name);
+        setPassword('');
         setMode('pending');
       } else {
         onSignedIn(await login(email, password));
       }
     } catch (err) {
-      if (err instanceof AuthError && err.code === 'pending') setMode('pending');
+      if (err instanceof AuthError && err.code === 'pending') { setPassword(''); setMode('pending'); }
       else if (err instanceof AuthError && err.code === 'disabled') setError(t.disabled);
-      else setError(err instanceof Error ? err.message : String(err));
+      // TypeError = fetch could not connect; HTTP 5xx with no server message = dev proxy / gateway with the API down.
+      else if (err instanceof TypeError || (err instanceof Error && /^HTTP 5\d\d$/.test(err.message))) setError(t.network);
+      else if (err instanceof Error) setError(SERVER_ERRORS[err.message]?.[prefs.lang] ?? err.message);
+      else setError(String(err));
     } finally {
       setBusy(false);
     }
@@ -78,13 +93,13 @@ export function LoginScreen({ onSignedIn }: { onSignedIn: (user: CurrentUser) =>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
           <span style={{ fontSize: 20, fontWeight: 700, color: 'var(--text)' }}>{t.title}</span>
           <div style={{ display: 'flex', gap: 6 }}>
-            <button type="button" className="btn-outline" style={{ padding: '6px 10px' }} onClick={() => setPrefs({ ...prefs, lang: ar ? 'en' : 'ar' })}>{t.langBtn}</button>
+            <button type="button" className="btn-outline" style={{ padding: '6px 10px' }} onClick={() => setPrefs((p) => ({ ...p, lang: p.lang === 'ar' ? 'en' : 'ar' }))}>{t.langBtn}</button>
             <button
               type="button"
               className="btn-outline"
               style={{ padding: '6px 10px', display: 'flex', alignItems: 'center' }}
               aria-label={prefs.theme === 'light' ? t.toDark : t.toLight}
-              onClick={() => setPrefs({ ...prefs, theme: prefs.theme === 'light' ? 'dark' : 'light' })}
+              onClick={() => setPrefs((p) => ({ ...p, theme: p.theme === 'light' ? 'dark' : 'light' }))}
             >
               <Icon name={prefs.theme === 'light' ? 'moon' : 'sun'} size={14} />
             </button>
@@ -101,11 +116,13 @@ export function LoginScreen({ onSignedIn }: { onSignedIn: (user: CurrentUser) =>
           <form onSubmit={submit} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
             <div className="section-label">{mode === 'login' ? t.signIn : t.createAccount}</div>
             {mode === 'register' && (
-              <input type="text" placeholder={t.name} value={name} autoComplete="name" onInput={(e) => setName((e.target as HTMLInputElement).value)} />
+              <input type="text" placeholder={t.name} aria-label={t.name} value={name} autoComplete="name" onInput={(e) => setName((e.target as HTMLInputElement).value)} />
             )}
-            <input type="email" placeholder={t.email} value={email} autoComplete="email" required onInput={(e) => setEmail((e.target as HTMLInputElement).value)} />
+            <input type="email" dir="ltr" placeholder={t.email} aria-label={t.email} value={email} autoComplete="email" required onInput={(e) => setEmail((e.target as HTMLInputElement).value)} />
             <input
               type="password"
+              dir="ltr"
+              aria-label={t.password}
               placeholder={mode === 'register' ? `${t.password} — ${t.minPw}` : t.password}
               value={password}
               autoComplete={mode === 'register' ? 'new-password' : 'current-password'}
@@ -117,7 +134,7 @@ export function LoginScreen({ onSignedIn }: { onSignedIn: (user: CurrentUser) =>
             <button type="submit" className="btn-primary" style={{ padding: 12 }} disabled={busy}>
               {busy ? t.busy : mode === 'login' ? t.signInBtn : t.registerBtn}
             </button>
-            <button type="button" className="btn-outline" style={{ padding: 10 }} onClick={() => { setError(null); setMode(mode === 'login' ? 'register' : 'login'); }}>
+            <button type="button" className="btn-outline" style={{ padding: 10 }} onClick={() => { setError(null); setPassword(''); setMode(mode === 'login' ? 'register' : 'login'); }}>
               {mode === 'login' ? t.toRegister : t.toLogin}
             </button>
           </form>
