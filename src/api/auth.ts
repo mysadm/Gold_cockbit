@@ -48,13 +48,30 @@ export async function logout(): Promise<void> {
   await post('/api/auth/logout');
 }
 
+function shouldSignOutOn401(input: RequestInfo | URL, pageOrigin: string): boolean {
+  try {
+    // Request.url and URL.href are always absolute, so resolve every input form
+    // against the page origin instead of matching on the raw string.
+    const raw = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+    const resolved = new URL(raw, pageOrigin);
+    // A 401 from another host must never log the user out of this app.
+    return (
+      resolved.origin === pageOrigin &&
+      resolved.pathname.startsWith('/api/') &&
+      resolved.pathname !== '/api/auth/login'
+    );
+  } catch {
+    return false;
+  }
+}
+
 export function installUnauthorizedHandler(onUnauthorized: () => void): () => void {
   const original = window.fetch;
   window.fetch = async (input, init) => {
     const response = await original(input, init);
-    const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
-    if (response.status === 401 && url.startsWith('/api/') && !url.startsWith('/api/auth/login')) {
-      onUnauthorized();
+    if (response.status === 401) {
+      const pageOrigin = window.location?.origin ?? 'http://localhost';
+      if (shouldSignOutOn401(input, pageOrigin)) onUnauthorized();
     }
     return response;
   };

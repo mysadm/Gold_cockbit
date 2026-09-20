@@ -65,4 +65,54 @@ describe('installUnauthorizedHandler', () => {
     uninstall();
     expect(fakeWindow.fetch).toBe(original);
   });
+
+  describe('URL resolution', () => {
+    function setup(response: Response = json(401, {})) {
+      const original = vi.fn().mockResolvedValue(response);
+      const fakeWindow = { fetch: original, location: { origin: 'http://localhost' } } as unknown as Window & typeof globalThis;
+      vi.stubGlobal('window', fakeWindow);
+      const onUnauthorized = vi.fn();
+      installUnauthorizedHandler(onUnauthorized);
+      return { fakeWindow, onUnauthorized, original };
+    }
+
+    it('fires for a Request input', async () => {
+      const { fakeWindow, onUnauthorized } = setup();
+      await fakeWindow.fetch(new Request('http://localhost/api/wallet'));
+      expect(onUnauthorized).toHaveBeenCalledTimes(1);
+    });
+
+    it('fires for a URL input', async () => {
+      const { fakeWindow, onUnauthorized } = setup();
+      await fakeWindow.fetch(new URL('http://localhost/api/wallet'));
+      expect(onUnauthorized).toHaveBeenCalledTimes(1);
+    });
+
+    it('fires for an absolute same-origin string', async () => {
+      const { fakeWindow, onUnauthorized } = setup();
+      await fakeWindow.fetch('http://localhost/api/wallet');
+      expect(onUnauthorized).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not fire for a cross-origin 401', async () => {
+      const { fakeWindow, onUnauthorized } = setup();
+      await fakeWindow.fetch('https://other.example/api/wallet');
+      expect(onUnauthorized).not.toHaveBeenCalled();
+    });
+
+    it('skips /api/auth/login exactly but fires for lookalikes', async () => {
+      const { fakeWindow, onUnauthorized } = setup();
+      await fakeWindow.fetch('/api/auth/login');
+      expect(onUnauthorized).not.toHaveBeenCalled();
+      await fakeWindow.fetch('/api/auth/login-foo');
+      expect(onUnauthorized).toHaveBeenCalledTimes(1);
+    });
+
+    it('returns the same Response object untouched', async () => {
+      const response = json(401, { error: 'x' });
+      const { fakeWindow } = setup(response);
+      expect(await fakeWindow.fetch('/api/wallet')).toBe(response);
+      expect(response.bodyUsed).toBe(false);
+    });
+  });
 });
