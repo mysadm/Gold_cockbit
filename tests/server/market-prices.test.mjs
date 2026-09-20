@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi, afterEach } from 'vitest';
 import { fetchMarketPrices } from '../../server/marketPrices.mjs';
 
 const GOLD_API = 'https://api.gold-api.com/price/XAU';
@@ -29,6 +29,8 @@ const now = () => NOW;
 const okFx = { [ER_API]: { rates: { EGP: 48.567 } } };
 
 describe('fetchMarketPrices', () => {
+  afterEach(() => { vi.useRealTimers(); });
+
   it('returns the first valid gold feed, rounded like the browser, with FX and retrievedAt', async () => {
     const fetchImpl = fakeFetch({ [GOLD_API]: { price: 4523.6 }, ...okFx });
     const out = await fetchMarketPrices({ fetchImpl, now });
@@ -110,15 +112,32 @@ describe('fetchMarketPrices', () => {
       [ER_API]: new Error('down'),
       [JSDELIVR]: { usd: { egp: 500 } },
     });
-    await expect(fetchMarketPrices({ fetchImpl, now })).rejects.toThrow('No USD/EGP feed answered');
+    await expect(fetchMarketPrices({ fetchImpl, now })).rejects.toThrow(/^No USD\/EGP feed answered: .*open\.er-api\.com: down.*jsdelivr-daily: bad value/s);
+  });
+
+  it('reports an HTTP status when a gold feed or an FX feed answers with an error code', async () => {
+    const err = (status) => () => new Response('nope', { status });
+    const fetchImpl = fakeFetch({
+      [GOLD_API]: err(503),
+      [GOLDPRICE]: { items: [{ xauPrice: 4300 }] },
+      [ER_API]: err(429),
+      [JSDELIVR]: err(500),
+    });
+    const goldOnly = fakeFetch({ [GOLD_API]: err(503), [GOLDPRICE]: err(502), [BINANCE]: err(500), [JSDELIVR]: err(404) });
+    await expect(fetchMarketPrices({ fetchImpl: goldOnly, now })).rejects.toThrow(/gold-api: HTTP 503.*goldprice\.org: HTTP 502.*binance-paxg: HTTP 500.*jsdelivr-daily: HTTP 404/s);
+    await expect(fetchMarketPrices({ fetchImpl, now })).rejects.toThrow(/open\.er-api\.com: HTTP 429; jsdelivr-daily: HTTP 500/);
   });
 
   it('times out a hanging feed after 6 s and moves on', async () => {
+    vi.useFakeTimers();
     const never = () => new Promise(() => {});
     const fetchImpl = fakeFetch({ [GOLD_API]: never, [GOLDPRICE]: { items: [{ xauPrice: 4300 }] }, ...okFx });
-    const started = Date.now();
-    const out = await fetchMarketPrices({ fetchImpl, now });
+    const pending = fetchMarketPrices({ fetchImpl, now });
+    await vi.advanceTimersByTimeAsync(5900);
+    expect(fetchImpl.calls).toEqual([GOLD_API]);
+    await vi.advanceTimersByTimeAsync(200);
+    const out = await pending;
     expect(out.goldSource).toBe('goldprice.org');
-    expect(Date.now() - started).toBeGreaterThanOrEqual(5900);
-  }, 15000);
+    expect(out.spot).toBe(4300);
+  });
 });
