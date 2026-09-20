@@ -41,6 +41,64 @@ describe('compact pipeline', () => {
     expect(bad.metrics.validationErrors).toEqual(bad.validation.errors.slice(0, 6));
     expect(bad.metrics.validationErrors).toContain('response must be a JSON object');
   });
+  describe('an over-limit amount in the optional DCA note', () => {
+    const withDca = (dca, extra = {}) => ({ ...OUTPUT_EXAMPLE, reads: { ...OUTPUT_EXAMPLE.reads, dca }, ...extra });
+    const answer = (obj) => ({ text: JSON.stringify(obj), usage: { input_tokens: 10, output_tokens: 5 } });
+
+    it('drops only that note after the retry fails, keeps the rest, and says so', async () => {
+      runProviderAnalysis.mockResolvedValue(answer(withDca('Deploy 100,000 EGP now')));
+
+      const out = await runAnalysisV3(provider, snapshot, runProviderAnalysis);
+
+      expect(runProviderAnalysis).toHaveBeenCalledTimes(2);
+      expect(out.validation).toEqual({ ok: true, errors: [] });
+      expect(out.result.reads.dca).toBeUndefined();
+      expect(out.result.reads.egp).toBe(OUTPUT_EXAMPLE.reads.egp);
+      expect(out.result.primary_decision.action).toBe(OUTPUT_EXAMPLE.primary_decision.action);
+      expect(out.result.assumptions.at(-1)).toMatch(/DCA/);
+      expect(out.metrics.dcaReadOmitted).toBe(true);
+      expect(JSON.parse(out.text).reads.dca).toBeUndefined();
+    });
+
+    it('leaves an in-limit DCA note alone', async () => {
+      runProviderAnalysis.mockResolvedValue(answer(withDca('Deploy 40,000 EGP now')));
+
+      const out = await runAnalysisV3(provider, snapshot, runProviderAnalysis);
+
+      expect(out.validation.ok).toBe(true);
+      expect(out.result.reads.dca).toBe('Deploy 40,000 EGP now');
+      expect(out.metrics.dcaReadOmitted).toBe(false);
+      expect(runProviderAnalysis).toHaveBeenCalledTimes(1);
+    });
+
+    it('does NOT rescue an answer that has other validation errors', async () => {
+      runProviderAnalysis.mockResolvedValue(answer(withDca('Deploy 100,000 EGP now', { suggested_weights: { deesc: 35, base: 45, stag: 25 } })));
+
+      const out = await runAnalysisV3(provider, snapshot, runProviderAnalysis);
+
+      expect(out.validation.ok).toBe(false);
+      expect(out.result.status).toBe('insufficient_evidence');
+      expect(out.metrics.dcaReadOmitted).toBe(false);
+    });
+
+    it('writes the omission note in Arabic for an Arabic analysis', async () => {
+      const ar = { ...snapshot, locale: 'ar' };
+      const arAnswer = {
+        ...OUTPUT_EXAMPLE,
+        primary_decision: { ...OUTPUT_EXAMPLE.primary_decision, headline: 'انتظر', next_trigger: 'راقب السوق', invalidation: 'تغير الظروف' },
+        evidence: [{ ...OUTPUT_EXAMPLE.evidence[0], implication: 'تأثير الدليل' }],
+        reads: { egp: 'قراءة الجنيه', dca: 'ضخ ١٠٠٬٠٠٠ جنيه الآن' },
+      };
+      runProviderAnalysis.mockResolvedValue(answer(arAnswer));
+
+      const out = await runAnalysisV3(provider, ar, runProviderAnalysis);
+
+      expect(out.validation.ok).toBe(true);
+      expect(out.result.reads.dca).toBeUndefined();
+      expect(out.result.assumptions.at(-1)).toMatch(/[\u0621-\u064A]/);
+    });
+  });
+
   it('retries once and sums reported usage', async () => {
     runProviderAnalysis.mockResolvedValueOnce({ text: '{}', usage: { input_tokens: 40, output_tokens: 2 } });
     const out = await runAnalysisV3(provider, snapshot, runProviderAnalysis);
