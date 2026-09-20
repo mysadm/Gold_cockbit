@@ -7,6 +7,7 @@ import { createRequireAuth } from '../../server/auth/middleware.mjs';
 import { createRateLimiter } from '../../server/auth/rateLimit.mjs';
 import { createAuthRouter } from '../../server/routes/auth.mjs';
 import { SESSION_COOKIE } from '../../server/auth/sessions.mjs';
+import { MAX_EMAIL_LENGTH, MAX_PASSWORD_LENGTH } from '../../server/auth/password.mjs';
 
 const MIGRATIONS_DIR = new URL('../../migrations/', import.meta.url);
 let client;
@@ -54,6 +55,56 @@ describe('POST /api/auth/register', () => {
   });
 });
 
+describe('input length caps', () => {
+  const emailOfLength = (n) => `${'a'.repeat(n - '@example.com'.length)}@example.com`;
+
+  it('exports the limits', () => {
+    expect(MAX_EMAIL_LENGTH).toBe(254);
+    expect(MAX_PASSWORD_LENGTH).toBe(1024);
+  });
+
+  it('register 400s an email over the limit and a password over the limit, and accepts the limits exactly', async () => {
+    const longEmail = await request(app).post('/api/auth/register')
+      .send({ email: emailOfLength(MAX_EMAIL_LENGTH + 1), password: 'longenough1' });
+    expect(longEmail.status).toBe(400);
+    const longPassword = await request(app).post('/api/auth/register')
+      .send({ email: 'ok@x.com', password: 'p'.repeat(MAX_PASSWORD_LENGTH + 1) });
+    expect(longPassword.status).toBe(400);
+    expect((await client.query('SELECT count(*)::int n FROM users')).rows[0].n).toBe(0);
+
+    const edge = await request(app).post('/api/auth/register')
+      .send({ email: emailOfLength(MAX_EMAIL_LENGTH), password: 'p'.repeat(MAX_PASSWORD_LENGTH) });
+    expect(edge.status).toBe(201);
+  });
+
+  it('login fails like a wrong password (401, same body) for an over-long password or email, even if it would match', async () => {
+    const longPassword = 'p'.repeat(MAX_PASSWORD_LENGTH + 1);
+    const longEmail = emailOfLength(MAX_EMAIL_LENGTH + 1);
+    await createTestUser(client, { email: 'a@x.com', password: longPassword });
+    await createTestUser(client, { email: longEmail, password: 'password123' });
+    const wrong = await request(app).post('/api/auth/login').send({ email: 'a@x.com', password: 'nope-nope-nope' });
+
+    const byPassword = await request(app).post('/api/auth/login').send({ email: 'a@x.com', password: longPassword });
+    expect(byPassword.status).toBe(401);
+    expect(byPassword.body).toEqual(wrong.body);
+    expect(byPassword.headers['set-cookie']).toBeUndefined();
+
+    const byEmail = await request(app).post('/api/auth/login').send({ email: longEmail, password: 'password123' });
+    expect(byEmail.status).toBe(401);
+    expect(byEmail.body).toEqual(wrong.body);
+    expect(byEmail.headers['set-cookie']).toBeUndefined();
+  });
+});
+
+describe('register rate limit', () => {
+  it('is rate limited', async () => {
+    const limited = buildApp(2);
+    await request(limited).post('/api/auth/register').send({ email: 'r1@x.com', password: 'longenough1' });
+    await request(limited).post('/api/auth/register').send({ email: 'r2@x.com', password: 'longenough1' });
+    expect((await request(limited).post('/api/auth/register').send({ email: 'r3@x.com', password: 'longenough1' })).status).toBe(429);
+  });
+});
+
 describe('POST /api/auth/login', () => {
   it('signs in an active user and sets an HttpOnly cookie', async () => {
     await createTestUser(client, { email: 'a@x.com', password: 'password123' });
@@ -72,6 +123,8 @@ describe('POST /api/auth/login', () => {
     expect(wrong.status).toBe(401);
     expect(unknown.status).toBe(401);
     expect(wrong.body).toEqual(unknown.body);
+    expect(wrong.headers['set-cookie']).toBeUndefined();
+    expect(unknown.headers['set-cookie']).toBeUndefined();
   });
 
   it('403s a pending and a disabled user with a code, only after the password checks out', async () => {
@@ -83,6 +136,8 @@ describe('POST /api/auth/login', () => {
     expect(pending.body.code).toBe('pending');
     expect(disabled.status).toBe(403);
     expect(disabled.body.code).toBe('disabled');
+    expect(pending.headers['set-cookie']).toBeUndefined();
+    expect(disabled.headers['set-cookie']).toBeUndefined();
     const wrongPw = await request(app).post('/api/auth/login').send({ email: 'p@x.com', password: 'wrong-wrong' });
     expect(wrongPw.status).toBe(401);
   });
@@ -109,6 +164,7 @@ describe('GET /api/auth/me and POST /api/auth/logout', () => {
 
     const out = await agent.post('/api/auth/logout');
     expect(out.status).toBe(200);
+    expect(out.headers['set-cookie'].join(';')).toContain('Max-Age=0');
     expect((await agent.get('/api/auth/me')).status).toBe(401);
   });
 });

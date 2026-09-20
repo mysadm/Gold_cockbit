@@ -5,6 +5,14 @@ const scryptAsync = promisify(scrypt);
 const KEY_LENGTH = 64;
 
 export const MIN_PASSWORD_LENGTH = 8;
+// Hard caps checked before any scrypt work, so a huge input cannot be used to burn CPU.
+export const MAX_PASSWORD_LENGTH = 1024;
+export const MAX_EMAIL_LENGTH = 254;
+
+// Used by the create-admin prompt to compare the two typed entries.
+export function passwordsMatch(a, b) {
+  return typeof a === 'string' && typeof b === 'string' && a === b;
+}
 
 export async function hashPassword(password) {
   const salt = randomBytes(16);

@@ -17,7 +17,8 @@ import { createSoftwareReviewRouter } from './routes/softwareReview.mjs';
 
 export function createApp(db, { adminId, authRateLimit = { max: 20, windowMs: 15 * 60 * 1000 } }) {
   const app = express();
-  if (process.env.TRUST_PROXY) app.set('trust proxy', 1);
+  // Only an explicit "1" or "true" turns this on; "0"/"false"/anything else leaves it off.
+  if (['1', 'true'].includes(String(process.env.TRUST_PROXY ?? '').trim().toLowerCase())) app.set('trust proxy', 1);
   app.use(express.json());
   app.use((req, res, next) => {
     res.header('Access-Control-Allow-Origin', '*');

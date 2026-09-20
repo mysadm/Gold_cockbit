@@ -47,6 +47,29 @@ describe('admin-only areas', () => {
     const agent = await signIn(app, admin);
     expect((await agent.get('/api/llm-providers')).status).toBe(200);
   });
+
+  it('lets the admin reach /api/admin/users and /api/software-review/run', async () => {
+    const agent = await signIn(app, admin);
+    expect((await agent.get('/api/admin/users')).status).toBe(200);
+    // an invalid body gets past the admin gate and is rejected by the handler itself
+    expect((await agent.post('/api/software-review/run').send({})).status).toBe(400);
+  });
+
+  it('binds /api/llm-providers to the configured adminId, not to the calling admin', async () => {
+    const second = await createTestUser(client, { email: 'admin2@x.com', role: 'admin' });
+    await client.query(
+      `INSERT INTO llm_providers (user_id, provider_type, label, model, is_active)
+       VALUES ($1, 'claude', 'Main Admin Provider', 'm1', true), ($2, 'claude', 'Second Admin Provider', 'm2', true)`,
+      [admin.id, second.id]
+    );
+    const agent = await signIn(app, second);
+    const res = await agent.get('/api/llm-providers');
+    expect(res.status).toBe(200);
+    const labels = res.body.map((p) => p.label);
+    expect(labels).toContain('Main Admin Provider');
+    expect(labels).not.toContain('Second Admin Provider');
+    expect(res.body.every((p) => p.user_id === admin.id)).toBe(true);
+  });
 });
 
 describe('shared analyst provider for regular users', () => {
@@ -98,12 +121,80 @@ describe('data isolation between users', () => {
     expect(res.status).toBe(404);
   });
 
-  it("wallet and DCA plan are per user", async () => {
+  it('DCA plan rows belong to the calling user', async () => {
     const a = await signIn(app, alice);
     const b = await signIn(app, bob);
     const aPlan = (await a.get('/api/dca-plan')).body;
     const bPlan = (await b.get('/api/dca-plan')).body;
     expect(aPlan.user_id).toBe(alice.id);
     expect(bPlan.user_id).toBe(bob.id);
+  });
+
+  it("a wallet edit by one user does not change another user's wallet", async () => {
+    const a = await signIn(app, alice);
+    const b = await signIn(app, bob);
+    const put = await a.put('/api/wallet').send({ g24: 123, pounds: 7 });
+    expect(put.status).toBe(200);
+    const aWallet = (await a.get('/api/wallet')).body;
+    const bWallet = (await b.get('/api/wallet')).body;
+    expect(aWallet.user_id).toBe(alice.id);
+    expect(Number(aWallet.g24)).toBe(123);
+    expect(Number(aWallet.pounds)).toBe(7);
+    expect(bWallet.user_id).toBe(bob.id);
+    expect(Number(bWallet.g24)).toBe(0);
+    expect(Number(bWallet.pounds)).toBe(0);
+  });
+
+  it("tranches are listed per user; another user's tranche cannot be modified by id", async () => {
+    const a = await signIn(app, alice);
+    const b = await signIn(app, bob);
+    const aList = (await a.get('/api/tranches')).body;
+    const bList = (await b.get('/api/tranches')).body;
+    expect(aList.length).toBeGreaterThan(0);
+    expect(aList.every((t) => t.user_id === alice.id)).toBe(true);
+    expect(bList.every((t) => t.user_id === bob.id)).toBe(true);
+    expect(aList.map((t) => t.id).filter((id) => bList.some((t) => t.id === id))).toEqual([]);
+
+    const patched = await a.patch(`/api/tranches/${aList[0].id}`).send({ status: 'triggered' });
+    expect(patched.status).toBe(200);
+    const bAfter = (await b.get('/api/tranches')).body;
+    expect(bAfter.every((t) => t.status === 'pending')).toBe(true);
+
+    const cross = await a.patch(`/api/tranches/${bList[0].id}`).send({ status: 'filled' });
+    expect(cross.status).toBe(404);
+    expect((await b.get('/api/tranches')).body[0].status).toBe('pending');
+  });
+
+  it("watchlist items are private; another user cannot edit or delete them by id", async () => {
+    const a = await signIn(app, alice);
+    const b = await signIn(app, bob);
+    const created = await a.post('/api/watchlist').send({ label: 'Alice only', status: 'watching' });
+    expect(created.status).toBe(201);
+    const id = created.body.id;
+
+    expect((await a.get('/api/watchlist')).body.map((i) => i.id)).toContain(id);
+    expect((await b.get('/api/watchlist')).body.map((i) => i.id)).not.toContain(id);
+
+    expect((await b.patch(`/api/watchlist/${id}`).send({ label: 'hijacked' })).status).toBe(404);
+    // DELETE is idempotent (204) but must not remove another user's row
+    await b.delete(`/api/watchlist/${id}`);
+    const still = (await a.get('/api/watchlist')).body.find((i) => i.id === id);
+    expect(still?.label).toBe('Alice only');
+  });
+
+  it("alert rules are private; another user cannot edit or delete them by id", async () => {
+    const a = await signIn(app, alice);
+    const b = await signIn(app, bob);
+    const created = await a.post('/api/alert-rules').send({ rule_type: 'band_edge', config: { pct: 5 } });
+    expect(created.status).toBe(201);
+    const id = created.body.id;
+
+    expect((await a.get('/api/alert-rules')).body.map((r) => r.id)).toContain(id);
+    expect((await b.get('/api/alert-rules')).body.map((r) => r.id)).not.toContain(id);
+
+    expect((await b.patch(`/api/alert-rules/${id}`).send({ active: false })).status).toBe(404);
+    await b.delete(`/api/alert-rules/${id}`);
+    const still = (await a.get('/api/alert-rules')).body.find((r) => r.id === id);
+    expect(still?.active).toBe(true);
   });
 });

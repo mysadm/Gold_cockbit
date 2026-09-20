@@ -22,7 +22,7 @@ beforeEach(async () => {
   app = express();
   app.use(express.json());
   const requireAuth = createRequireAuth(client);
-  app.get('/private', requireAuth, (req, res) => res.json({ id: req.user.id }));
+  app.get('/private', requireAuth, (req, res) => res.json({ id: req.user.id, user: req.user, sessionToken: req.sessionToken }));
   app.get('/admin', requireAuth, requireAdmin, (req, res) => res.json({ ok: true }));
   app.use('/per-user', requireAuth, perUserRouter(factory));
 });
@@ -42,6 +42,9 @@ describe('requireAuth / requireAdmin', () => {
     const res = await request(app).get('/private').set('Cookie', cookieFor(token));
     expect(res.status).toBe(200);
     expect(res.body.id).toBe(u.id);
+    expect(res.body.user).toMatchObject({ id: u.id, email: 'a@x.com', role: 'user', status: 'active' });
+    expect(res.body.user).not.toHaveProperty('password_hash');
+    expect(res.body.sessionToken).toBe(token);
   });
 
   it('401s a pending user even with a valid session row', async () => {

@@ -4,7 +4,7 @@ import { createTestUser } from '../helpers/users.mjs';
 import { ensureDefaultUser } from '../../server/ensureDefaultUser.mjs';
 import { ensureDefaultScenarios } from '../../server/ensureDefaultScenarios.mjs';
 import { createAdmin } from '../../server/auth/createAdmin.mjs';
-import { verifyPassword } from '../../server/auth/password.mjs';
+import { verifyPassword, MAX_EMAIL_LENGTH, MAX_PASSWORD_LENGTH } from '../../server/auth/password.mjs';
 
 const MIGRATIONS_DIR = new URL('../../migrations/', import.meta.url);
 let client;
@@ -42,5 +42,13 @@ describe('createAdmin', () => {
       .rejects.toThrow(/admin already exists/i);
     await client.query('DELETE FROM users');
     await expect(createAdmin(client, { email: 'x@x.com', password: 'short' })).rejects.toThrow(/at least 8/);
+  });
+
+  it('rejects an over-long email or password before writing anything', async () => {
+    const longEmail = `${'a'.repeat(MAX_EMAIL_LENGTH)}@example.com`;
+    await expect(createAdmin(client, { email: longEmail, password: 'a-good-password' })).rejects.toThrow(/email/i);
+    await expect(createAdmin(client, { email: 'x@x.com', password: 'p'.repeat(MAX_PASSWORD_LENGTH + 1) }))
+      .rejects.toThrow(/at most 1024/);
+    expect((await client.query('SELECT count(*)::int n FROM users')).rows[0].n).toBe(0);
   });
 });

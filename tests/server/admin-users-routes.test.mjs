@@ -1,9 +1,9 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import request from 'supertest';
 import { resetAndMigrate } from '../helpers/test-db.mjs';
 import { createTestUser, signIn } from '../helpers/users.mjs';
 import { provisionUserDefaults } from '../../server/provisionUserDefaults.mjs';
 import { createApp } from '../../server/createApp.mjs';
+import { MAX_PASSWORD_LENGTH } from '../../server/auth/password.mjs';
 
 const MIGRATIONS_DIR = new URL('../../migrations/', import.meta.url);
 let client, app, admin, adminAgent, pending;
@@ -29,6 +29,16 @@ describe('GET /api/admin/users', () => {
   });
 });
 
+describe('regular users are kept out', () => {
+  it('403s a signed-in non-admin on listing and approving', async () => {
+    const u = await createTestUser(client, { email: 'plain@x.com' });
+    const agent = await signIn(app, u);
+    expect((await agent.get('/api/admin/users')).status).toBe(403);
+    expect((await agent.post(`/api/admin/users/${pending.id}/approve`)).status).toBe(403);
+    expect((await client.query('SELECT status FROM users WHERE id = $1', [pending.id])).rows[0].status).toBe('pending');
+  });
+});
+
 describe('approve / disable / enable', () => {
   it('approve activates a pending user and provisions their defaults', async () => {
     const res = await adminAgent.post(`/api/admin/users/${pending.id}/approve`);
@@ -48,7 +58,9 @@ describe('approve / disable / enable', () => {
     const u = await createTestUser(client, { email: 'u@x.com' });
     const agent = await signIn(app, u);
     expect((await agent.get('/api/scenarios')).status).toBe(200);
+    expect((await client.query('SELECT count(*)::int n FROM sessions WHERE user_id = $1', [u.id])).rows[0].n).toBe(1);
     expect((await adminAgent.post(`/api/admin/users/${u.id}/disable`)).status).toBe(200);
+    expect((await client.query('SELECT count(*)::int n FROM sessions WHERE user_id = $1', [u.id])).rows[0].n).toBe(0);
     expect((await agent.get('/api/scenarios')).status).toBe(401);
     expect((await adminAgent.post(`/api/admin/users/${u.id}/enable`)).status).toBe(200);
     expect((await signIn(app, u)).get).toBeDefined();
@@ -57,6 +69,7 @@ describe('approve / disable / enable', () => {
   it('the admin cannot disable themselves', async () => {
     const res = await adminAgent.post(`/api/admin/users/${admin.id}/disable`);
     expect(res.status).toBe(400);
+    expect((await client.query('SELECT status FROM users WHERE id = $1', [admin.id])).rows[0].status).toBe('active');
   });
 
   it('enable 409s on a user that is not disabled', async () => {
@@ -121,6 +134,19 @@ describe('PATCH daily limit and reset password', () => {
     expect((await agent.get('/api/scenarios')).status).toBe(401);
     expect((await signIn(app, { email: 'u@x.com', password: 'new-password-1' })).get).toBeDefined();
     await expect(signIn(app, { email: 'u@x.com', password: 'old-password-1' })).rejects.toThrow();
+  });
+
+  it('404s PATCH and reset-password for an unknown but well-formed user id', async () => {
+    const unknown = '00000000-0000-0000-0000-000000000000';
+    expect((await adminAgent.patch(`/api/admin/users/${unknown}`).send({ daily_ai_limit: 5 })).status).toBe(404);
+    expect((await adminAgent.post(`/api/admin/users/${unknown}/reset-password`).send({ password: 'new-password-1' })).status).toBe(404);
+  });
+
+  it('reset-password rejects an over-long password and leaves the old one working', async () => {
+    const u = await createTestUser(client, { email: 'u@x.com', password: 'old-password-1' });
+    const res = await adminAgent.post(`/api/admin/users/${u.id}/reset-password`).send({ password: 'p'.repeat(MAX_PASSWORD_LENGTH + 1) });
+    expect(res.status).toBe(400);
+    expect((await signIn(app, u)).get).toBeDefined();
   });
 
   it('reset-password rejects a short password', async () => {

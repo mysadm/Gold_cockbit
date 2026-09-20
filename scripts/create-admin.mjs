@@ -3,12 +3,13 @@
 // (keeping all its data) into the admin.
 //
 // Usage: node scripts/create-admin.mjs you@example.com [--name "Display Name"]
-// The password is prompted for (hidden). For non-interactive use set
+// The password is prompted for twice (hidden, must match). For non-interactive use set
 // ADMIN_PASSWORD in the environment. Reads DATABASE_URL like the server does.
 import 'dotenv/config';
 import readline from 'node:readline';
 import { getPool } from '../server/pool.mjs';
 import { createAdmin } from '../server/auth/createAdmin.mjs';
+import { passwordsMatch } from '../server/auth/password.mjs';
 
 const args = process.argv.slice(2);
 const nameIndex = args.indexOf('--name');
@@ -24,30 +25,53 @@ if (!process.env.DATABASE_URL) {
   process.exit(1);
 }
 
-function promptHidden(question) {
-  return new Promise((resolve) => {
+// Asks each question in turn on one readline interface, echoing nothing the user types.
+// Rejects if input ends (Ctrl+D / closed stdin) or the user hits Ctrl+C before the last answer.
+function promptHidden(questions) {
+  return new Promise((resolve, reject) => {
     const rl = readline.createInterface({ input: process.stdin, output: process.stdout, terminal: true });
+    const answers = [];
+    let done = false;
     rl._writeToOutput = (text) => {
-      if (text.includes(question) || text === '\r\n' || text === '\n') process.stdout.write(text);
+      if (questions.some((q) => text.includes(q)) || text === '\r\n' || text === '\n') process.stdout.write(text);
     };
-    rl.question(question, (answer) => {
-      rl.close();
-      resolve(answer);
+    rl.on('SIGINT', () => rl.close());
+    rl.on('close', () => {
+      if (!done) reject(new Error('Cancelled: no password entered.'));
     });
+    const ask = () => {
+      rl.question(questions[answers.length], (answer) => {
+        answers.push(answer);
+        if (answers.length < questions.length) return ask();
+        done = true;
+        rl.close();
+        resolve(answers);
+      });
+    };
+    ask();
   });
 }
 
+const normalizedEmail = String(email).trim().toLowerCase();
+
 const pool = getPool(process.env.DATABASE_URL);
 try {
-  const password = process.env.ADMIN_PASSWORD || (await promptHidden('Admin password (min 8 characters): '));
+  let password = process.env.ADMIN_PASSWORD;
+  if (!password) {
+    const [first, second] = await promptHidden(['Admin password (min 8 characters): ', 'Confirm password: ']);
+    if (!passwordsMatch(first, second)) {
+      throw new Error('The two passwords do not match. Nothing was changed.');
+    }
+    password = first;
+  }
   const { converted } = await createAdmin(pool, { email, password, displayName });
   console.log(
     converted
-      ? `Converted the existing default user into admin ${email}; all its data was kept.`
-      : `Created admin ${email}.`
+      ? `Converted the existing default user into admin ${normalizedEmail}; all its data was kept.`
+      : `Created admin ${normalizedEmail}.`
   );
 } catch (err) {
-  console.error(`Failed: ${err.message}`);
+  console.error(`Failed to create admin ${normalizedEmail}: ${err.message}`);
   process.exitCode = 1;
 } finally {
   await pool.end();

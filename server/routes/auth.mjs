@@ -1,5 +1,8 @@
 import { Router } from 'express';
-import { hashPassword, verifyPassword, burnPasswordTime, MIN_PASSWORD_LENGTH } from '../auth/password.mjs';
+import {
+  hashPassword, verifyPassword, burnPasswordTime,
+  MIN_PASSWORD_LENGTH, MAX_PASSWORD_LENGTH, MAX_EMAIL_LENGTH,
+} from '../auth/password.mjs';
 import {
   createSession, deleteSession, deleteExpiredSessions,
   sessionCookie, clearedSessionCookie, isSecureRequest,
@@ -27,9 +30,15 @@ export function createAuthRouter(db, { requireAuth, rateLimit }) {
     const email = normalizeEmail(req.body?.email);
     const password = req.body?.password;
     const displayName = typeof req.body?.display_name === 'string' ? req.body.display_name.trim().slice(0, 80) : '';
+    if (email.length > MAX_EMAIL_LENGTH) {
+      return res.status(400).json({ error: `Email must be at most ${MAX_EMAIL_LENGTH} characters` });
+    }
     if (!EMAIL_RE.test(email)) return res.status(400).json({ error: 'A valid email is required' });
     if (typeof password !== 'string' || password.length < MIN_PASSWORD_LENGTH) {
       return res.status(400).json({ error: `Password must be at least ${MIN_PASSWORD_LENGTH} characters` });
+    }
+    if (password.length > MAX_PASSWORD_LENGTH) {
+      return res.status(400).json({ error: `Password must be at most ${MAX_PASSWORD_LENGTH} characters` });
     }
     try {
       await db.query(
@@ -46,6 +55,10 @@ export function createAuthRouter(db, { requireAuth, rateLimit }) {
   router.post('/login', rateLimit, async (req, res) => {
     const email = normalizeEmail(req.body?.email);
     const password = typeof req.body?.password === 'string' ? req.body.password : '';
+    // Over-long input fails like any wrong credential (no hashing, and the limit is not revealed).
+    if (email.length > MAX_EMAIL_LENGTH || password.length > MAX_PASSWORD_LENGTH) {
+      return res.status(401).json({ error: 'Invalid email or password' });
+    }
     const { rows } = await db.query('SELECT id, password_hash, status FROM users WHERE email = $1', [email]);
     const user = rows[0];
     if (!user) {

@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { resetAndMigrate } from '../helpers/test-db.mjs';
 import { createTestUser } from '../helpers/users.mjs';
@@ -43,6 +44,7 @@ describe('sessions', () => {
     const { rows } = await client.query('SELECT token_hash FROM sessions');
     expect(rows[0].token_hash).not.toBe(token);
     expect(rows[0].token_hash).toHaveLength(64);
+    expect(rows[0].token_hash).toBe(createHash('sha256').update(token).digest('hex'));
   });
 
   it('returns null for an unknown token', async () => {

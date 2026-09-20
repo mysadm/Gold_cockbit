@@ -1,13 +1,15 @@
-import { hashPassword, MIN_PASSWORD_LENGTH } from './password.mjs';
+import { hashPassword, MIN_PASSWORD_LENGTH, MAX_PASSWORD_LENGTH, MAX_EMAIL_LENGTH } from './password.mjs';
 import { provisionUserDefaults } from '../provisionUserDefaults.mjs';
 import { ensureDefaultLlmProvider } from '../ensureDefaultLlmProvider.mjs';
 
 export async function createAdmin(db, { email, password, displayName }) {
   const normalized = String(email || '').trim().toLowerCase();
+  if (normalized.length > MAX_EMAIL_LENGTH) throw new Error(`Email must be at most ${MAX_EMAIL_LENGTH} characters`);
   if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(normalized)) throw new Error('A valid email is required');
   if (typeof password !== 'string' || password.length < MIN_PASSWORD_LENGTH) {
     throw new Error(`Password must be at least ${MIN_PASSWORD_LENGTH} characters`);
   }
+  if (password.length > MAX_PASSWORD_LENGTH) throw new Error(`Password must be at most ${MAX_PASSWORD_LENGTH} characters`);
   const existing = await db.query(`SELECT email FROM users WHERE role = 'admin' LIMIT 1`);
   if (existing.rows.length > 0) throw new Error(`An admin already exists (${existing.rows[0].email})`);
 

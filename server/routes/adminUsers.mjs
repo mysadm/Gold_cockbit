@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { hashPassword, MIN_PASSWORD_LENGTH } from '../auth/password.mjs';
+import { hashPassword, MIN_PASSWORD_LENGTH, MAX_PASSWORD_LENGTH } from '../auth/password.mjs';
 import { deleteSessionsForUser } from '../auth/sessions.mjs';
 import { provisionUserDefaults } from '../provisionUserDefaults.mjs';
 
@@ -89,6 +89,9 @@ export function createAdminUsersRouter(db) {
     const password = req.body?.password;
     if (typeof password !== 'string' || password.length < MIN_PASSWORD_LENGTH) {
       return res.status(400).json({ error: `Password must be at least ${MIN_PASSWORD_LENGTH} characters` });
+    }
+    if (password.length > MAX_PASSWORD_LENGTH) {
+      return res.status(400).json({ error: `Password must be at most ${MAX_PASSWORD_LENGTH} characters` });
     }
     const { rows } = await db.query(
       `UPDATE users SET password_hash = $1 WHERE id = $2 RETURNING id`,
