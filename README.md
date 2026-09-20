@@ -91,8 +91,10 @@ The Analyst screen shows two cards.
   admin's active AI provider with the compact v3 contract, and stores every run in the
   database. Users only read the latest successful run, with a small **Apply these
   weights** button that changes their own scenario weights. It contains no wallet and
-  no DCA data ("Not personalized"), it is not charged to anyone's daily allowance, and
-  it needs `SERPAPI_API_KEY` to gather evidence like every other analysis.
+  no DCA data ("Not personalized") and it is not charged to anyone's daily allowance.
+  Like every other analysis it gathers its evidence with `SERPAPI_API_KEY`; without the
+  key the run still succeeds but has no evidence, so the answer is usually
+  `insufficient_evidence`.
 - **My personalized analysis** is the existing flow: it includes the user's wallet and
   DCA plan, runs when the user asks, and uses one of their daily analyses (default 3,
   set per user in Settings → Users).
@@ -106,7 +108,14 @@ does not raise a failure banner; its error is shown in the panel.
 The background run lives inside the API process: a 60-second tick checks the schedule
 and, when the current time slot has no successful run, runs it. It starts with the API
 and stops with it. If the server was down at a slot time, the run is caught up on the
-first tick after the API starts. No browser is involved.
+first tick after the API starts. No browser is involved. **Run the API as a single
+instance**: the background scheduler and the manual **Run now** guard both assume it.
+The slot claim itself is safe across processes, so a slot is never run twice by the
+scheduler, but two instances could run manual analyses at the same time.
+
+The model must answer within the 85-second cap. The provider that `createAdmin` seeds
+is a local Ollama, so activate a cloud provider before enabling the schedule;
+otherwise every attempt will likely time out and the admin will see a failure banner.
 
 **Failures.** A slot is tried up to 3 times, at least 5 minutes apart. A missing
 provider fails immediately without retries. The first failure opens an in-app
@@ -127,7 +136,12 @@ in-app only for now; nothing is sent by email or chat.
 
 - **After deploying this version, run `npm run migrate` (migration 0025) and restart
   the API.** The scheduler is part of the API process, so it does not exist until the
-  restart.
+  restart. If the API restarts before migration 0025 was applied, the scheduler logs a
+  missing-relation error every minute and the standard card shows "could not load";
+  personalized analysis is unaffected.
+- **Recommended first start in production:** run `npm run migrate`, restart the API,
+  leave the schedule **off**, press **Run now** once to confirm the provider answers
+  within 85 seconds, then enable the schedule.
 - **Avoid scheduling within about an hour of midnight in a timezone that observes
   daylight saving time.** Slot times close to a clock change are a known edge case. The
   defaults (08:00 and 16:00) are safe.
