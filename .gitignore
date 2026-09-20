@@ -6,3 +6,4 @@ vite.config.js
 vite.config.d.ts
 .playwright-mcp/
 ai-providers-export.json
+.run/
