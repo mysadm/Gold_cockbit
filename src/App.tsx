@@ -59,6 +59,8 @@ import {
 } from './lib/analyst';
 import { buildAnalysisSnapshot, type BuildSnapshotInput, type PreviousAnalysis } from './lib/analysisSnapshot';
 import { computeSensitivityTable } from './lib/sensitivity';
+import { fetchLatest, type LatestResponse } from './api/sharedAnalysis';
+import { StandardAnalysisCard } from './ui/StandardAnalysisCard';
 
 type Theme = 'dark' | 'light';
 type Language = 'en' | 'ar';
@@ -687,6 +689,42 @@ function App({ user, onLogout }: { user: CurrentUser; onLogout: () => void }) {
     fetchAnalyzeQuota().then(setAnalyzeQuota).catch(() => {});
   }, [activeProvider?.id, state.ai.at]);
 
+  // Standard (shared, background) analysis: read-only, fetched on mount, every
+  // 5 minutes while the tab is open, when the Analyst tab opens, and every 15 s
+  // while a run is in progress.
+  const [standard, setStandard] = useState<{ latest: LatestResponse['latest']; schedule: LatestResponse['schedule'] | null; nextAt: string | null; running: boolean; loaded: boolean; failed: boolean }>({
+    latest: null, schedule: null, nextAt: null, running: false, loaded: false, failed: false,
+  });
+  const standardAliveRef = useRef(true);
+  const loadStandard = () => {
+    fetchLatest()
+      .then((res) => {
+        if (!standardAliveRef.current) return;
+        setStandard({ latest: res.latest, schedule: res.schedule, nextAt: res.slot?.next_at ?? null, running: !!res.running, loaded: true, failed: false });
+      })
+      .catch(() => {
+        if (!standardAliveRef.current) return;
+        setStandard((prev) => ({ ...prev, loaded: true, failed: !prev.latest && !prev.schedule }));
+      });
+  };
+  useEffect(() => {
+    standardAliveRef.current = true;
+    loadStandard();
+    const id = window.setInterval(loadStandard, 5 * 60 * 1000);
+    return () => {
+      standardAliveRef.current = false;
+      window.clearInterval(id);
+    };
+  }, []);
+  useEffect(() => {
+    if (activeTab === 'ai' && standard.loaded) loadStandard();
+  }, [activeTab]);
+  useEffect(() => {
+    if (!standard.running) return;
+    const id = window.setTimeout(loadStandard, 15000);
+    return () => window.clearTimeout(id);
+  }, [standard]); // a fresh object per load, so each poll reschedules the next
+
   useEffect(() => {
     if (typeof window === 'undefined') return;
     window.localStorage.setItem(storageKeys.state, JSON.stringify(state));
@@ -1073,6 +1111,12 @@ function App({ user, onLogout }: { user: CurrentUser; onLogout: () => void }) {
     if (!sw || state.ai.loading || state.ai.validation?.ok !== true || state.ai.data?.primary_decision.action === 'insufficient_evidence') return;
     if (![sw.deesc, sw.base, sw.stag].every(n => Number.isFinite(n) && n >= 0 && n <= 100) || Math.abs(sw.deesc + sw.base + sw.stag - 100) > 0.01) return;
     setState((prev) => ({ ...prev, weights: { ...sw }, ai: { ...prev.ai, applied: true } }));
+  };
+
+  // Weights from the standard card: same guard as applyAI, sets weights only (never state.ai).
+  const applyStandardWeights = (sw: { deesc: number; base: number; stag: number }) => {
+    if (![sw.deesc, sw.base, sw.stag].every(n => Number.isFinite(n) && n >= 0 && n <= 100) || Math.abs(sw.deesc + sw.base + sw.stag - 100) > 0.01) return;
+    setState((prev) => ({ ...prev, weights: { deesc: sw.deesc, base: sw.base, stag: sw.stag } }));
   };
 
   const analyze = async () => {
@@ -1690,7 +1734,25 @@ function App({ user, onLogout }: { user: CurrentUser; onLogout: () => void }) {
 
           {activeTab === 'ai' && (
             <div>
-              <SectionLabel text={t.aiT.toUpperCase()} />
+              <StandardAnalysisCard
+                ar={ar}
+                run={standard.latest}
+                schedule={standard.schedule}
+                nextAt={standard.nextAt}
+                running={standard.running}
+                loading={!standard.loaded}
+                failed={standard.failed}
+                currentWeights={state.weights}
+                onApplyWeights={applyStandardWeights}
+              />
+              <div style={{ height: 18 }} />
+              <SectionLabel text={ar ? 'تحليلي الشخصي' : 'MY PERSONALIZED ANALYSIS'} />
+              <div className="muted-text" style={{ fontSize: 13, margin: '-4px 0 10px', lineHeight: 1.6 }}>
+                {ar ? 'يشمل محفظتك وخطة الشراء التدريجي' : 'Includes your wallet and DCA plan'}
+                {analyzeQuota?.capped
+                  ? (ar ? ` · كل تحديث يستهلك 1 من ${analyzeQuota.limit} تحليلات يومية` : ` · each update uses 1 of your ${analyzeQuota.limit} daily analyses`)
+                  : ''}
+              </div>
               <Card className="instrument-card--ai">
                 <div className="soft-text" style={{ fontSize: 15, marginBottom: 6 }}>
                   {t.aiUsingProvider}: {activeProvider ? `${activeProvider.label} (${providerTypeLabel(activeProvider.provider_type)})` : (isAdmin ? t.aiNoProvider : t.aiNoProviderUser)}
