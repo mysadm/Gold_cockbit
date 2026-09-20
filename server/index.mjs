@@ -19,7 +19,8 @@ if (rows.length === 0) {
   process.exit(1);
 }
 
-const app = createApp(pool, { adminId: rows[0].id });
+const analysisDeps = { fetchPrices: fetchMarketPrices, fetchEgypt: fetchEgyptGoldPrices };
+const app = createApp(pool, { adminId: rows[0].id, analysisDeps });
 
 const server = app.listen(PORT, () => {
   console.log(`Gold Cockpit API server listening on http://localhost:${PORT}`);
@@ -30,7 +31,7 @@ const server = app.listen(PORT, () => {
 const stopScheduler = startAnalysisScheduler({
   db: pool,
   adminId: rows[0].id,
-  deps: { fetchPrices: fetchMarketPrices, fetchEgypt: fetchEgyptGoldPrices },
+  deps: analysisDeps,
 });
 
 function shutdown() {
