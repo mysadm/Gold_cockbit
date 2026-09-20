@@ -1,6 +1,6 @@
 import { useState } from 'preact/hooks';
 import { Icon } from './primitives';
-import { NAV_LABELS, type ScreenKey } from './Sidebar';
+import { NAV_LABELS, pendingSignupsLabel, type ScreenKey } from './Sidebar';
 
 const PRIMARY_TABS: { key: ScreenKey; icon: string }[] = [
   { key: 'home', icon: 'home' },
@@ -72,7 +72,18 @@ export function BottomNav({
           aria-expanded={sheetOpen}
           onClick={() => setSheetOpen(true)}
         >
-          <Icon name="more" size={21} />
+          <span style={{ position: 'relative', display: 'inline-flex' }}>
+            <Icon name="more" size={21} />
+            {isAdmin && settingsBadge ? (
+              <span
+                role="img"
+                aria-label={pendingSignupsLabel(settingsBadge, ar)}
+                style={{ position: 'absolute', top: -5, insetInlineEnd: -9, minWidth: 16, height: 16, boxSizing: 'border-box', padding: '0 4px', borderRadius: 999, background: 'var(--gold)', color: 'var(--bg)', fontSize: 10, fontWeight: 700, lineHeight: '16px', textAlign: 'center' }}
+              >
+                {settingsBadge}
+              </span>
+            ) : null}
+          </span>
           <span>{MORE_LABEL[ar ? 'ar' : 'en']}</span>
         </button>
       </nav>
@@ -103,7 +114,7 @@ export function BottomNav({
                 <Icon name={icon} size={16} />
                 <span>{NAV_LABELS[key][ar ? 'ar' : 'en']}</span>
                 {key === 'settings' && settingsBadge ? (
-                  <span style={{ marginInlineStart: 'auto', background: 'var(--gold)', color: 'var(--bg)', borderRadius: 999, padding: '0 7px', fontSize: 12, fontWeight: 700 }}>{settingsBadge}</span>
+                  <span role="img" aria-label={pendingSignupsLabel(settingsBadge, ar)} style={{ marginInlineStart: 'auto', background: 'var(--gold)', color: 'var(--bg)', borderRadius: 999, padding: '0 7px', fontSize: 12, fontWeight: 700 }}>{settingsBadge}</span>
                 ) : null}
               </button>
             ))}

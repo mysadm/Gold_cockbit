@@ -40,6 +40,17 @@ export const NAV_LABELS: Record<ScreenKey, { en: string; ar: string }> = {
   settings: { en: 'Settings', ar: 'الإعدادات' },
 };
 
+// The bare count would read as "Settings 3" to a screen reader, so the badge
+// carries its own bilingual name.
+export function pendingSignupsLabel(n: number, ar: boolean): string {
+  if (ar) {
+    if (n === 1) return 'طلب تسجيل واحد بانتظار الموافقة';
+    if (n === 2) return 'طلبا تسجيل بانتظار الموافقة';
+    return `${n.toLocaleString('ar-EG')} طلبات تسجيل بانتظار الموافقة`;
+  }
+  return n === 1 ? '1 pending sign-up' : `${n} pending sign-ups`;
+}
+
 export function Sidebar({
   screen,
   setScreen,
@@ -117,7 +128,7 @@ export function Sidebar({
             <Icon name={SCREEN_ICONS[s]} size={16} />
             <span>{NAV_LABELS[s][ar ? 'ar' : 'en']}</span>
             {s === 'settings' && settingsBadge ? (
-              <span style={{ marginInlineStart: 'auto', background: 'var(--gold)', color: 'var(--bg)', borderRadius: 999, padding: '0 7px', fontSize: 12, fontWeight: 700 }}>{settingsBadge}</span>
+              <span role="img" aria-label={pendingSignupsLabel(settingsBadge, ar)} style={{ marginInlineStart: 'auto', background: 'var(--gold)', color: 'var(--bg)', borderRadius: 999, padding: '0 7px', fontSize: 12, fontWeight: 700 }}>{settingsBadge}</span>
             ) : null}
           </button>
         ))}

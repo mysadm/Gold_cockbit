@@ -37,6 +37,8 @@ import {
 import { fetchAlertRules, createAlertRule, setAlertRuleActive, type AlertRule } from './api/alertRules';
 import { Sidebar, NAV_LABELS, type ScreenKey } from './ui/Sidebar';
 import { BottomNav } from './ui/BottomNav';
+import { UsersPanel } from './ui/UsersPanel';
+import { listUsers } from './api/adminUsers';
 import { Card, SectionLabel, Hairline, MetricRow, GlowBar, ChangeTag, Icon } from './ui/primitives';
 import {
   normalizeAIResult,
@@ -281,6 +283,12 @@ function App({ user, onLogout }: { user: CurrentUser; onLogout: () => void }) {
   useEffect(() => {
     if (!isAdmin && activeTab === 'settings') setActiveTab('home');
   }, [isAdmin, activeTab]);
+
+  const [pendingCount, setPendingCount] = useState(0);
+  useEffect(() => {
+    if (!isAdmin) return;
+    listUsers().then((list) => setPendingCount(list.filter((u) => u.status === 'pending').length)).catch(() => {});
+  }, [isAdmin]);
 
   // Analysis in-flight controls: the AbortController lives in a ref so the
   // Cancel button (rendered while state.ai.loading is true) can reach the
@@ -1283,6 +1291,7 @@ function App({ user, onLogout }: { user: CurrentUser; onLogout: () => void }) {
         isAdmin={isAdmin}
         userName={userName}
         onLogout={onLogout}
+        settingsBadge={pendingCount}
       />
 
       <main style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
@@ -2626,6 +2635,7 @@ function App({ user, onLogout }: { user: CurrentUser; onLogout: () => void }) {
             <div>
               <SectionLabel text={t.settingsHeading.toUpperCase()} />
               <AIModelSettingsManager adapter={aiSettingsAdapter} />
+              <UsersPanel ar={ar} currentUserId={user.id} onPendingCount={setPendingCount} />
             </div>
           )}
 
@@ -2645,6 +2655,7 @@ function App({ user, onLogout }: { user: CurrentUser; onLogout: () => void }) {
           isAdmin={isAdmin}
           userName={userName}
           onLogout={onLogout}
+          settingsBadge={pendingCount}
         />
       </main>
     </div>
