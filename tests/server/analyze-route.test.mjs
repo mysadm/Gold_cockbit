@@ -327,6 +327,45 @@ describe('POST /api/analyze — per-user daily cap', () => {
     expect((await usageRows()).rows).toHaveLength(0);
   });
 
+  it('enforces the limit atomically under concurrent requests', async () => {
+    await insertProvider('claude');
+    await client.query('UPDATE users SET daily_ai_limit = 2 WHERE id = $1', [userId]);
+    runProviderAnalysis.mockImplementation(
+      () => new Promise((resolve) => setTimeout(() => resolve({ text: '{"one_liner":"ok"}', usedWebSearch: false }), 50))
+    );
+    const responses = await Promise.all(
+      Array.from({ length: 5 }, () => request(app).post('/api/analyze').send({ prompt: 'x' }))
+    );
+    const statuses = responses.map((r) => r.status).sort();
+    expect(statuses).toEqual([200, 200, 429, 429, 429]);
+    expect(runProviderAnalysis).toHaveBeenCalledTimes(2);
+    expect((await usageRows()).rows[0].call_count).toBe(2);
+  });
+
+  it('releases the reserved use when the analysis fails', async () => {
+    await insertProvider('claude');
+    await client.query(
+      `INSERT INTO ai_shared_usage (user_id, used_on, call_count, total_cost_usd) VALUES ($1, CURRENT_DATE, 2, 0)`,
+      [userId]
+    );
+    runProviderAnalysis.mockRejectedValueOnce(new Error('HTTP 500'));
+    expect((await request(app).post('/api/analyze').send({ prompt: 'x' })).status).toBe(502);
+    expect((await usageRows()).rows[0].call_count).toBe(2);
+    runProviderAnalysis.mockResolvedValue({ text: '{"one_liner":"ok"}', usedWebSearch: false });
+    expect((await request(app).post('/api/analyze').send({ prompt: 'x' })).status).toBe(200);
+    expect((await usageRows()).rows[0].call_count).toBe(3);
+  });
+
+  it('a limit of 0 blocks with 429 and creates no usage row', async () => {
+    await insertProvider('claude');
+    await client.query('UPDATE users SET daily_ai_limit = 0 WHERE id = $1', [userId]);
+    const res = await request(app).post('/api/analyze').send({ prompt: 'x' });
+    expect(res.status).toBe(429);
+    expect(res.body).toEqual({ error: 'Daily analysis limit reached', used: 0, limit: 0 });
+    expect(runProviderAnalysis).not.toHaveBeenCalled();
+    expect((await usageRows()).rows).toHaveLength(0);
+  });
+
   it("uses the provider owned by providerOwnerId (the admin's), not the caller's", async () => {
     const { rows } = await client.query(
       `INSERT INTO users (email, role, status) VALUES ('admin@x.com', 'admin', 'active') RETURNING id`

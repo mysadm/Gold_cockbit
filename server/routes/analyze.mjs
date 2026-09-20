@@ -63,6 +63,51 @@ async function recordUsage(db, userId, costUsd) {
   );
 }
 
+// Claims one of today's uses in a single statement so concurrent requests
+// cannot all pass a read-then-record check and overrun the cap.
+async function reserveUse(db, userId, limit) {
+  if (limit <= 0) return false;
+  const { rows } = await db.query(
+    `INSERT INTO ai_shared_usage (user_id, used_on, call_count, total_cost_usd)
+     VALUES ($1, CURRENT_DATE, 1, 0)
+     ON CONFLICT (user_id, used_on)
+     DO UPDATE SET call_count = ai_shared_usage.call_count + 1
+     WHERE ai_shared_usage.call_count < $2
+     RETURNING call_count`,
+    [userId, limit]
+  );
+  return rows.length > 0;
+}
+
+async function releaseUse(db, userId) {
+  await db.query(
+    `UPDATE ai_shared_usage SET call_count = GREATEST(call_count - 1, 0)
+     WHERE user_id = $1 AND used_on = CURRENT_DATE`,
+    [userId]
+  );
+  // Don't leave an empty row behind when the only use was this failed one.
+  await db.query(
+    `DELETE FROM ai_shared_usage
+     WHERE user_id = $1 AND used_on = CURRENT_DATE AND call_count = 0 AND total_cost_usd = 0`,
+    [userId]
+  );
+}
+
+async function addCost(db, userId, costUsd) {
+  await db.query(
+    `UPDATE ai_shared_usage SET total_cost_usd = total_cost_usd + $2
+     WHERE user_id = $1 AND used_on = CURRENT_DATE`,
+    [userId, costUsd]
+  );
+}
+
+// Capped users already hold a reservation (one use, cost 0); only the cost is
+// added. Uncapped users on the shared tier still record a full use.
+async function settleUsage(db, userId, cap, costUsd) {
+  if (cap.capped) await addCost(db, userId, costUsd);
+  else await recordUsage(db, userId, costUsd);
+}
+
 export function createAnalyzeRouter(db, userId, { providerOwnerId = userId } = {}) {
   const router = Router();
   router.use(createApiKeyAuthMiddleware());
@@ -101,6 +146,15 @@ export function createAnalyzeRouter(db, userId, { providerOwnerId = userId } = {
     const provider = rows[0];
     const isShared = provider.provider_type === 'shared';
 
+    // Reserve last, after every validation return, so bad requests never hold a use.
+    let reserved = false;
+    if (cap.capped) {
+      if (!(await reserveUse(db, userId, cap.limit))) {
+        return res.status(429).json({ error: 'Daily analysis limit reached', used: await getUsedToday(db, userId), limit: cap.limit });
+      }
+      reserved = true;
+    }
+
     try {
       if(isV3) {
         const controller=new AbortController();
@@ -110,7 +164,10 @@ export function createAnalyzeRouter(db, userId, { providerOwnerId = userId } = {
         let output;
         try {output=await runAnalysisV3(provider,snapshot,runProviderAnalysis,{signal:controller.signal});}
         finally {clearTimeout(timeout);res.off('close',disconnect);}
-        if (cap.capped || isShared) await recordUsage(db, userId, isShared ? estimateSharedCostUsd(output.usage) : 0);
+        if (cap.capped || isShared) {
+          await settleUsage(db, userId, cap, isShared ? estimateSharedCostUsd(output.usage) : 0);
+          reserved = false;
+        }
         return res.json(output);
       }
       const evidence = await collectEvidence(provider);
@@ -217,11 +274,13 @@ export function createAnalyzeRouter(db, userId, { providerOwnerId = userId } = {
             `[shared-ai] analysis for user ${userId} cost ~$${cost.toFixed(4)}, above the $${SHARED_COST_WARN_THRESHOLD_USD} target`
           );
         }
-        await recordUsage(db, userId, cost);
+        await settleUsage(db, userId, cap, cost);
+        reserved = false;
       }
 
       res.json({ ...result, text, validation, searchStatus, evidenceSources });
     } catch (err) {
+      if (reserved) await releaseUse(db, userId).catch(() => {});
       res.status(502).json({ error: err.message });
     }
   });
