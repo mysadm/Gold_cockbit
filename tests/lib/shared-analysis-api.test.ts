@@ -1,4 +1,4 @@
-import { describe, it, expect, afterEach, vi } from 'vitest';
+import { describe, it, expect, afterEach, beforeAll, vi } from 'vitest';
 import {
   fetchLatest,
   fetchSchedule,
@@ -11,8 +11,10 @@ import {
   type StandardRun,
 } from '../../src/api/sharedAnalysis';
 import { parseCompactAnalysis } from '../../src/lib/analyst';
-import { parseStandardRun, canApplyWeights } from '../../src/ui/StandardAnalysisCard';
-import { validateSnapshot } from '../../shared/analystContract.mjs';
+import { parseStandardRun, canApplyWeights, standardSubtitle } from '../../src/ui/StandardAnalysisCard';
+import { validateSnapshot, alignSnapshot } from '../../shared/analystContract.mjs';
+import { buildMarketSnapshot } from '../../server/marketSnapshot.mjs';
+import { collectEvidence } from '../../server/evidence.mjs';
 import type { AnalysisSnapshot } from '../../src/lib/analysisSnapshot';
 
 const json = (status: number, body: unknown) =>
@@ -102,26 +104,28 @@ describe('shared analysis api', () => {
   });
 });
 
-// A stored server run: market-only snapshot (empty wallet, no DCA, no watchlist)
-// and a v3 result without wallet/dca/watchlist reads.
-const marketOnlySnapshot = {
-  schema_version: '2',
-  generated_at: '2026-09-21T06:00:00.000Z',
-  locale: 'en',
-  explanation_level: 'beginner',
-  market: { xau_usd: 4000, usd_egp: 50, weighted_target_usd: 5070, xau_retrieved_at: '2026-09-21T05:59:00.000Z', fx_retrieved_at: '2026-09-21T05:59:00.000Z' },
-  price_alignment: { aligned: true, premium_reliable: true, age_gap_minutes: 1, max_gap_minutes: 60 },
-  previous_analysis: null,
-  scenarios: [
-    { key: 'deesc', name_en: 'Geopolitical Changes', weight_pct: 35, price_lo: 5800, price_hi: 6300, thesis: 'Easing' },
-    { key: 'base', name_en: 'Base Case', weight_pct: 45, price_lo: 5000, price_hi: 5400, thesis: 'Official demand' },
-    { key: 'stag', name_en: 'Stagflation', weight_pct: 20, price_lo: 3600, price_hi: 4000, thesis: 'Dollar pressure' },
-  ],
-  egypt: { retrieved_at: '2026-09-21T05:58:00.000Z', rows: [{ karat: '24k', sell: 6500, buy: 6450 }], implied_gold_market_usd_egp: 50.54, local_premium_pct: 1.09 },
-  wallet: { has_holdings: false, holdings: {}, value_intl_egp: 0, value_egypt_egp: null, cost_basis: [] },
-  dca: null,
-  watchlist: [],
-} as unknown as AnalysisSnapshot;
+// A stored server run, built with the REAL server modules (no DB, no network):
+// the market-only snapshot from buildMarketSnapshot + alignSnapshot, and the
+// evidence sources/ids from collectEvidence with a fake search function.
+const NOW = new Date('2026-09-21T06:00:00.000Z');
+const scenarioRows = [
+  { band_low: 5800, band_high: 6300, weight_pct: 35 },
+  { band_low: 5000, band_high: 5400, weight_pct: 45 },
+  { band_low: 3600, band_high: 4000, weight_pct: 20 },
+];
+const marketOnlySnapshot = alignSnapshot(
+  buildMarketSnapshot({
+    now: () => NOW,
+    prices: { spot: 4000, usdEgp: 50, goldSource: 'gold-api', retrievedAt: '2026-09-21T05:59:00.000Z' },
+    egypt: { source: 'isagha.com', fetchedAt: '2026-09-21T05:58:00.000Z', rows: [{ karat: '24k', sell: 6500, buy: 6450 }] },
+    scenarioRows,
+    locale: 'en',
+  }),
+) as AnalysisSnapshot;
+
+const fakeSearch = async (query: string) => [
+  { title: `Result for ${query}`, link: `https://example.com/${encodeURIComponent(query)}`, date: '2026-09-20', snippet: 'Snippet text' },
+];
 
 const storedText = JSON.stringify({
   schema_version: '3',
@@ -139,25 +143,46 @@ const storedText = JSON.stringify({
 });
 
 describe('a stored standard run renders through the existing parser', () => {
-  const run: StandardRun = {
-    id: 1,
-    slot_key: '2026-09-21@09:00',
-    created_at: '2026-09-21T06:01:00.000Z',
-    text: storedText,
-    snapshot: marketOnlySnapshot,
-    validation: { ok: true, errors: [] },
-    evidence_sources: [{ id: 'EV-001', title: 'Reuters', link: 'https://example.com/a', date: '2026-09-20' }],
-    used_web_search: true,
-    search_status: 'ok',
-    provider_label: 'Main provider',
-  };
+  let run: StandardRun;
+  let ids: string[];
+
+  beforeAll(async () => {
+    vi.stubEnv('SERPAPI_API_KEY', 'test-key');
+    const evidence = await collectEvidence({ settings: {} }, fakeSearch);
+    vi.unstubAllEnvs();
+    ids = evidence.evidenceIds;
+    run = {
+      id: 1,
+      slot_key: '2026-09-21@09:00',
+      created_at: '2026-09-21T06:01:00.000Z',
+      text: storedText,
+      snapshot: marketOnlySnapshot,
+      validation: { ok: true, errors: [] },
+      evidence_sources: evidence.evidenceSources,
+      used_web_search: evidence.usedWebSearch,
+      search_status: evidence.searchStatus,
+      provider_label: 'Main provider',
+    };
+  });
+
+  it('the real collector yields the evidence ids the stored text cites', () => {
+    expect(ids).toContain('EV-001');
+    expect(run.evidence_sources.map((x) => x.id)).toEqual(ids);
+  });
+
+  it('the real builder produces a market-only snapshot (empty wallet, no DCA, no watchlist)', () => {
+    expect(marketOnlySnapshot.wallet).toEqual({ has_holdings: false, holdings: {}, value_intl_egp: 0, value_egypt_egp: null, cost_basis: [] });
+    expect(marketOnlySnapshot.dca).toBeNull();
+    expect(marketOnlySnapshot.watchlist).toEqual([]);
+    expect(marketOnlySnapshot.scenarios.map((x) => x.weight_pct)).toEqual([35, 45, 20]);
+  });
 
   it('the market-only snapshot passes the shared snapshot validator', () => {
     expect(validateSnapshot(marketOnlySnapshot)).toEqual([]);
   });
 
   it('parses with no wallet, dca or watchlist reads', () => {
-    const view = parseCompactAnalysis(run.text, run.snapshot as AnalysisSnapshot, run.evidence_sources.map((s) => s.id));
+    const view = parseCompactAnalysis(run.text, run.snapshot as AnalysisSnapshot, ids);
     expect(view.primary_decision.action).toBe('wait');
     expect(view.primary_decision.reasons).toEqual([{ text: 'Central bank buying offsets higher rates', evidence_ids: ['EV-001'] }]);
     expect(view.suggested_weights).toEqual({ deesc: 30, base: 50, stag: 20 });
@@ -190,5 +215,21 @@ describe('a stored standard run renders through the existing parser', () => {
     });
     const weak = { ...run, text: insufficient };
     expect(canApplyWeights(weak, parseStandardRun(weak))).toBe(false);
+  });
+});
+
+describe('standard card subtitle', () => {
+  const base = { updated: '21 Sept, 09:01', next: '21 Sept, 17:00', provider: 'Main provider' };
+  it('shows updated, next update and provider when the schedule is on (or not yet known)', () => {
+    expect(standardSubtitle({ ar: false, ...base, enabled: true })).toBe('Updated 21 Sept, 09:01 · next update 21 Sept, 17:00 · Main provider');
+    expect(standardSubtitle({ ar: false, ...base, enabled: undefined })).toBe('Updated 21 Sept, 09:01 · next update 21 Sept, 17:00 · Main provider');
+    expect(standardSubtitle({ ar: true, ...base, enabled: true })).toBe('آخر تحديث 21 Sept, 09:01 · التحديث القادم 21 Sept, 17:00 · Main provider');
+  });
+  it('drops the next-update part when the schedule is off', () => {
+    expect(standardSubtitle({ ar: false, ...base, enabled: false })).toBe('Updated 21 Sept, 09:01 · Main provider');
+    expect(standardSubtitle({ ar: true, ...base, enabled: false })).toBe('آخر تحديث 21 Sept, 09:01 · Main provider');
+  });
+  it('skips missing parts (running with no next time, no provider label)', () => {
+    expect(standardSubtitle({ ar: false, updated: '21 Sept, 09:01', next: null, provider: '', enabled: true })).toBe('Updated 21 Sept, 09:01');
   });
 });

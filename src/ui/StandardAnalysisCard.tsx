@@ -84,6 +84,16 @@ function formatTime(iso: string | null | undefined, ar: boolean): string | null 
   return d.toLocaleString(ar ? 'ar-EG' : 'en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
 }
 
+/** Subtitle line: "Updated {t} · next update {t} · {provider}". The next-update part is dropped when the schedule is off. */
+export function standardSubtitle({ ar, updated, next, provider, enabled }: { ar: boolean; updated: string | null; next: string | null; provider: string | null; enabled: boolean | undefined }): string {
+  const s = ar ? S.ar : S.en;
+  return [
+    updated ? `${s.updated} ${updated}` : null,
+    next && enabled !== false ? `${s.next} ${next}` : null,
+    provider || null,
+  ].filter(Boolean).join(' · ');
+}
+
 export function StandardAnalysisCard({
   ar,
   run,
@@ -116,11 +126,10 @@ export function StandardAnalysisCard({
   const canApply = canApplyWeights(run, view);
   const applied = !!run && appliedRunId === run.id;
 
-  const subtitle = [
-    updatedLabel ? `${s.updated} ${updatedLabel}` : null,
-    view && nextLabel ? `${s.next} ${nextLabel}` : null,
-    view && run?.provider_label ? run.provider_label : null,
-  ].filter(Boolean).join(' · ');
+  const subtitle = view && run
+    ? standardSubtitle({ ar, updated: updatedLabel, next: nextLabel, provider: run.provider_label, enabled: schedule?.enabled })
+    : '';
+  const offAboveRun = !!view && schedule?.enabled === false;
 
   const runningLine = running ? (
     <div role="status" aria-live="polite" className="soft-text" style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 14, marginBottom: 8 }}>
@@ -140,7 +149,7 @@ export function StandardAnalysisCard({
             <span className="font-mono" style={{ ...pill, color: actionColor(pd.action) }}>{s.action[pd.action]}</span>
             <span className="font-mono" style={{ ...pill, color: levelColor(pd.confidence) }}>{s.confidence}: {s.level[pd.confidence]}</span>
           </div>
-          <div style={{ fontSize: 17, fontWeight: 700, color: 'var(--text)', lineHeight: 1.6, overflowWrap: 'anywhere' }}>{pd.headline}</div>
+          <div style={{ fontSize: 17, fontWeight: 700, color: 'var(--text)', lineHeight: 1.6, overflowWrap: 'anywhere' }} dir="auto">{pd.headline}</div>
         </div>
         {evidence.length ? (
           <div>
@@ -149,7 +158,7 @@ export function StandardAnalysisCard({
               const src = sourceFor(e.evidence_id);
               const safeLink = src && /^https?:\/\//.test(src.link) ? src.link : null;
               return (
-                <div key={e.evidence_id} className="soft-text" style={{ fontSize: 14, lineHeight: 1.8, overflowWrap: 'anywhere' }}>
+                <div key={e.evidence_id} className="soft-text" style={{ fontSize: 14, lineHeight: 1.8, overflowWrap: 'anywhere' }} dir="auto">
                   • {e.implication}{' '}
                   {safeLink ? (
                     <a className="font-mono" style={{ fontSize: 12 }} href={safeLink} target="_blank" rel="noopener noreferrer" title={src?.title} aria-label={src?.title ? `${e.evidence_id}: ${src.title}` : e.evidence_id}>[{e.evidence_id}]</a>
@@ -164,7 +173,7 @@ export function StandardAnalysisCard({
         {view.assumptions.length ? (
           <div>
             <div className="section-label gold-text" style={{ marginBottom: 6 }}>{s.assumptionsH}</div>
-            {view.assumptions.map((item) => <div key={item} className="soft-text" style={{ fontSize: 14, lineHeight: 1.8, overflowWrap: 'anywhere' }}>• {item}</div>)}
+            {view.assumptions.map((item) => <div key={item} className="soft-text" style={{ fontSize: 14, lineHeight: 1.8, overflowWrap: 'anywhere' }} dir="auto">• {item}</div>)}
           </div>
         ) : null}
         <div>
@@ -215,6 +224,7 @@ export function StandardAnalysisCard({
       <SectionLabel text={ar ? s.title : s.title.toUpperCase()} />
       <Card>
         {subtitle ? <div className="muted-text font-mono" style={{ fontSize: 12, marginBottom: 10, overflowWrap: 'anywhere' }}>{subtitle}</div> : null}
+        {offAboveRun ? <div className="soft-text" style={{ fontSize: 14, marginBottom: 10 }}>{s.off}</div> : null}
         {runningLine}
         {body}
       </Card>

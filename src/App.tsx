@@ -697,7 +697,7 @@ function App({ user, onLogout }: { user: CurrentUser; onLogout: () => void }) {
       })
       .catch(() => {
         if (!standardAliveRef.current) return;
-        setStandard((prev) => ({ ...prev, loaded: true, failed: !prev.latest }));
+        setStandard((prev) => ({ ...prev, loaded: true, failed: !prev.latest && !prev.schedule }));
       });
   };
   useEffect(() => {
