@@ -15,6 +15,14 @@ import { createDcaPlanRouter } from './routes/dcaPlan.mjs';
 import { createWalletRouter } from './routes/wallet.mjs';
 import { createSoftwareReviewRouter } from './routes/softwareReview.mjs';
 
+// If the response has already started, hand the error to Express's default handler
+// (which closes the connection) instead of trying to send a second response.
+export function errorHandler(err, req, res, next) {
+  if (res.headersSent) return next(err);
+  console.error(err);
+  res.status(500).json({ error: 'Internal server error' });
+}
+
 export function createApp(db, { adminId, authRateLimit = { max: 20, windowMs: 15 * 60 * 1000 } }) {
   const app = express();
   // Only an explicit "1" or "true" turns this on; "0"/"false"/anything else leaves it off.
@@ -48,10 +56,7 @@ export function createApp(db, { adminId, authRateLimit = { max: 20, windowMs: 15
   app.use('/api/egypt-prices', createEgyptPricesRouter(db));
   app.use('/api/international-prices', createInternationalPricesRouter(db));
 
-  app.use((err, req, res, next) => {
-    console.error(err);
-    res.status(500).json({ error: 'Internal server error' });
-  });
+  app.use(errorHandler);
 
   return app;
 }
