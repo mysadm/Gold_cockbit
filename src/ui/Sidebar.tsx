@@ -41,14 +41,16 @@ export const NAV_LABELS: Record<ScreenKey, { en: string; ar: string }> = {
 };
 
 // The bare count would read as "Settings 3" to a screen reader, so the badge
-// carries its own bilingual name.
+// carries its own bilingual name. It combines pending sign-ups and open
+// failure notifications, so the label speaks of items needing attention.
 export function pendingSignupsLabel(n: number, ar: boolean): string {
   if (ar) {
-    if (n === 1) return 'طلب تسجيل واحد بانتظار الموافقة';
-    if (n === 2) return 'طلبا تسجيل بانتظار الموافقة';
-    return `${n.toLocaleString('ar-EG')} طلبات تسجيل بانتظار الموافقة`;
+    if (n === 1) return 'عنصر واحد يحتاج إلى انتباه';
+    if (n === 2) return 'عنصران يحتاجان إلى انتباه';
+    if (n >= 3 && n <= 10) return `${n.toLocaleString('ar-EG')} عناصر تحتاج إلى انتباه`;
+    return `${n.toLocaleString('ar-EG')} عنصرًا يحتاج إلى انتباه`;
   }
-  return n === 1 ? '1 pending sign-up' : `${n} pending sign-ups`;
+  return n === 1 ? '1 item needs attention' : `${n} items need attention`;
 }
 
 export function Sidebar({
