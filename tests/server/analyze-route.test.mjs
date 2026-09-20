@@ -231,109 +231,121 @@ describe('POST /api/analyze', () => {
 });
 
 describe('GET /api/analyze/quota', () => {
-  it('reports shared:false when the active provider is not the shared tier', async () => {
-    await client.query(
-      `INSERT INTO llm_providers (user_id, provider_type, label, model, is_active)
-       VALUES ($1, 'claude', 'My Claude', 'claude-sonnet-4-6', true)`,
-      [userId]
-    );
-
+  it('reports used/limit for a regular user, with 0 used before any calls', async () => {
     const res = await request(app).get('/api/analyze/quota');
-
     expect(res.status).toBe(200);
-    expect(res.body).toEqual({ shared: false });
+    expect(res.body).toEqual({ capped: true, used: 0, limit: 3 });
   });
 
-  it('reports used/limit for the shared tier, with 0 used before any calls', async () => {
+  it("reflects a per-user limit set by the admin and today's recorded usage", async () => {
+    await client.query('UPDATE users SET daily_ai_limit = 5 WHERE id = $1', [userId]);
     await client.query(
-      `INSERT INTO llm_providers (user_id, provider_type, label, model, is_active)
-       VALUES ($1, 'shared', 'Shared AI', 'ignored', true)`,
+      `INSERT INTO ai_shared_usage (user_id, used_on, call_count, total_cost_usd) VALUES ($1, CURRENT_DATE, 2, 0)`,
       [userId]
     );
-
     const res = await request(app).get('/api/analyze/quota');
-
-    expect(res.status).toBe(200);
-    expect(res.body).toEqual({ shared: true, used: 0, limit: 2 });
+    expect(res.body).toEqual({ capped: true, used: 2, limit: 5 });
   });
 
-  it('reflects usage already recorded today', async () => {
-    await client.query(
-      `INSERT INTO llm_providers (user_id, provider_type, label, model, is_active)
-       VALUES ($1, 'shared', 'Shared AI', 'ignored', true)`,
-      [userId]
-    );
-    await client.query(
-      `INSERT INTO ai_shared_usage (user_id, used_on, call_count, total_cost_usd) VALUES ($1, CURRENT_DATE, 1, 0.004)`,
-      [userId]
-    );
-
+  it('reports capped:false for an admin', async () => {
+    await client.query(`UPDATE users SET role = 'admin' WHERE id = $1`, [userId]);
     const res = await request(app).get('/api/analyze/quota');
-
-    expect(res.body).toEqual({ shared: true, used: 1, limit: 2 });
+    expect(res.body).toEqual({ capped: false });
   });
 });
 
-describe('POST /api/analyze — shared tier quota', () => {
-  it('allows calls up to the daily limit and tracks cost', async () => {
-    await client.query(
+describe('POST /api/analyze — per-user daily cap', () => {
+  const insertProvider = (type = 'claude', label = 'My Claude', owner = userId) =>
+    client.query(
       `INSERT INTO llm_providers (user_id, provider_type, label, model, is_active)
-       VALUES ($1, 'shared', 'Shared AI', 'ignored', true)`,
-      [userId]
+       VALUES ($1, $2, $3, 'some-model', true)`,
+      [owner, type, label]
     );
+  const usageRows = () =>
+    client.query('SELECT call_count, total_cost_usd FROM ai_shared_usage WHERE user_id = $1 AND used_on = CURRENT_DATE', [userId]);
+
+  it('records one use per successful analysis for any provider type', async () => {
+    await insertProvider('claude');
+    runProviderAnalysis.mockResolvedValue({ text: '{"one_liner":"ok"}', usedWebSearch: false });
+    for (let i = 0; i < 2; i++) {
+      expect((await request(app).post('/api/analyze').send({ prompt: 'x' })).status).toBe(200);
+    }
+    const { rows } = await usageRows();
+    expect(rows[0].call_count).toBe(2);
+    expect(Number(rows[0].total_cost_usd)).toBe(0);
+  });
+
+  it('tracks Haiku-priced cost when the provider is the shared tier', async () => {
+    await insertProvider('shared', 'Shared AI');
     runProviderAnalysis.mockResolvedValue({
       text: '{"one_liner":"ok"}',
       usedWebSearch: false,
       usage: { input_tokens: 2000, output_tokens: 500 },
     });
-
-    const res1 = await request(app).post('/api/analyze').send({ prompt: 'x' });
-    expect(res1.status).toBe(200);
-    const res2 = await request(app).post('/api/analyze').send({ prompt: 'x' });
-    expect(res2.status).toBe(200);
-
-    const { rows } = await client.query(
-      'SELECT call_count, total_cost_usd FROM ai_shared_usage WHERE user_id = $1 AND used_on = CURRENT_DATE',
-      [userId]
-    );
-    expect(rows).toHaveLength(1);
+    await request(app).post('/api/analyze').send({ prompt: 'x' });
+    await request(app).post('/api/analyze').send({ prompt: 'x' });
+    const { rows } = await usageRows();
     expect(rows[0].call_count).toBe(2);
-    // Haiku pricing: 2000 in * $1/1M + 500 out * $5/1M = 0.0045, twice = 0.009
+    // 2000 in * $1/1M + 500 out * $5/1M = 0.0045, twice = 0.009
     expect(Number(rows[0].total_cost_usd)).toBeCloseTo(0.009, 4);
   });
 
-  it('blocks a call past the daily limit with "Insufficient credit balance"', async () => {
+  it('blocks a call past the limit with 429 and never calls the provider', async () => {
+    await insertProvider('claude');
     await client.query(
-      `INSERT INTO llm_providers (user_id, provider_type, label, model, is_active)
-       VALUES ($1, 'shared', 'Shared AI', 'ignored', true)`,
+      `INSERT INTO ai_shared_usage (user_id, used_on, call_count, total_cost_usd) VALUES ($1, CURRENT_DATE, 3, 0)`,
       [userId]
     );
-    await client.query(
-      `INSERT INTO ai_shared_usage (user_id, used_on, call_count, total_cost_usd) VALUES ($1, CURRENT_DATE, 2, 0.01)`,
-      [userId]
-    );
-
     const res = await request(app).post('/api/analyze').send({ prompt: 'x' });
-
-    expect(res.status).toBe(402);
-    expect(res.body.error).toBe('Insufficient credit balance');
+    expect(res.status).toBe(429);
+    expect(res.body).toEqual({ error: 'Daily analysis limit reached', used: 3, limit: 3 });
     expect(runProviderAnalysis).not.toHaveBeenCalled();
   });
 
-  it('does not apply the shared quota to non-shared providers', async () => {
-    await client.query(
-      `INSERT INTO llm_providers (user_id, provider_type, label, model, is_active)
-       VALUES ($1, 'claude', 'My Claude', 'claude-sonnet-4-6', true)`,
-      [userId]
-    );
-    runProviderAnalysis.mockResolvedValue({ text: '{"one_liner":"ok"}', usedWebSearch: true });
+  it("honours a per-user limit change (limit 1 blocks the second call)", async () => {
+    await insertProvider('claude');
+    await client.query('UPDATE users SET daily_ai_limit = 1 WHERE id = $1', [userId]);
+    runProviderAnalysis.mockResolvedValue({ text: '{"one_liner":"ok"}', usedWebSearch: false });
+    expect((await request(app).post('/api/analyze').send({ prompt: 'x' })).status).toBe(200);
+    expect((await request(app).post('/api/analyze').send({ prompt: 'x' })).status).toBe(429);
+  });
 
-    for (let i = 0; i < 3; i++) {
-      const res = await request(app).post('/api/analyze').send({ prompt: 'x' });
-      expect(res.status).toBe(200);
+  it('does not cap or record usage for an admin', async () => {
+    await insertProvider('claude');
+    await client.query(`UPDATE users SET role = 'admin' WHERE id = $1`, [userId]);
+    runProviderAnalysis.mockResolvedValue({ text: '{"one_liner":"ok"}', usedWebSearch: false });
+    for (let i = 0; i < 5; i++) {
+      expect((await request(app).post('/api/analyze').send({ prompt: 'x' })).status).toBe(200);
     }
-    const { rows } = await client.query('SELECT * FROM ai_shared_usage WHERE user_id = $1', [userId]);
-    expect(rows).toHaveLength(0);
+    expect((await usageRows()).rows).toHaveLength(0);
+  });
+
+  it('does not consume quota when the provider call fails', async () => {
+    await insertProvider('claude');
+    runProviderAnalysis.mockRejectedValue(new Error('HTTP 500'));
+    expect((await request(app).post('/api/analyze').send({ prompt: 'x' })).status).toBe(502);
+    expect((await usageRows()).rows).toHaveLength(0);
+  });
+
+  it("uses the provider owned by providerOwnerId (the admin's), not the caller's", async () => {
+    const { rows } = await client.query(
+      `INSERT INTO users (email, role, status) VALUES ('admin@x.com', 'admin', 'active') RETURNING id`
+    );
+    const adminId = rows[0].id;
+    await insertProvider('claude', 'Admin Claude', adminId);
+    await insertProvider('claude', 'Caller Own', userId);
+    const adminApp = express();
+    adminApp.use(express.json());
+    adminApp.use('/api/analyze', createAnalyzeRouter(client, userId, { providerOwnerId: adminId }));
+    runProviderAnalysis.mockResolvedValue({ text: '{"one_liner":"ok"}', usedWebSearch: false });
+
+    const res = await request(adminApp).post('/api/analyze').send({ prompt: 'x' });
+
+    expect(res.status).toBe(200);
+    expect(runProviderAnalysis).toHaveBeenCalledWith(
+      expect.objectContaining({ label: 'Admin Claude' }),
+      expect.anything()
+    );
   });
 });
 

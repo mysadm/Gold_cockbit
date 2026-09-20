@@ -12,7 +12,6 @@ import { runAnalysisV3 } from '../runAnalysisV3.mjs';
 const SHARED_PRICE_PER_M_INPUT = 1.0;
 const SHARED_PRICE_PER_M_OUTPUT = 5.0;
 const SHARED_COST_WARN_THRESHOLD_USD = 0.01;
-const SHARED_DAILY_LIMIT = Number(process.env.SHARED_AI_DAILY_LIMIT) || 2;
 
 function extractBraces(text) {
   const start = text.indexOf('{');
@@ -40,28 +39,49 @@ function estimateSharedCostUsd(usage) {
   );
 }
 
-export function createAnalyzeRouter(db, userId) {
+async function getUserCap(db, userId) {
+  const { rows } = await db.query('SELECT role, daily_ai_limit FROM users WHERE id = $1', [userId]);
+  const user = rows[0];
+  return { capped: Boolean(user) && user.role !== 'admin', limit: user ? user.daily_ai_limit : 0 };
+}
+
+async function getUsedToday(db, userId) {
+  const { rows } = await db.query(
+    'SELECT call_count FROM ai_shared_usage WHERE user_id = $1 AND used_on = CURRENT_DATE',
+    [userId]
+  );
+  return rows.length > 0 ? rows[0].call_count : 0;
+}
+
+async function recordUsage(db, userId, costUsd) {
+  await db.query(
+    `INSERT INTO ai_shared_usage (user_id, used_on, call_count, total_cost_usd)
+     VALUES ($1, CURRENT_DATE, 1, $2)
+     ON CONFLICT (user_id, used_on)
+     DO UPDATE SET call_count = ai_shared_usage.call_count + 1, total_cost_usd = ai_shared_usage.total_cost_usd + $2`,
+    [userId, costUsd]
+  );
+}
+
+export function createAnalyzeRouter(db, userId, { providerOwnerId = userId } = {}) {
   const router = Router();
   router.use(createApiKeyAuthMiddleware());
   router.get('/contract', (req,res) => res.json({version:process.env.ANALYST_CONTRACT_VERSION === 'v3' ? '3' : '2'}));
 
   router.get('/quota', async (req, res) => {
-    const { rows } = await db.query(
-      'SELECT provider_type FROM llm_providers WHERE user_id = $1 AND is_active = true',
-      [userId]
-    );
-    if (rows.length === 0 || rows[0].provider_type !== 'shared') {
-      return res.json({ shared: false });
-    }
-    const { rows: usageRows } = await db.query(
-      'SELECT call_count FROM ai_shared_usage WHERE user_id = $1 AND used_on = CURRENT_DATE',
-      [userId]
-    );
-    const used = usageRows.length > 0 ? usageRows[0].call_count : 0;
-    res.json({ shared: true, used, limit: SHARED_DAILY_LIMIT });
+    const cap = await getUserCap(db, userId);
+    if (!cap.capped) return res.json({ capped: false });
+    res.json({ capped: true, used: await getUsedToday(db, userId), limit: cap.limit });
   });
 
   router.post('/', async (req, res) => {
+    const cap = await getUserCap(db, userId);
+    if (cap.capped) {
+      const used = await getUsedToday(db, userId);
+      if (used >= cap.limit) {
+        return res.status(429).json({ error: 'Daily analysis limit reached', used, limit: cap.limit });
+      }
+    }
     const { prompt, snapshot } = req.body;
     const isV3 = req.body.contract_version === '3';
     if(isV3) {
@@ -71,7 +91,7 @@ export function createAnalyzeRouter(db, userId) {
     }
     const { rows } = await db.query(
       'SELECT * FROM llm_providers WHERE user_id = $1 AND is_active = true',
-      [userId]
+      [providerOwnerId]
     );
 
     if (rows.length === 0) {
@@ -80,17 +100,6 @@ export function createAnalyzeRouter(db, userId) {
 
     const provider = rows[0];
     const isShared = provider.provider_type === 'shared';
-
-    if (isShared) {
-      const { rows: usageRows } = await db.query(
-        'SELECT call_count FROM ai_shared_usage WHERE user_id = $1 AND used_on = CURRENT_DATE',
-        [userId]
-      );
-      const usedToday = usageRows.length > 0 ? usageRows[0].call_count : 0;
-      if (usedToday >= SHARED_DAILY_LIMIT) {
-        return res.status(402).json({ error: 'Insufficient credit balance' });
-      }
-    }
 
     try {
       if(isV3) {
@@ -101,11 +110,7 @@ export function createAnalyzeRouter(db, userId) {
         let output;
         try {output=await runAnalysisV3(provider,snapshot,runProviderAnalysis,{signal:controller.signal});}
         finally {clearTimeout(timeout);res.off('close',disconnect);}
-        if(isShared) {
-          await db.query(`INSERT INTO ai_shared_usage (user_id, used_on, call_count, total_cost_usd)
-            VALUES ($1,CURRENT_DATE,1,$2) ON CONFLICT (user_id, used_on)
-            DO UPDATE SET call_count=ai_shared_usage.call_count+1,total_cost_usd=ai_shared_usage.total_cost_usd+$2`,[userId,estimateSharedCostUsd(output.usage)]);
-        }
+        if (cap.capped || isShared) await recordUsage(db, userId, isShared ? estimateSharedCostUsd(output.usage) : 0);
         return res.json(output);
       }
       const evidence = await collectEvidence(provider);
@@ -205,20 +210,14 @@ export function createAnalyzeRouter(db, userId) {
         text = JSON.stringify(parsedForValidation);
       }
 
-      if (isShared) {
-        const cost = estimateSharedCostUsd(result.usage);
-        if (cost > SHARED_COST_WARN_THRESHOLD_USD) {
+      if (cap.capped || isShared) {
+        const cost = isShared ? estimateSharedCostUsd(result.usage) : 0;
+        if (isShared && cost > SHARED_COST_WARN_THRESHOLD_USD) {
           console.warn(
             `[shared-ai] analysis for user ${userId} cost ~$${cost.toFixed(4)}, above the $${SHARED_COST_WARN_THRESHOLD_USD} target`
           );
         }
-        await db.query(
-          `INSERT INTO ai_shared_usage (user_id, used_on, call_count, total_cost_usd)
-           VALUES ($1, CURRENT_DATE, 1, $2)
-           ON CONFLICT (user_id, used_on)
-           DO UPDATE SET call_count = ai_shared_usage.call_count + 1, total_cost_usd = ai_shared_usage.total_cost_usd + $2`,
-          [userId, cost]
-        );
+        await recordUsage(db, userId, cost);
       }
 
       res.json({ ...result, text, validation, searchStatus, evidenceSources });
