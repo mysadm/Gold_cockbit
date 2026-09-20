@@ -2,21 +2,22 @@ import { useEffect, useRef, useState } from 'preact/hooks';
 import { dismissNotification, fetchNotifications, type AdminNotification } from '../api/sharedAnalysis';
 
 const TEXT = {
-  en: { heading: 'Standard analysis failed', dismiss: 'Dismiss', settings: 'Open Settings' },
-  ar: { heading: 'فشل التحليل القياسي', dismiss: 'إغلاق', settings: 'فتح الإعدادات' },
+  en: { heading: 'Standard analysis failed', dismiss: 'Dismiss', settings: 'Open Settings', dismissFailed: 'Could not dismiss — try again' },
+  ar: { heading: 'فشل التحليل القياسي', dismiss: 'إغلاق', settings: 'فتح الإعدادات', dismissFailed: 'تعذّر الإغلاق — حاول مرة أخرى' },
 } as const;
 
 const REFRESH_MS = 2 * 60 * 1000;
 
-export function AdminAlerts({ ar, onOpenSettings, onCount }: { ar: boolean; onOpenSettings: () => void; onCount: (n: number) => void }) {
+export function AdminAlerts({ ar, onOpenSettings, onChange }: { ar: boolean; onOpenSettings: () => void; onChange: (list: AdminNotification[]) => void }) {
   const t = TEXT[ar ? 'ar' : 'en'];
   const [items, setItems] = useState<AdminNotification[]>([]);
   const [busyId, setBusyId] = useState<number | null>(null);
   const inFlight = useRef(false);
   // Only the newest load may write state; an older response can resolve later.
   const loadSeq = useRef(0);
-  const onCountRef = useRef(onCount);
-  onCountRef.current = onCount;
+  const [dismissError, setDismissError] = useState(false);
+  const onChangeRef = useRef(onChange);
+  onChangeRef.current = onChange;
 
   async function load() {
     const seq = ++loadSeq.current;
@@ -24,7 +25,7 @@ export function AdminAlerts({ ar, onOpenSettings, onCount }: { ar: boolean; onOp
       const list = await fetchNotifications();
       if (seq !== loadSeq.current) return;
       setItems(list);
-      onCountRef.current(list.length);
+      onChangeRef.current(list);
     } catch {
       // Keep whatever is showing; the next poll retries.
     }
@@ -40,10 +41,12 @@ export function AdminAlerts({ ar, onOpenSettings, onCount }: { ar: boolean; onOp
     if (inFlight.current) return;
     inFlight.current = true;
     setBusyId(id);
+    setDismissError(false);
     try {
       await dismissNotification(id);
     } catch {
-      // The reload below shows the true state either way.
+      // The reload below re-shows the item, so say why nothing happened.
+      setDismissError(true);
     } finally {
       await load();
       inFlight.current = false;
@@ -75,6 +78,8 @@ export function AdminAlerts({ ar, onOpenSettings, onCount }: { ar: boolean; onOp
           </div>
         </div>
       ))}
+      {/* Its own alert region, apart from the polled list, so the failure is announced once. */}
+      {dismissError && <div role="alert" style={{ fontSize: 14, color: 'var(--down)' }}>{t.dismissFailed}</div>}
     </div>
   );
 }

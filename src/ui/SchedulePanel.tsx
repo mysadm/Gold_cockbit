@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
 import {
-  fetchLatest, fetchNotifications, fetchSchedule, runNow, saveSchedule,
-  type AdminNotification, type AnalysisSchedule, type StandardRun,
+  fetchLatest, fetchSchedule, runNow, saveSchedule,
+  type AnalysisSchedule, type StandardRun,
 } from '../api/sharedAnalysis';
 import {
   formToSchedule, isScheduleChanged, isScheduleSubmittable, scheduleToForm, type ScheduleForm,
 } from '../lib/scheduleForm';
+import { keepKnown } from '../lib/scheduleStatus';
 import { Card, SectionLabel } from './primitives';
 
 const TEXT = {
@@ -14,7 +15,7 @@ const TEXT = {
     enabled: 'Scheduled analysis enabled', time1: 'First run time', time2: 'Second run time',
     tz: 'Timezone', lang: 'Analysis language', arabic: 'Arabic', english: 'English',
     save: 'Save', saving: 'Saving…', saved: 'Schedule saved.', runNow: 'Run now', running: 'Running…',
-    ran: 'Analysis finished.', last: 'Last successful run', noRun: 'No run yet', loading: 'Loading…',
+    ran: 'Analysis finished.', last: 'Last successful run', noRun: 'No run yet', statusUnavailable: 'Status unavailable', loading: 'Loading…',
     failed: 'Latest background failure', retry: 'Reload',
   },
   ar: {
@@ -22,7 +23,7 @@ const TEXT = {
     enabled: 'تفعيل التحليل المجدول', time1: 'وقت التشغيل الأول', time2: 'وقت التشغيل الثاني',
     tz: 'المنطقة الزمنية', lang: 'لغة التحليل', arabic: 'العربية', english: 'الإنجليزية',
     save: 'حفظ', saving: 'جارٍ الحفظ…', saved: 'تم حفظ الجدولة.', runNow: 'شغّل الآن', running: 'جارٍ التشغيل…',
-    ran: 'انتهى التحليل.', last: 'آخر تشغيل ناجح', noRun: 'لا يوجد تشغيل بعد', loading: 'جارٍ التحميل…',
+    ran: 'انتهى التحليل.', last: 'آخر تشغيل ناجح', noRun: 'لا يوجد تشغيل بعد', statusUnavailable: 'الحالة غير متاحة', loading: 'جارٍ التحميل…',
     failed: 'آخر فشل في الخلفية', retry: 'إعادة التحميل',
   },
 } as const;
@@ -48,12 +49,13 @@ const inputStyle = {
   fontFamily: 'var(--font-mono)', fontSize: 16, padding: '8px 10px', maxWidth: '100%', boxSizing: 'border-box',
 } as const;
 
-export function SchedulePanel({ ar }: { ar: boolean }) {
+// failureMessage: the open background-failure message from the app-level notification list (null if none).
+export function SchedulePanel({ ar, failureMessage }: { ar: boolean; failureMessage: string | null }) {
   const t = TEXT[ar ? 'ar' : 'en'];
   const [loaded, setLoaded] = useState<AnalysisSchedule | null>(null);
   const [form, setForm] = useState<ScheduleForm | null>(null);
-  const [latest, setLatest] = useState<StandardRun | null>(null);
-  const [notification, setNotification] = useState<AdminNotification | null>(null);
+  // undefined = unknown (status not read yet, or the read failed); null = the server says no run yet.
+  const [latest, setLatest] = useState<StandardRun | null | undefined>(undefined);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -65,26 +67,20 @@ export function SchedulePanel({ ar }: { ar: boolean }) {
   const loadSeq = useRef(0);
   const statusSeq = useRef(0);
 
-  // Latest run and open notification are informational: a failure there must not hide the form.
-  async function readStatus() {
-    const [run, notes] = await Promise.all([
-      fetchLatest().then((r) => r.latest).catch(() => null),
-      fetchNotifications().then((list) => list[0] ?? null).catch(() => null),
-    ]);
-    return { run, note: notes };
-  }
+  // The last-run line is informational: a failed read yields undefined (unknown) and must not hide the form
+  // or overwrite a value we already know.
+  const readStatus = () => fetchLatest().then((r) => r.latest, () => undefined);
 
   async function load() {
     const seq = ++loadSeq.current;
     statusSeq.current += 1;
     setLoadError(null);
     try {
-      const [schedule, status] = await Promise.all([fetchSchedule(), readStatus()]);
+      const [schedule, run] = await Promise.all([fetchSchedule(), readStatus()]);
       if (seq !== loadSeq.current) return;
       setLoaded(schedule);
       setForm(scheduleToForm(schedule));
-      setLatest(status.run);
-      setNotification(status.note);
+      setLatest((prev) => keepKnown(run, prev));
     } catch (err) {
       if (seq !== loadSeq.current) return;
       setLoadError(err instanceof Error ? err.message : String(err));
@@ -94,10 +90,9 @@ export function SchedulePanel({ ar }: { ar: boolean }) {
   // Refreshes only the last-run line, so unsaved edits in the form survive a Run now.
   async function refreshStatus() {
     const seq = ++statusSeq.current;
-    const status = await readStatus();
+    const run = await readStatus();
     if (seq !== statusSeq.current) return;
-    setLatest(status.run);
-    setNotification(status.note);
+    setLatest((prev) => keepKnown(run, prev));
   }
 
   useEffect(() => { void load(); }, []);
@@ -141,7 +136,10 @@ export function SchedulePanel({ ar }: { ar: boolean }) {
     }
   }
 
-  const patch = (change: Partial<ScheduleForm>) => setForm((prev) => (prev ? { ...prev, ...change } : prev));
+  const patch = (change: Partial<ScheduleForm>) => {
+    setNotice(null);
+    setForm((prev) => (prev ? { ...prev, ...change } : prev));
+  };
   const changed = form !== null && loaded !== null && isScheduleChanged(form, loaded);
   const submittable = form !== null && isScheduleSubmittable(form);
   const tz = loaded?.tz ?? 'UTC';
@@ -224,13 +222,15 @@ export function SchedulePanel({ ar }: { ar: boolean }) {
             </div>
 
             <div className="muted-text" style={{ fontSize: 13, marginTop: 6, overflowWrap: 'anywhere' }}>
-              {latest
-                ? `${t.last} ${formatRunTime(latest.created_at, tz, ar)} · ${latest.provider_label}`
-                : t.noRun}
+              {latest === undefined
+                ? t.statusUnavailable
+                : latest
+                  ? `${t.last} ${formatRunTime(latest.created_at, tz, ar)} · ${latest.provider_label}`
+                  : t.noRun}
             </div>
-            {notification && (
+            {failureMessage && (
               <div style={{ fontSize: 13, marginTop: 6, color: 'var(--down)', overflowWrap: 'anywhere' }}>
-                {t.failed}: {notification.message}
+                {t.failed}: {failureMessage}
               </div>
             )}
           </div>

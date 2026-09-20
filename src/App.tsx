@@ -40,6 +40,8 @@ import { BottomNav } from './ui/BottomNav';
 import { UsersPanel } from './ui/UsersPanel';
 import { SchedulePanel } from './ui/SchedulePanel';
 import { AdminAlerts } from './ui/AdminAlerts';
+import { failureMessage } from './lib/scheduleStatus';
+import type { AdminNotification } from './api/sharedAnalysis';
 import { listUsers } from './api/adminUsers';
 import { Card, SectionLabel, Hairline, MetricRow, GlowBar, ChangeTag, Icon } from './ui/primitives';
 import {
@@ -291,7 +293,8 @@ function App({ user, onLogout }: { user: CurrentUser; onLogout: () => void }) {
 
   const [pendingCount, setPendingCount] = useState(0);
   // Open background-analysis failure notifications; they share the Settings badge with pending sign-ups.
-  const [notificationCount, setNotificationCount] = useState(0);
+  const [notifications, setNotifications] = useState<AdminNotification[]>([]);
+  const notificationCount = notifications.length;
   // The panel's own (fresher) count wins over a slower mount-time seed.
   const panelReportedCount = useRef(false);
   const reportPendingCount = (n: number) => {
@@ -1310,7 +1313,7 @@ function App({ user, onLogout }: { user: CurrentUser; onLogout: () => void }) {
       />
 
       <main style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
-        {isAdmin && <AdminAlerts ar={ar} onOpenSettings={() => setActiveTab('settings')} onCount={setNotificationCount} />}
+        {isAdmin && <AdminAlerts ar={ar} onOpenSettings={() => setActiveTab('settings')} onChange={setNotifications} />}
         <header
           style={{
             padding: '16px 24px',
@@ -2651,7 +2654,7 @@ function App({ user, onLogout }: { user: CurrentUser; onLogout: () => void }) {
             <div>
               <SectionLabel text={t.settingsHeading.toUpperCase()} />
               <AIModelSettingsManager adapter={aiSettingsAdapter} />
-              <SchedulePanel ar={ar} />
+              <SchedulePanel ar={ar} failureMessage={failureMessage(notifications)} />
               <UsersPanel ar={ar} currentUserId={user.id} onPendingCount={reportPendingCount} />
             </div>
           )}
