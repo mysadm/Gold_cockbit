@@ -1,5 +1,5 @@
 import { render } from 'preact';
-import App from './App';
+import { AuthGate } from './ui/AuthGate';
 import './styles.css';
 
-render(<App />, document.getElementById('app')!);
+render(<AuthGate />, document.getElementById('app')!);

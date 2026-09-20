@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
+import type { CurrentUser } from './api/auth';
+import { storageKeysFor, type StorageKeys } from './lib/userStorage';
 import { AIModelSettingsManager } from 'ai-settings-ui';
 import 'ai-settings-ui/styles.css';
 import { createGoldCockpitAiAdapter } from './lib/aiSettingsAdapter';
@@ -199,10 +201,6 @@ const defaultState: AppState = {
   newMonitor: '',
 };
 
-const STORAGE_KEY = 'gold-cockpit-state-v1';
-const MONITORS_KEY = 'ghc_monitors';
-const LEVEL_KEY = 'ghc_level';
-
 function normNum(value: unknown) {
   return parseFloat(
     String(value)
@@ -215,14 +213,14 @@ function fmt(n: number, d = 0) {
   return n.toLocaleString('en-US', { minimumFractionDigits: d, maximumFractionDigits: d });
 }
 
-function loadState(): AppState {
+function loadState(keys: StorageKeys): AppState {
   if (typeof window === 'undefined') return defaultState;
   try {
-    const raw = window.localStorage.getItem(STORAGE_KEY);
+    const raw = window.localStorage.getItem(keys.state);
     const saved = raw ? JSON.parse(raw) : null;
-    const monitorsRaw = window.localStorage.getItem(MONITORS_KEY);
+    const monitorsRaw = window.localStorage.getItem(keys.monitors);
     const monitors = monitorsRaw ? JSON.parse(monitorsRaw) : DEFAULT_MONITORS.map((m) => ({ ...m }));
-    const aiLevel = (window.localStorage.getItem(LEVEL_KEY) as AppState['aiLevel'] | null) || 'beginner';
+    const aiLevel = (window.localStorage.getItem(keys.level) as AppState['aiLevel'] | null) || 'beginner';
     // saved.ai.data may be a pre-existing v1-shaped {one_liner, trends, ...}
     // object from localStorage predating the v2 schema migration. The v2
     // render tree unconditionally dereferences primary_decision.action /
@@ -259,8 +257,9 @@ function initialTabFromUrl(): TabKey {
   return (TAB_KEYS as string[]).includes(tab ?? '') ? (tab as TabKey) : 'home';
 }
 
-function App() {
-  const [state, setState] = useState<AppState>(loadState);
+function App({ user }: { user: CurrentUser; onLogout: () => void }) {
+  const storageKeys = useMemo(() => storageKeysFor(user.id), [user.id]);
+  const [state, setState] = useState<AppState>(() => loadState(storageKeys));
   const [activeTab, setActiveTab] = useState<TabKey>(initialTabFromUrl);
   // .theme-light must live on <body>, not on an inner div: `body { color:
   // var(--text); }` is the only rule most unstyled text relies on for its
@@ -655,10 +654,10 @@ function App() {
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-    window.localStorage.setItem(MONITORS_KEY, JSON.stringify(state.monitors));
-    window.localStorage.setItem(LEVEL_KEY, state.aiLevel);
-  }, [state]);
+    window.localStorage.setItem(storageKeys.state, JSON.stringify(state));
+    window.localStorage.setItem(storageKeys.monitors, JSON.stringify(state.monitors));
+    window.localStorage.setItem(storageKeys.level, state.aiLevel);
+  }, [state, storageKeys]);
 
   const t = useMemo(() => (state.lang === 'ar' ? T.ar : T.en), [state.lang]);
   const weighted = useMemo(() => SCEN_META.reduce((sum, scenario) => sum + (state.weights[scenario.key] / 100) * ((scenario.lo + scenario.hi) / 2), 0), [state.weights]);
