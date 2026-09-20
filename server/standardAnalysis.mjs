@@ -160,6 +160,17 @@ async function attempt({ db, adminId, slotKey, schedule, deps }, attempts) {
     clearTimeout(timer);
   }
 
+  // An answer that failed validation was replaced by the built-in "insufficient evidence"
+  // fallback. Storing that as a finished analysis would hide the real problem from the admin
+  // and push the last good analysis off the card, so it is a failed attempt instead.
+  if (output.validation?.ok !== true) {
+    const errors = output.validation?.errors ?? [];
+    const hint = errors.some((e) => /truncated/i.test(e))
+      ? " The model's answer was cut off: raise the provider's Max tokens (at least 4096)."
+      : '';
+    throw new Error(`The model's answer was rejected: ${errors.join('; ') || 'unknown validation error'}.${hint}`);
+  }
+
   const result = {
     text: output.text,
     parsed: output.result,

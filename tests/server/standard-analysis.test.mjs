@@ -59,6 +59,37 @@ function makeDeps(over = {}) {
 }
 const run = (deps, slotKey = SLOT) => runStandardAnalysis({ db: client, adminId: admin.id, slotKey, schedule: SCHEDULE, deps });
 
+describe('an invalid model answer', () => {
+  it('is a failed attempt with the reason and a max-tokens hint, never a stored analysis', async () => {
+    await addProvider();
+    const bad = analysisOutput({ validation: { ok: false, errors: ['response must be a JSON object', 'completion was truncated'] } });
+    const deps = makeDeps({ runAnalysis: vi.fn(async () => bad) });
+
+    const out = await run(deps);
+
+    expect(out.status).toBe('failed');
+    const r = await row();
+    expect(r.status).toBe('failed');
+    expect(r.result).toBeNull();
+    expect(r.error).toContain('completion was truncated');
+    expect(r.error).toMatch(/Max tokens/i);
+    const open = (await client.query('SELECT message FROM admin_notifications WHERE kind = $1 AND resolved_at IS NULL', [KIND])).rows;
+    expect(open).toHaveLength(1);
+    expect(open[0].message).toContain('completion was truncated');
+  });
+
+  it('keeps the previous good analysis as the latest one', async () => {
+    await addProvider();
+    await run(makeDeps(), '2026-09-19@16:00');
+    const bad = analysisOutput({ validation: { ok: false, errors: ['completion was truncated'] } });
+
+    await run(makeDeps({ runAnalysis: vi.fn(async () => bad) }));
+
+    const latest = await latestDone(client);
+    expect(latest.slot_key).toBe('2026-09-19@16:00');
+  });
+});
+
 describe('claimSlot', () => {
   it('claims a fresh slot once and refuses an immediate second claim', async () => {
     const id = await claimSlot(client, SLOT);

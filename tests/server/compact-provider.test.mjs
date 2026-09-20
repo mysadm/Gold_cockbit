@@ -3,7 +3,7 @@ import { callClaude } from '../../server/providers/claude.mjs';
 import { callOpenAICompatible } from '../../server/providers/openaiCompatible.mjs';
 import { completionBudget } from '../../server/providers/completionBudget.mjs';
 afterEach(() => vi.unstubAllGlobals());
-it.each([[undefined,4096],[0,1024],[128,1024],[100000,8192],[3000,3000],[NaN,4096]])('clamps compact completion budget %s to %s', (input,expected) => {
+it.each([[undefined,4096],[0,4096],[128,4096],[1024,4096],[3000,4096],[5000,5000],[100000,8192],[NaN,4096]])('clamps compact completion budget %s to %s', (input,expected) => {
   expect(completionBudget(input,true)).toBe(expected);
   expect(completionBudget(1024,false)).toBe(16000);
 });

@@ -1,6 +1,9 @@
 export function completionBudget(maxTokens, compact = false) {
   const configured = Number.isFinite(maxTokens) ? Math.trunc(maxTokens) : undefined;
-  return compact ? Math.min(8192, Math.max(1024, configured ?? 4096)) : Math.max(configured || 0, 16000);
+  // A full compact answer (JSON with evidence and reads, longer still in Arabic) needs
+  // well over 2k tokens; a smaller cap truncates it and the run silently degrades to
+  // the built-in "insufficient evidence" fallback. So a low configured value is floored.
+  return compact ? Math.min(8192, Math.max(4096, configured ?? 4096)) : Math.max(configured || 0, 16000);
 }
 
 export function normalizeUsage(input, output) {
