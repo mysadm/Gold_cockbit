@@ -1654,7 +1654,7 @@ function App() {
                 <div className="soft-text" style={{ fontSize: 15, marginBottom: 6 }}>
                   {t.aiUsingProvider}: {activeProvider ? `${activeProvider.label} (${providerTypeLabel(activeProvider.provider_type)})` : t.aiNoProvider}
                 </div>
-                {analyzeQuota?.shared ? (
+                {analyzeQuota?.capped ? (
                   <div className="soft-text" style={{ fontSize: 15, marginBottom: 6 }}>
                     {t.aiQuotaLabel}: {analyzeQuota.limit - analyzeQuota.used}/{analyzeQuota.limit}
                   </div>

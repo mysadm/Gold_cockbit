@@ -2,6 +2,9 @@ import { defineConfig } from 'vite';
 import preact from '@preact/preset-vite';
 import tailwindcss from '@tailwindcss/vite';
 
+// @types/node is not installed, so reach process.env through globalThis.
+const env = (globalThis as { process?: { env: Record<string, string | undefined> } }).process?.env ?? {};
+
 export default defineConfig({
   plugins: [preact(), tailwindcss()],
   resolve: {
@@ -16,11 +19,11 @@ export default defineConfig({
   },
   server: {
     host: '0.0.0.0',
-    port: 3577,
+    port: Number(env.DEV_PORT) || 3577,
     strictPort: true,
     proxy: {
       '/api': {
-        target: 'http://localhost:8787',
+        target: env.API_TARGET || 'http://localhost:8787',
         changeOrigin: true,
       },
     },

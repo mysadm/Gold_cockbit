@@ -136,7 +136,7 @@ export async function analyzeViaBackend(
   return { ...await parseJsonOrThrow(response), contractVersion };
 }
 
-export type AnalyzeQuota = { shared: false } | { shared: true; used: number; limit: number };
+export type AnalyzeQuota = { capped: false } | { capped: true; used: number; limit: number };
 export type SearchStatus = 'ok' | 'partial' | 'disabled' | 'no_api_key' | 'no_results' | 'failed';
 export type EvidenceSource = { id: string; title: string; link: string; date: string };
 
