@@ -179,7 +179,15 @@ export function createAnalyzeRouter(db, userId, { providerOwnerId = userId } = {
         try {output=await runAnalysisV3(provider,snapshot,runProviderAnalysis,{signal:controller.signal});}
         finally {clearTimeout(timeout);res.off('close',disconnect);}
         if (cap.capped || isShared) {
-          await settleUsage(db, userId, cap, isShared ? estimateSharedCostUsd(output.usage) : 0);
+          const cost = isShared ? estimateSharedCostUsd(output.usage) : 0;
+          if (cap.capped && output.validation?.ok !== true) {
+            // The model's answer was rejected and replaced by the built-in fallback: the user got
+            // no usable analysis, so the use is given back (any cost is still recorded).
+            if (cost > 0) await addCost(db, userId, cost);
+            await releaseUse(db, userId);
+          } else {
+            await settleUsage(db, userId, cap, cost);
+          }
           reserved = false;
         }
         return res.json(output);

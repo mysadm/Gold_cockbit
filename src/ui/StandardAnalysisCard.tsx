@@ -3,6 +3,7 @@ import { Card, SectionLabel } from './primitives';
 import { parseCompactAnalysis, type AIResultV2 } from '../lib/analyst';
 import type { AnalysisSnapshot } from '../lib/analysisSnapshot';
 import type { AnalysisSchedule, StandardRun } from '../api/sharedAnalysis';
+import { applyBlockReason } from '../lib/applyBlock';
 
 type Weights = { deesc: number; base: number; stag: number };
 const SCEN_KEYS = ['deesc', 'base', 'stag'] as const;
@@ -24,7 +25,8 @@ const S = {
     weightsH: 'الأوزان المقترحة',
     apply: 'طبّق هذه الأوزان',
     applied: '✓ تم التطبيق',
-    applyDisabled: 'غير متاح: هذا التحليل لم يجتز الفحص أو أدلته غير كافية',
+    applyDisabled: 'غير متاح: هذا التحليل لم يجتز الفحص',
+    applyNoEvidence: 'لا شيء لتطبيقه: الأدلة غير كافية لتغيير الأوزان',
     confidence: 'الثقة',
     action: { buy: 'شراء', hold: 'احتفاظ', wait: 'انتظار', reduce: 'تخفيض', review: 'مراجعة', insufficient_evidence: 'أدلة غير كافية' },
     level: { low: 'منخفضة', medium: 'متوسطة', high: 'عالية' },
@@ -46,7 +48,8 @@ const S = {
     weightsH: 'SUGGESTED WEIGHTS',
     apply: 'Apply these weights',
     applied: '✓ Applied',
-    applyDisabled: 'Unavailable: this analysis failed validation or has insufficient evidence',
+    applyDisabled: 'Unavailable: this analysis failed validation',
+    applyNoEvidence: 'Nothing to apply: too little evidence to change the weights',
     confidence: 'Confidence',
     action: { buy: 'Buy', hold: 'Hold', wait: 'Wait', reduce: 'Reduce', review: 'Review', insufficient_evidence: 'Insufficient evidence' },
     level: { low: 'Low', medium: 'Medium', high: 'High' },
@@ -202,7 +205,7 @@ export function StandardAnalysisCard({
           >
             {applied ? s.applied : s.apply}
           </button>
-          {!canApply ? <div className="down-text" style={{ fontSize: 12, marginTop: 4 }}>{s.applyDisabled}</div> : null}
+          {!canApply ? <div className="down-text" style={{ fontSize: 12, marginTop: 4 }}>{applyBlockReason(run.validation?.ok, view.primary_decision.action) === 'no_evidence' ? s.applyNoEvidence : s.applyDisabled}</div> : null}
         </div>
         <div className="muted-text" style={{ fontSize: 13, borderTop: '1px dashed var(--border)', paddingTop: 10 }}>{s.notPersonal}</div>
       </div>

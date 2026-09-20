@@ -6,6 +6,7 @@ import { ensureDefaultUser } from '../../server/ensureDefaultUser.mjs';
 import { createAnalyzeRouter } from '../../server/routes/analyze.mjs';
 import { runProviderAnalysis } from '../../server/providers/dispatch.mjs';
 import { searchWeb } from '../../server/webSearch.mjs';
+import fixture from '../fixtures/analyst-request-v2.json';
 
 vi.mock('../../server/providers/dispatch.mjs', () => ({
   runProviderAnalysis: vi.fn(),
@@ -421,6 +422,50 @@ describe('POST /api/analyze — per-user daily cap', () => {
     expect(res.body).toEqual({ error: 'Daily analysis limit reached', used: 0, limit: 0 });
     expect(runProviderAnalysis).not.toHaveBeenCalled();
     expect((await usageRows()).rows).toHaveLength(0);
+  });
+
+  describe('compact (v3) analyses and the daily allowance', () => {
+    const snapshot = { ...fixture, schema_version: '2', previous_analysis: null };
+    const weights = Object.fromEntries(snapshot.scenarios.map((sc) => [sc.key, sc.weight_pct]));
+    const validInsufficient = {
+      schema_version: '3', status: 'insufficient_evidence',
+      primary_decision: { action: 'insufficient_evidence', horizon: 'now', confidence: 'low', headline: 'h', next_trigger: 'n', invalidation: 'i' },
+      evidence: [], suggested_weights: weights, weight_changes: [], reads: { egp: 'e' }, assumptions: [], missing_inputs: [],
+    };
+    const post = () => request(app).post('/api/analyze').send({ contract_version: '3', snapshot });
+    const used = async () => (await request(app).get('/api/analyze/quota')).body.used;
+
+    it('gives the use back when the model answer fails validation (fallback result)', async () => {
+      vi.stubEnv('ANALYST_CONTRACT_VERSION', 'v3');
+      try {
+        await insertProvider('claude');
+        runProviderAnalysis.mockResolvedValue({ text: 'not json at all', usage: { input_tokens: 10, output_tokens: 5 } });
+
+        const res = await post();
+
+        expect(res.status).toBe(200);
+        expect(res.body.validation.ok).toBe(false);
+        expect(await used()).toBe(0);
+      } finally {
+        vi.unstubAllEnvs();
+      }
+    });
+
+    it('still counts a valid answer, even when the model concludes there is not enough evidence', async () => {
+      vi.stubEnv('ANALYST_CONTRACT_VERSION', 'v3');
+      try {
+        await insertProvider('claude');
+        runProviderAnalysis.mockResolvedValue({ text: JSON.stringify(validInsufficient), usage: { input_tokens: 10, output_tokens: 5 } });
+
+        const res = await post();
+
+        expect(res.status).toBe(200);
+        expect(res.body.validation.ok).toBe(true);
+        expect(await used()).toBe(1);
+      } finally {
+        vi.unstubAllEnvs();
+      }
+    });
   });
 
   it("uses the provider owned by providerOwnerId (the admin's), not the caller's", async () => {

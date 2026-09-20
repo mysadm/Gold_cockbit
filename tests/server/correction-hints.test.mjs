@@ -60,5 +60,6 @@ describe('the first prompt', () => {
     const prompt = buildAnalysisPrompt(snapshot, pack.evidencePack);
     expect(prompt).toContain('suggested_weights are three whole numbers that add up to exactly 100');
     expect(prompt).toContain('never write a currency amount in reads.dca except current_installment_limit_egp');
+    expect(prompt).toContain('changes wording only: apply the same evidence standard and decision rules in both');
   });
 });

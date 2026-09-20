@@ -21,6 +21,7 @@ Action: buy|hold|wait|reduce|review|insufficient_evidence. Horizon: now|next_eve
 Confidence and strength: low|medium|high. Scenario effect: deesc|base|stag|mixed|neutral.
 Every changed weight needs {scenario,from,to,evidence_ids:["EV-..."]}; unchanged weights have no entry.
 At most 3 evidence items and 3 strings each in assumptions/missing_inputs. Omit wallet/dca/watchlist reads when absent.
+The explanation level (beginner or expert) changes wording only: apply the same evidence standard and decision rules in both.
 Make sure suggested_weights are three whole numbers that add up to exactly 100 (copy the snapshot weights when unchanged), and never write a currency amount in reads.dca except current_installment_limit_egp.
 No search tool is available. Zero supplied evidence requires insufficient_evidence.
 DATA_SNAPSHOT\n${JSON.stringify(snapshot)}\nEVIDENCE_PACK\n${JSON.stringify(evidencePack)}\nOUTPUT_SCHEMA\n${JSON.stringify(OUTPUT_EXAMPLE)}`;
