@@ -99,6 +99,43 @@ describe('compact pipeline', () => {
     });
   });
 
+  describe('"no material change" when the previous suggestion was never applied', () => {
+    const answer = (obj) => ({ text: JSON.stringify(obj), usage: { input_tokens: 10, output_tokens: 5 } });
+    const prior = (weights, over = {}) => ({ ...snapshot, previous_analysis: { generated_at: '2026-09-17T08:00:00Z', action: 'wait', confidence: 'medium', suggested_weights: weights, ...over } });
+    const unchanged = { ...OUTPUT_EXAMPLE, status: 'no_material_change' };
+
+    it('reports it as a material change with the current weights instead of rejecting the analysis', async () => {
+      runProviderAnalysis.mockResolvedValue(answer(unchanged));
+
+      const out = await runAnalysisV3(provider, prior({ deesc: 30, base: 50, stag: 20 }), runProviderAnalysis);
+
+      expect(out.validation).toEqual({ ok: true, errors: [] });
+      expect(out.result.status).toBe('material_change');
+      expect(out.result.suggested_weights).toEqual({ deesc: 35, base: 45, stag: 20 });
+      expect(out.result.primary_decision.action).toBe('wait');
+      expect(out.metrics.statusCorrected).toBe(true);
+    });
+
+    it('keeps a genuine no_material_change untouched', async () => {
+      runProviderAnalysis.mockResolvedValue(answer(unchanged));
+
+      const out = await runAnalysisV3(provider, prior({ deesc: 35, base: 45, stag: 20 }), runProviderAnalysis);
+
+      expect(out.result.status).toBe('no_material_change');
+      expect(out.metrics.statusCorrected).toBe(false);
+    });
+
+    it('does not rescue an answer with other validation errors', async () => {
+      runProviderAnalysis.mockResolvedValue(answer({ ...unchanged, suggested_weights: { deesc: 35, base: 45, stag: 25 } }));
+
+      const out = await runAnalysisV3(provider, prior({ deesc: 30, base: 50, stag: 20 }), runProviderAnalysis);
+
+      expect(out.validation.ok).toBe(false);
+      expect(out.result.status).toBe('insufficient_evidence');
+      expect(out.metrics.statusCorrected).toBe(false);
+    });
+  });
+
   it('retries once and sums reported usage', async () => {
     runProviderAnalysis.mockResolvedValueOnce({ text: '{}', usage: { input_tokens: 40, output_tokens: 2 } });
     const out = await runAnalysisV3(provider, snapshot, runProviderAnalysis);

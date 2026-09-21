@@ -9,6 +9,8 @@ export function correctionHints(errors, snapshot) {
     } else if (error === 'DCA amount exceeds current installment limit') {
       const limit = snapshot?.dca?.current_installment_limit_egp;
       hints.push(`reads.dca: do not write or mention the total plan budget or any other currency amount. The only amount you may state is current_installment_limit_egp (${limit ?? 0} EGP) or less; otherwise describe the installment by its percentage or tranche number.`);
+    } else if (error.startsWith('no_material_change ')) {
+      hints.push('status: use no_material_change only if the previous analysis was recent, made the same decision, and its suggested weights equal the current snapshot weights (the previous suggestion may not have been applied). If they differ, use material_change and keep suggested_weights equal to the snapshot weights.');
     }
   }
   return hints;

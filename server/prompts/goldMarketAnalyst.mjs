@@ -25,7 +25,9 @@ through evidence references. Preserve bands. Never calculate targets.
 No evidence is not evidence of no change. With inadequate evidence return
 insufficient_evidence, low confidence and unchanged weights.
 Only use no_material_change with a supplied recent previous analysis,
-the same decision, and unchanged current weights. For a first analysis use
+the same decision, and unchanged current weights, and only when the previous
+analysis' suggested weights equal the current snapshot weights (a suggestion the
+investor never applied does not count); otherwise use material_change. For a first analysis use
 material_change or insufficient_evidence; do not invent a previous state.
 
 A watch level prompts reassessment, not automatic buying. Missing cash is

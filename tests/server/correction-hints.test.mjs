@@ -29,6 +29,13 @@ describe('correctionHints', () => {
     expect(hints[0]).toMatch(/do not (write|mention).*(total|budget)/i);
   });
 
+  it('tells the model to use material_change when the previous suggestion differs from the current weights', () => {
+    const hints = correctionHints(['no_material_change must preserve current and prior weights'], snapshot);
+    expect(hints).toHaveLength(1);
+    expect(hints[0]).toContain('material_change');
+    expect(hints[0]).toMatch(/previous.*(differ|not applied)/i);
+  });
+
   it('gives no hint for errors it does not know, and one hint per known error', () => {
     expect(correctionHints(['something else'], snapshot)).toEqual([]);
     expect(correctionHints(['DCA amount exceeds current installment limit', 'suggested_weights must be numeric percentages totaling 100', 'x'], dcaSnapshot)).toHaveLength(2);
