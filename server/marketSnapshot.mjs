@@ -125,3 +125,34 @@ export function buildMarketSnapshot({ now = () => new Date(), prices, egypt = nu
     watchlist: [],
   };
 }
+
+// For testing the personalized prompt: the real market data plus a small invented portfolio, so
+// the wallet, DCA and watchlist instructions are exercised. Beginner level is the stricter case.
+export function withSamplePortfolio(snapshot) {
+  const { analysis_scope: _market, ...personal } = snapshot;
+  const day = 24 * 60 * 60 * 1000;
+  const start = new Date(Date.parse(snapshot.generated_at) - 30 * day);
+  const end = new Date(Date.parse(snapshot.generated_at) + 30 * day);
+  return {
+    ...personal,
+    explanation_level: 'beginner',
+    wallet: {
+      has_holdings: true,
+      holdings: { pounds: 2 },
+      value_intl_egp: 90000,
+      value_egypt_egp: 90300,
+      cost_basis: [{ unit: 'pounds', avg_cost_egp: 42000, open_qty: 2, realized_egp: 0 }],
+    },
+    dca: {
+      mode: 'fixed',
+      spacing_months: 2,
+      tranche_split_pct: [40, 35, 25],
+      monthly_investment_egp: null,
+      total_investment_egp: 100000,
+      status: 'open_now',
+      window: { start: start.toISOString().slice(0, 10), end: end.toISOString().slice(0, 10) },
+      active_tranche_index: 0,
+    },
+    watchlist: [{ id: '0', label: 'Fed policy', signal: 'risk' }],
+  };
+}

@@ -6,6 +6,7 @@ import { runProviderAnalysis } from './providers/dispatch.mjs';
 import { validateSnapshot, alignSnapshot } from '../shared/analystContract.mjs';
 import { loadScenarioRows, buildMarketSnapshot } from './marketSnapshot.mjs';
 import { raiseNotification, resolveNotifications } from './adminNotifications.mjs';
+import { loadPromptConfig } from './analystPrompts.mjs';
 
 export const FAILURE_KIND = 'standard_analysis_failed';
 export const MAX_ATTEMPTS = 3;
@@ -128,7 +129,11 @@ export async function sweepStrandedRuns({ db, deps = {} }) {
   }
 }
 
-async function attempt({ db, adminId, slotKey, schedule, deps }, attempts) {
+// Builds the market snapshot and runs the analyst on it. Used by the scheduled/manual run
+// (which stores the result) and by the admin's prompt test (which does not). `prompts` ({system, format}) overrides
+// the saved standard prompt, so a draft can be tested before it is saved; `decorate` lets the
+// personalized-prompt test add a sample portfolio to the snapshot.
+export async function produceMarketAnalysis({ db, adminId, schedule, deps, prompts, decorate, onRawAnswer }) {
   const {
     fetchPrices, fetchEgypt, runAnalysis = runAnalysisV3, runProvider = runProviderAnalysis,
     now = () => new Date(), timeoutMs = ANALYSIS_TIMEOUT_MS,
@@ -147,7 +152,8 @@ async function attempt({ db, adminId, slotKey, schedule, deps }, attempts) {
   }
   const scenarioRows = await loadScenarioRows(db, adminId);
   const previousAnalysis = await previousAnalysisFrom(db);
-  const snapshot = buildMarketSnapshot({ now, prices, egypt, scenarioRows, locale: schedule.language, previousAnalysis });
+  const built = buildMarketSnapshot({ now, prices, egypt, scenarioRows, locale: schedule.language, previousAnalysis });
+  const snapshot = decorate ? decorate(built) : built;
   const errors = validateSnapshot(snapshot);
   if (errors.length) throw new Error(`Invalid analysis snapshot: ${errors.join('; ')}`);
 
@@ -155,10 +161,15 @@ async function attempt({ db, adminId, slotKey, schedule, deps }, attempts) {
   const timer = setTimeout(() => controller.abort(new Error(`Analysis timed out after ${Math.round(timeoutMs / 1000)} s`)), timeoutMs);
   let output;
   try {
-    output = await runAnalysis(provider, snapshot, runProvider, { signal: controller.signal });
+    output = await runAnalysis(provider, snapshot, runProvider, { signal: controller.signal, prompts: prompts ?? await loadPromptConfig(db, 'standard'), onRawAnswer });
   } finally {
     clearTimeout(timer);
   }
+  return { provider, snapshot, output };
+}
+
+async function attempt({ db, adminId, slotKey, schedule, deps }, attempts) {
+  const { provider, snapshot, output } = await produceMarketAnalysis({ db, adminId, schedule, deps });
 
   // An answer that failed validation was replaced by the built-in "insufficient evidence"
   // fallback. Storing that as a finished analysis would hide the real problem from the admin

@@ -5,6 +5,7 @@ import { createAuthRouter } from './routes/auth.mjs';
 import { createAdminUsersRouter } from './routes/adminUsers.mjs';
 import { createAdminNotificationsRouter } from './routes/adminNotifications.mjs';
 import { createAnalysisRouter } from './routes/analysis.mjs';
+import { createAdminPromptsRouter } from './routes/adminPrompts.mjs';
 import { fetchMarketPrices } from './marketPrices.mjs';
 import { fetchEgyptGoldPrices } from './isaghaPrices.mjs';
 import { createLlmProvidersRouter } from './routes/llmProviders.mjs';
@@ -53,6 +54,7 @@ export function createApp(db, { adminId, authRateLimit = { max: 20, windowMs: 15
 
   app.use('/api', requireAuth);
 
+  app.use('/api/admin/prompts', requireAdmin, createAdminPromptsRouter(db, { adminId, deps: analysisDeps }));
   app.use('/api/admin', requireAdmin, createAdminUsersRouter(db));
   app.use('/api/admin', requireAdmin, createAdminNotificationsRouter(db));
   app.use('/api/analysis', createAnalysisRouter(db, { adminId, deps: analysisDeps }));

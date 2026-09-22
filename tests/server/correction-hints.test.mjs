@@ -36,6 +36,13 @@ describe('correctionHints', () => {
     expect(hints[0]).toMatch(/previous.*(differ|not applied)/i);
   });
 
+  it('tells the model to remove fields that are not in the output example, once however many items had them', () => {
+    const hints = correctionHints(['weight change: unknown fields', 'weight change: unknown fields', 'response: unknown fields'], snapshot);
+    expect(hints).toHaveLength(1);
+    expect(hints[0]).toMatch(/only the fields (shown )?in the (output )?example/i);
+    expect(hints[0]).toContain('weight_changes');
+  });
+
   it('gives no hint for errors it does not know, and one hint per known error', () => {
     expect(correctionHints(['something else'], snapshot)).toEqual([]);
     expect(correctionHints(['DCA amount exceeds current installment limit', 'suggested_weights must be numeric percentages totaling 100', 'x'], dcaSnapshot)).toHaveLength(2);

@@ -1,6 +1,14 @@
 const KEYS = ['deesc','base','stag'];
 const ACTIONS = ['buy','hold','wait','reduce','review','insufficient_evidence'];
 const LEVELS = ['low','medium','high'];
+// The fields each part of an answer may carry. The validator rejects anything else.
+const FIELDS={
+  response:['schema_version','status','primary_decision','evidence','suggested_weights','weight_changes','reads','assumptions','missing_inputs'],
+  primary_decision:['action','horizon','confidence','headline','next_trigger','invalidation'],
+  evidence:['evidence_id','scenario_effect','strength','implication'],
+  weight_change:['scenario','from','to','evidence_ids'],
+  reads:['egp','wallet','dca','watchlist'],
+};
 const object = v => v !== null && typeof v === 'object' && !Array.isArray(v);
 const finite = v => typeof v === 'number' && Number.isFinite(v);
 export function snapshotWeights(snapshot) {
@@ -61,6 +69,21 @@ export function fallbackV3(snapshot) {
     primary_decision:{action:'insufficient_evidence',horizon:'now',confidence:'low',headline:ar?'الأدلة غير كافية لتوصية موثوقة.':'Insufficient evidence for a reliable recommendation.',next_trigger:ar?'أعد التحليل بعد تحديث البيانات.':'Reassess after refreshing data.',invalidation:ar?'توافر أدلة حديثة ومكتملة.':'Fresh, sufficient evidence becomes available.'},
     evidence:[],suggested_weights:snapshotWeights(snapshot),weight_changes:[],reads:{egp:ar?'الأسعار المعروضة مدخلات من التطبيق.':'Displayed prices are application inputs.'},assumptions:[],missing_inputs:[ar?'أدلة حديثة تم التحقق منها':'Adequate current evidence']};
 }
+// Removes fields the app does not use (a custom prompt often adds notes such as "reason" to
+// weight changes). Returns a copy; it never adds or changes a value, so anything else that is
+// wrong with the answer is still caught by validateV3.
+export function stripUnknownFields(parsed) {
+  if(!object(parsed))return parsed;
+  const keep=(o,keys)=>object(o)?Object.fromEntries(Object.entries(o).filter(([k])=>keys.includes(k))):o;
+  const list=(a,keys)=>Array.isArray(a)?a.map(item=>keep(item,keys)):a;
+  const r=keep(parsed,FIELDS.response);
+  if('primary_decision' in r)r.primary_decision=keep(r.primary_decision,FIELDS.primary_decision);
+  if('suggested_weights' in r)r.suggested_weights=keep(r.suggested_weights,KEYS);
+  if('evidence' in r)r.evidence=list(r.evidence,FIELDS.evidence);
+  if('weight_changes' in r)r.weight_changes=list(r.weight_changes,FIELDS.weight_change);
+  if('reads' in r)r.reads=keep(r.reads,FIELDS.reads);
+  return r;
+}
 export function validateV3({parsed:r,snapshot,evidenceIds=[]}) {
   if(!object(r))return {ok:false,errors:['response must be a JSON object']};
   const errors=[];const fail=m=>errors.push(m);
@@ -70,13 +93,13 @@ export function validateV3({parsed:r,snapshot,evidenceIds=[]}) {
     else if(snapshot.locale==='ar'&&!/[\u0621-\u064A]/u.test(s))fail(`${name}: Arabic prose required; keep only keys and enum codes in English`);
   };
   const only=(value,keys,name)=>{if(object(value)&&Object.keys(value).some(k=>!keys.includes(k)))fail(`${name}: unknown fields`);};
-  only(r,['schema_version','status','primary_decision','evidence','suggested_weights','weight_changes','reads','assumptions','missing_inputs'],'response');
+  only(r,FIELDS.response,'response');
   if(r.schema_version!=='3')fail('schema_version must be 3');
   if(!['material_change','no_material_change','insufficient_evidence'].includes(r.status))fail('invalid status');
   const p=r.primary_decision;
   if(!object(p))fail('primary_decision required');
   else {
-    only(p,['action','horizon','confidence','headline','next_trigger','invalidation'],'primary_decision');
+    only(p,FIELDS.primary_decision,'primary_decision');
     if(!ACTIONS.includes(p.action)||!LEVELS.includes(p.confidence)||!['now','next_event','strategic'].includes(p.horizon))fail('invalid decision enum');
     prose(p.headline,'headline',180);prose(p.next_trigger,'next_trigger');prose(p.invalidation,'invalidation');
   }
@@ -86,7 +109,7 @@ export function validateV3({parsed:r,snapshot,evidenceIds=[]}) {
   only(w,KEYS,'suggested_weights');
   if(!Array.isArray(r.evidence)||r.evidence.length>3)fail('evidence must have 0–3 items');
   else for(const e of r.evidence) {
-    only(e,['evidence_id','scenario_effect','strength','implication'],'evidence item');
+    only(e,FIELDS.evidence,'evidence item');
     if(!object(e)||!known.has(e.evidence_id))fail('unknown evidence ID');
     if(![...KEYS,'mixed','neutral'].includes(e?.scenario_effect)||!LEVELS.includes(e?.strength))fail('invalid evidence enum');
     prose(e?.implication,'implication');
@@ -95,7 +118,7 @@ export function validateV3({parsed:r,snapshot,evidenceIds=[]}) {
   if(!Array.isArray(r.weight_changes)||r.weight_changes.length>3)fail('weight_changes must have 0–3 items');
   else {
     for(const c of r.weight_changes) {
-      only(c,['scenario','from','to','evidence_ids'],'weight change');
+      only(c,FIELDS.weight_change,'weight change');
       if(!KEYS.includes(c?.scenario)||c.from!==initial[c.scenario]||c.to!==w?.[c.scenario]||c.from===c.to)fail('weight change does not match snapshot and result');
       if(!Array.isArray(c?.evidence_ids)||!c.evidence_ids.length||c.evidence_ids.some(id=>!known.has(id)))fail('weight change needs known evidence IDs');
     }
@@ -112,7 +135,7 @@ export function validateV3({parsed:r,snapshot,evidenceIds=[]}) {
   }
   if(!object(r.reads))fail('reads required');
   else {
-    only(r.reads,['egp','wallet','dca','watchlist'],'reads');
+    only(r.reads,FIELDS.reads,'reads');
     prose(r.reads.egp,'reads.egp');
     for(const k of ['wallet','dca','watchlist'])if(r.reads[k]!==undefined)prose(r.reads[k],`reads.${k}`);
     const dca=snapshot.dca;

@@ -5,6 +5,8 @@ import { resetAndMigrate } from '../helpers/test-db.mjs';
 import { ensureDefaultUser } from '../../server/ensureDefaultUser.mjs';
 import { createAnalyzeRouter } from '../../server/routes/analyze.mjs';
 import { runProviderAnalysis } from '../../server/providers/dispatch.mjs';
+import { setSetting } from '../../server/appSettings.mjs';
+import { PROMPTS_SETTING } from '../../server/analystPrompts.mjs';
 import { searchWeb } from '../../server/webSearch.mjs';
 import fixture from '../fixtures/analyst-request-v2.json';
 
@@ -446,6 +448,26 @@ describe('POST /api/analyze — per-user daily cap', () => {
         expect(res.status).toBe(200);
         expect(res.body.validation.ok).toBe(false);
         expect(await used()).toBe(0);
+      } finally {
+        vi.unstubAllEnvs();
+      }
+    });
+
+    it('sends the saved personalized prompt, and the built-in one when none is saved', async () => {
+      vi.stubEnv('ANALYST_CONTRACT_VERSION', 'v3');
+      try {
+        await insertProvider('claude');
+        runProviderAnalysis.mockResolvedValue({ text: JSON.stringify(validInsufficient), usage: { input_tokens: 10, output_tokens: 5 } });
+
+        await post();
+        expect(runProviderAnalysis.mock.calls[0][2].system).toContain("Gold Cockpit's decision analyst");
+
+        await setSetting(client, PROMPTS_SETTING, { personalized: { text: 'MY PERSONAL PROMPT', format: 'MY FORMAT in {LANG}', revision: 1 } });
+        await post();
+        expect(runProviderAnalysis.mock.calls[1][2].system.startsWith('MY PERSONAL PROMPT\n\nAPP RULES')).toBe(true);
+        expect(runProviderAnalysis.mock.calls[1][2].system).toContain('at most 180 characters');
+        expect(runProviderAnalysis.mock.calls[1][1]).toContain('MY FORMAT in English');
+        expect(runProviderAnalysis.mock.calls[0][1]).toContain('OUTPUT_SCHEMA');
       } finally {
         vi.unstubAllEnvs();
       }

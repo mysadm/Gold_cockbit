@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { buildMarketSnapshot } from '../../server/marketSnapshot.mjs';
-import { buildAnalysisPrompt } from '../../server/prompts/buildAnalysisPrompt.mjs';
+import { buildAnalysisPrompt, DEFAULT_OUTPUT_FORMAT, OUTPUT_EXAMPLE } from '../../server/prompts/buildAnalysisPrompt.mjs';
 import { validateSnapshot } from '../../shared/analystContract.mjs';
 
 const NOW = new Date('2026-09-20T10:00:00.000Z');
@@ -32,6 +32,15 @@ describe('market-only analysis scope', () => {
     expect(prompt).toMatch(/insufficient_evidence only if the EVIDENCE_PACK/);
   });
 
+  it('uses a supplied scope text, and an empty one omits the block', () => {
+    const custom = buildAnalysisPrompt(marketSnapshot(), PACK, { marketScope: 'CUSTOM SCOPE TEXT' });
+    expect(custom).toContain('CUSTOM SCOPE TEXT\nWrite EVERY prose value');
+    expect(custom).not.toContain('absent by design');
+    const none = buildAnalysisPrompt(marketSnapshot(), PACK, { marketScope: '' });
+    expect(none).not.toContain('STANDARD MARKET ANALYSIS');
+    expect(none).toContain('Write EVERY prose value');
+  });
+
   it('leaves the personalized prompt untouched when the snapshot has no market scope', () => {
     const { analysis_scope, ...personal } = marketSnapshot();
     expect(analysis_scope).toBe('market');
@@ -39,5 +48,29 @@ describe('market-only analysis scope', () => {
     expect(prompt).not.toContain('STANDARD MARKET ANALYSIS');
     expect(prompt).not.toContain('absent by design');
     expect(prompt).toContain('Omit wallet/dca/watchlist reads when absent.');
+  });
+});
+
+describe('admin-supplied output format', () => {
+  it('goes after the data with {LANG} replaced, replacing the built-in rules and schema', () => {
+    const prompt = buildAnalysisPrompt(marketSnapshot(), PACK, { marketScope: '', format: 'Reply in {LANG}. Keys: schema_version. {LANG}!' });
+    expect(prompt).toMatch(/EVIDENCE_PACK\n.*\nReply in Egyptian Arabic \(العربية المصرية\)\. Keys: schema_version\. Egyptian Arabic \(العربية المصرية\)!$/s);
+    expect(prompt).not.toContain('OUTPUT_SCHEMA');
+    expect(prompt).not.toContain('Allowed status');
+  });
+
+  it('uses English for an English snapshot', () => {
+    const en = buildAnalysisPrompt({ ...marketSnapshot(), locale: 'en' }, PACK, { format: 'Reply in {LANG}.' });
+    expect(en.endsWith('Reply in English.')).toBe(true);
+  });
+
+  it('the default output format keeps every key the validator requires, so saving it unchanged is safe', () => {
+    for (const key of Object.keys(OUTPUT_EXAMPLE)) expect(DEFAULT_OUTPUT_FORMAT).toContain(`"${key}"`);
+    expect(DEFAULT_OUTPUT_FORMAT).toContain('{LANG}');
+    expect(JSON.parse(DEFAULT_OUTPUT_FORMAT.slice(DEFAULT_OUTPUT_FORMAT.indexOf('{\n')))).toEqual(OUTPUT_EXAMPLE);
+  });
+
+  it('a blank format falls back to the built-in layout', () => {
+    expect(buildAnalysisPrompt(marketSnapshot(), PACK, { format: '  ' })).toContain('OUTPUT_SCHEMA');
   });
 });

@@ -41,3 +41,14 @@ enum codes, natural-language values in the requested locale. Beginner mode
 uses simple Egyptian Arabic or English; expert mode may use technical terms.
 Limit headline to 180 characters; other prose fields to 320 characters.
 Return no URLs and no extra fields.`;
+
+// The rules the app's validator enforces. A prompt the admin writes replaces the text above, so
+// these are appended to every saved prompt and cannot be edited away. They override the admin's text.
+export const APP_RULES = `APP RULES (always apply, and override anything above that conflicts):
+- Answer with the single JSON object of the output format and no other field. Every weight_changes item has exactly scenario, from, to and evidence_ids (no reason or note).
+- Start from the snapshot's current weights, not from a previous suggestion. suggested_weights are three whole numbers totalling 100. Every weight you change needs exactly one weight_changes entry citing supplied EV-IDs; if you cannot cite evidence for a change, keep the snapshot weight.
+- Cite only EV-IDs that appear in EVIDENCE_PACK, at most three evidence items. Never invent events, figures, dates or URLs, and never compute targets, premiums or deployment amounts yourself: the app supplies them.
+- Length limits: headline at most 180 characters; every other prose value at most 320 characters.
+- DCA: in reads.dca never write a currency amount except current_installment_limit_egp (or less), and never mention the total plan budget. Describe tranches by number or percentage. A DCA budget is not cash.
+- Confidence is low, medium or high, never a number. With inadequate evidence return insufficient_evidence, low confidence and unchanged weights.
+- Use no_material_change only when the previous analysis is recent, has the same decision, and its suggested weights equal the current snapshot weights; otherwise use material_change.`;

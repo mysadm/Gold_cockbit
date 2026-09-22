@@ -136,6 +136,97 @@ describe('compact pipeline', () => {
     });
   });
 
+  it('sends the admin-supplied system prompt, with no separate built-in scope block', async () => {
+    const market = { ...snapshot, analysis_scope: 'market' };
+    await runAnalysisV3(provider, market, runProviderAnalysis, { prompts: { system: 'CUSTOM SYSTEM' } });
+    const [, prompt, options] = runProviderAnalysis.mock.calls[0];
+    expect(options.system).toBe('CUSTOM SYSTEM');
+    expect(prompt).not.toContain('STANDARD MARKET ANALYSIS');
+  });
+  it('puts a supplied output format after the data', async () => {
+    await runAnalysisV3(provider, snapshot, runProviderAnalysis, { prompts: { system: 'CUSTOM SYSTEM', format: 'CUSTOM FORMAT in {LANG}' } });
+    const prompt = runProviderAnalysis.mock.calls[0][1];
+    expect(prompt.endsWith('CUSTOM FORMAT in English')).toBe(true);
+    expect(prompt).not.toContain('OUTPUT_SCHEMA');
+  });
+  it('hands each raw model answer to onRawAnswer, before validation', async () => {
+    runProviderAnalysis.mockResolvedValue({ text: 'not json', usage: { input_tokens: 1, output_tokens: 1 } });
+    const seen = [];
+    const out = await runAnalysisV3(provider, snapshot, runProviderAnalysis, { onRawAnswer: (t) => seen.push(t) });
+    expect(seen).toEqual(['not json', 'not json']);
+    expect(out.validation.ok).toBe(false);
+    expect(out.text).not.toContain('not json');
+  });
+  it('falls back to the built-in prompts when none are supplied', async () => {
+    await runAnalysisV3(provider, { ...snapshot, analysis_scope: 'market' }, runProviderAnalysis);
+    const [, prompt, options] = runProviderAnalysis.mock.calls[0];
+    expect(options.system).toContain("Gold Cockpit's decision analyst");
+    expect(prompt).toContain('STANDARD MARKET ANALYSIS');
+  });
+  describe('extra fields the model adds to its answer', () => {
+    const answer = (obj) => ({ text: JSON.stringify(obj), usage: { input_tokens: 10, output_tokens: 5 } });
+    const changed = {
+      ...OUTPUT_EXAMPLE,
+      suggested_weights: { deesc: 30, base: 50, stag: 20 },
+      weight_changes: [
+        { scenario: 'deesc', from: 35, to: 30, evidence_ids: ['EV-001'], reason: 'extra prose field' },
+        { scenario: 'base', from: 45, to: 50, evidence_ids: ['EV-001'], confidence: 'high' },
+      ],
+    };
+
+    it('removes unknown fields instead of rejecting an otherwise valid answer', async () => {
+      runProviderAnalysis.mockResolvedValue(answer({ ...changed, search_performed: false, reads: { ...OUTPUT_EXAMPLE.reads, extra: 'x' } }));
+
+      const out = await runAnalysisV3(provider, snapshot, runProviderAnalysis);
+
+      expect(out.validation).toEqual({ ok: true, errors: [] });
+      expect(out.result.weight_changes).toEqual([
+        { scenario: 'deesc', from: 35, to: 30, evidence_ids: ['EV-001'] },
+        { scenario: 'base', from: 45, to: 50, evidence_ids: ['EV-001'] },
+      ]);
+      expect(out.result.search_performed).toBeUndefined();
+      expect(out.result.reads.extra).toBeUndefined();
+      expect(out.metrics.fieldsStripped).toBe(true);
+      expect(JSON.parse(out.text).search_performed).toBeUndefined();
+    });
+
+    it('also drops an over-limit DCA note in the same answer', async () => {
+      const withDca = { ...changed, reads: { ...OUTPUT_EXAMPLE.reads, dca: 'Deploy 100,000 EGP now' } };
+      runProviderAnalysis.mockResolvedValue(answer(withDca));
+
+      const out = await runAnalysisV3(provider, snapshot, runProviderAnalysis);
+
+      expect(out.validation.ok).toBe(true);
+      expect(out.result.reads.dca).toBeUndefined();
+      expect(out.result.weight_changes[0]).not.toHaveProperty('reason');
+      expect(out.metrics).toMatchObject({ fieldsStripped: true, dcaReadOmitted: true });
+    });
+
+    it('leaves a clean answer alone', async () => {
+      const out = await runAnalysisV3(provider, snapshot, runProviderAnalysis);
+      expect(out.metrics.fieldsStripped).toBe(false);
+    });
+
+    it('does not rescue an answer in a different layout, where the extra fields are only part of the problem', async () => {
+      runProviderAnalysis.mockResolvedValue(answer({ as_of: 'x', evidence: [{ text: 'a' }], scenarios: {} }));
+
+      const out = await runAnalysisV3(provider, snapshot, runProviderAnalysis);
+
+      expect(out.validation.ok).toBe(false);
+      expect(out.result.status).toBe('insufficient_evidence');
+      expect(out.metrics.fieldsStripped).toBe(false);
+    });
+
+    it('does not rescue an answer whose weights are wrong even after stripping', async () => {
+      runProviderAnalysis.mockResolvedValue(answer({ ...changed, suggested_weights: { deesc: 30, base: 50, stag: 25 } }));
+
+      const out = await runAnalysisV3(provider, snapshot, runProviderAnalysis);
+
+      expect(out.validation.ok).toBe(false);
+      expect(out.metrics.fieldsStripped).toBe(false);
+    });
+  });
+
   it('retries once and sums reported usage', async () => {
     runProviderAnalysis.mockResolvedValueOnce({ text: '{}', usage: { input_tokens: 40, output_tokens: 2 } });
     const out = await runAnalysisV3(provider, snapshot, runProviderAnalysis);

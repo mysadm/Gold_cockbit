@@ -40,6 +40,7 @@ import { BottomNav } from './ui/BottomNav';
 import { UsersPanel } from './ui/UsersPanel';
 import { SchedulePanel } from './ui/SchedulePanel';
 import { AdminAlerts } from './ui/AdminAlerts';
+import { PromptSettingsCard } from './ui/PromptSettingsCard';
 import { failureMessage } from './lib/scheduleStatus';
 import type { AdminNotification } from './api/sharedAnalysis';
 import { listUsers } from './api/adminUsers';
@@ -2721,6 +2722,8 @@ function App({ user, onLogout }: { user: CurrentUser; onLogout: () => void }) {
               <SectionLabel text={t.settingsHeading.toUpperCase()} />
               <AIModelSettingsManager adapter={aiSettingsAdapter} />
               <SchedulePanel ar={ar} failureMessage={failureMessage(notifications)} />
+              <PromptSettingsCard ar={ar} kind="standard" />
+              <PromptSettingsCard ar={ar} kind="personalized" />
               <UsersPanel ar={ar} currentUserId={user.id} onPendingCount={reportPendingCount} />
             </div>
           )}

@@ -1,5 +1,5 @@
 import {collectEvidence} from './evidence.mjs';
-import {alignSnapshot,parseV3,validateV3,fallbackV3} from './analystV3.mjs';
+import {alignSnapshot,parseV3,validateV3,fallbackV3,stripUnknownFields} from './analystV3.mjs';
 import {buildAnalysisPrompt} from './prompts/buildAnalysisPrompt.mjs';
 import {GOLD_MARKET_ANALYST_SYSTEM_PROMPT} from './prompts/goldMarketAnalyst.mjs';
 import {computeConfidence} from './routes/validateAnalysis.mjs';
@@ -16,15 +16,16 @@ const DCA_OMITTED_NOTE={
   ar:'تم حذف ملاحظة خطة الشراء لأنها ذكرت مبلغًا أعلى من حد الشريحة الحالية.',
 };
 
-export async function runAnalysisV3(provider, input, runProvider, {signal,evidenceCollector=collectEvidence}={}) {
+export async function runAnalysisV3(provider, input, runProvider, {signal,evidenceCollector=collectEvidence,prompts={},onRawAnswer}={}) {
   const started=Date.now();
   const snapshot=alignSnapshot(input);
   const evidence=await evidenceCollector(provider);
   const searchMs=Date.now()-started;
-  const prompt=buildAnalysisPrompt(snapshot,evidence.evidencePack);
-  let parsed,validation,retries=0,usage=null,usageComplete=true,dcaReadOmitted=false,statusCorrected=false;
+  const system=prompts.system||GOLD_MARKET_ANALYST_SYSTEM_PROMPT;
+  const prompt=buildAnalysisPrompt(snapshot,evidence.evidencePack,prompts.system?{marketScope:'',format:prompts.format}:undefined);
+  let parsed,validation,retries=0,usage=null,usageComplete=true,dcaReadOmitted=false,statusCorrected=false,fieldsStripped=false;
   const modelStarted=Date.now();
-  const options={system:GOLD_MARKET_ANALYST_SYSTEM_PROMPT,expectJson:false,compact:true,signal};
+  const options={system,expectJson:false,compact:true,signal};
   {
     for(let attempt=0;attempt<2;attempt++) {
       const correction=attempt===0?'':`\nCORRECTION: ${validation.errors.join('; ')}. Fix only these failures using the same supplied data and schema.${correctionHints(validation.errors,snapshot).map(h=>`\n- ${h}`).join('')}`;
@@ -33,22 +34,31 @@ export async function runAnalysisV3(provider, input, runProvider, {signal,eviden
       signal?.throwIfAborted();
       if(result.usage)usage={input_tokens:(usage?.input_tokens||0)+(result.usage.input_tokens||0),output_tokens:(usage?.output_tokens||0)+(result.usage.output_tokens||0)};
       else usageComplete=false;
+      onRawAnswer?.(result.text);
       parsed=parseV3(result.text);
       validation=validateV3({parsed,snapshot,evidenceIds:evidence.evidenceIds});
       if(result.truncated)validation={ok:false,errors:[...validation.errors,'completion was truncated']};
       retries=attempt;
       if(validation.ok)break;
     }
-    // The DCA note is optional. If it is the ONLY thing wrong (it named an amount above the
-    // installment limit twice), drop just that note, say so, and keep the rest of a valid
-    // analysis instead of replacing everything with the "insufficient evidence" fallback.
-    // The over-limit amount is still never shown.
-    if(!validation.ok&&object(parsed)&&typeof parsed.reads?.dca==='string'&&validation.errors.length>0&&validation.errors.every(e=>e===DCA_LIMIT_ERROR)) {
-      const trimmed=structuredClone(parsed);
-      delete trimmed.reads.dca;
-      if(Array.isArray(trimmed.assumptions)&&trimmed.assumptions.length<3)trimmed.assumptions.push(DCA_OMITTED_NOTE[snapshot.locale==='ar'?'ar':'en']);
-      const recheck=validateV3({parsed:trimmed,snapshot,evidenceIds:evidence.evidenceIds});
-      if(recheck.ok){parsed=trimmed;validation=recheck;dcaReadOmitted=true;}
+    // Two things are harmless to repair, alone or together: fields the app does not use (a custom
+    // prompt often adds e.g. "reason" to weight changes) are removed, and the optional DCA note is
+    // dropped, with a note, if it named an amount above the installment limit (the amount is never
+    // shown). If ANY other error remains the answer is rejected as before.
+    const repairable=e=>e===DCA_LIMIT_ERROR||e.endsWith(': unknown fields');
+    if(!validation.ok&&object(parsed)&&validation.errors.length>0&&validation.errors.every(repairable)) {
+      const hasUnknown=validation.errors.some(e=>e!==DCA_LIMIT_ERROR);
+      const hasDca=validation.errors.includes(DCA_LIMIT_ERROR);
+      const fixed=stripUnknownFields(structuredClone(parsed));
+      let canFix=true;
+      if(hasDca) {
+        if(typeof fixed.reads?.dca==='string') {
+          delete fixed.reads.dca;
+          if(Array.isArray(fixed.assumptions)&&fixed.assumptions.length<3)fixed.assumptions.push(DCA_OMITTED_NOTE[snapshot.locale==='ar'?'ar':'en']);
+        } else canFix=false;
+      }
+      const recheck=canFix?validateV3({parsed:fixed,snapshot,evidenceIds:evidence.evidenceIds}):null;
+      if(recheck?.ok){parsed=fixed;validation=recheck;dcaReadOmitted=hasDca;fieldsStripped=hasUnknown;}
     }
     // "No material change" is only allowed when the previous analysis is recent, made the same
     // decision and suggested the weights that are still applied. Otherwise the analysis did find
@@ -65,7 +75,7 @@ export async function runAnalysisV3(provider, input, runProvider, {signal,eviden
     if(evidence.searchStatus==='partial'&&parsed.primary_decision.confidence==='high')parsed.primary_decision.confidence='medium';
   }
   if(!usageComplete)usage=null;
-  const metrics={contract:'3',providerType:provider.provider_type,searchMs,modelMs:Date.now()-modelStarted,totalMs:Date.now()-started,cacheHits:evidence.searchMetrics?.cacheHits??0,cacheMisses:evidence.searchMetrics?.cacheMisses??0,retries,usage,validationOk:validation.ok,validationErrors:validation.errors.slice(0,6),dcaReadOmitted,statusCorrected,inputCharacters:GOLD_MARKET_ANALYST_SYSTEM_PROMPT.length+prompt.length,outputCharacters:JSON.stringify(parsed).length};
+  const metrics={contract:'3',providerType:provider.provider_type,searchMs,modelMs:Date.now()-modelStarted,totalMs:Date.now()-started,cacheHits:evidence.searchMetrics?.cacheHits??0,cacheMisses:evidence.searchMetrics?.cacheMisses??0,retries,usage,validationOk:validation.ok,validationErrors:validation.errors.slice(0,6),dcaReadOmitted,statusCorrected,fieldsStripped,inputCharacters:system.length+prompt.length,outputCharacters:JSON.stringify(parsed).length};
   console.info('[analyst-metrics]',JSON.stringify(metrics));
   return {text:JSON.stringify(parsed),result:parsed,validation,usage,usedWebSearch:evidence.usedWebSearch,searchStatus:evidence.searchStatus,evidenceSources:evidence.evidenceSources,metrics};
 }

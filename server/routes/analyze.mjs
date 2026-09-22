@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { loadPromptConfig } from '../analystPrompts.mjs';
 import { createApiKeyAuthMiddleware } from '../auth.mjs';
 import { runProviderAnalysis } from '../providers/dispatch.mjs';
 import { repairAnalysisJson } from './repairAnalysisJson.mjs';
@@ -176,7 +177,7 @@ export function createAnalyzeRouter(db, userId, { providerOwnerId = userId } = {
         const disconnect=()=>{if(!res.writableEnded)controller.abort();};
         res.on('close',disconnect);
         let output;
-        try {output=await runAnalysisV3(provider,snapshot,runProviderAnalysis,{signal:controller.signal});}
+        try {output=await runAnalysisV3(provider,snapshot,runProviderAnalysis,{signal:controller.signal,prompts:await loadPromptConfig(db,'personalized')});}
         finally {clearTimeout(timeout);res.off('close',disconnect);}
         if (cap.capped || isShared) {
           const cost = isShared ? estimateSharedCostUsd(output.usage) : 0;
