@@ -1,0 +1,27 @@
+# Dev override for compose project "gold-cockpit-dev" (separate from the running
+# "gold-cockpit" prod project — see GOLD_COCKPIT_SPEED_PLAN.md Environment section).
+# Usage: docker compose -p gold-cockpit-dev -f docker-compose.yml -f docker-compose.dev.yml --env-file .env.dev up -d
+#
+# No `container_name` is set on any service in the base docker-compose.yml, so
+# nothing to override there — the -p project name alone keeps container and
+# volume names ("gold-cockpit-dev_*") from colliding with the "gold-cockpit" project.
+services:
+  db:
+    environment:
+      POSTGRES_DB: gold_cockpit_dev
+    ports:
+      - "127.0.0.1:5433:5432"
+    volumes:
+      - db_data_dev:/var/lib/postgresql/data
+
+  app:
+    environment:
+      DATABASE_URL: postgres://gold_cockpit:${POSTGRES_PASSWORD}@db:5432/gold_cockpit_dev
+      DEV_PORT: "3677"
+      SERVER_PORT: "8887"
+    ports:
+      - "3677:3677"
+      - "8887:8887"
+
+volumes:
+  db_data_dev:
