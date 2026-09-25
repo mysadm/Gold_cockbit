@@ -5,7 +5,7 @@ Place this file at the repo root. Work ONE phase per agent session.
 ## Environment (VPS)
 
 - Development runs on the VPS (Ubuntu, Docker Compose), in a tmux session, as the non-root user `dev`.
-- Dev working copy: `~/work/gold-cockpit-dev`, branch `feature/evidence-pack`. The running test instance (`~/apps/gold-cockpit/gold-cockpit`, ports 3577/8787) must NOT be touched until Phase 8.
+- Dev working copy: `~/work/gold-cockpit-dev`, branch `feature/evidence-pack`. No Gold Cockpit instance is currently running on the host (only the `stack` compose project: Ollama, Open WebUI; plus Portainer). Never modify `/opt/stack`.
 - Dev stack: compose project `gold-cockpit-dev`, frontend 3677, API 8887, Postgres on 127.0.0.1:5433, separate volume and database. Never point dev code at the production database.
 - Host RAM is shared with Ollama, a Playwright scraper and other apps. Keep builds and test runs light; do not start extra containers without need.
 - Ollama is reachable at 127.0.0.1:11434 from the host.
@@ -42,9 +42,11 @@ Find and record under NOTES (paths only, no code):
 Then create the dev stack (the only write in this phase):
 - `docker-compose.dev.yml` override + `.env.dev` giving the ports, DB port, volume and database from the Environment section. Remove or override any fixed `container_name` that would collide with the running instance.
 - Start it with `docker compose -p gold-cockpit-dev -f docker-compose.yml -f docker-compose.dev.yml --env-file .env.dev up -d` and confirm the API answers on 8887.
+- `.env.dev` needs real secrets (LLM API keys, DB credentials). List the required variable names in NOTES and stop; the human fills the values. Never commit `.env.dev`.
+- Baseline: on the unmodified code, run 5 analyses per tier and record p50/p95 latency and output token counts in NOTES. Phase 7 compares against this.
 - Add `.env.dev` to `.gitignore` if it holds secrets.
 
-Done when: NOTES lists all six items and the dev stack runs beside the test instance.
+Done when: NOTES lists all six items, the dev stack runs, and baseline numbers are recorded.
 
 ## Phase 1 — Output schema + validation
 
@@ -119,15 +121,15 @@ Done when: a second identical request returns in <200 ms with no LLM call.
 
 Done when: before/after numbers recorded.
 
-## Phase 8 — Rollout to the test instance (human-run; agent only prepares)
+## Phase 8 — Deploy the test instance (human-run; agent only prepares)
 
 Agent writes `ROLLOUT.md` with the exact commands for:
-1. `pg_dump` backup of the production database to a dated file.
-2. Merging `feature/evidence-pack` into main (done by the human).
-3. Pull, apply migrations, rebuild and restart the production stack.
-4. Enabling the scheduler, then triggering one manual pack build.
-5. Smoke checks: latest pack exists with status ok; one analysis per tier passes the validator.
-6. Rollback: restore the dump and redeploy the previous commit.
+1. Merging `feature/evidence-pack` into main (done by the human).
+2. Deploying the test instance from main as compose project `gold-cockpit` (separate from the dev project, own volume and `.env`), running migrations.
+3. Enabling the scheduler, then triggering one manual pack build.
+4. Smoke checks: latest pack exists with status ok; one analysis per tier passes the validator.
+5. Backup: a daily `pg_dump` of the test database to a dated file, and the restore command.
+6. Rollback: redeploy the previous commit and restore the latest dump.
 
 Done when: ROLLOUT.md exists and was reviewed by the human.
 
