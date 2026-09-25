@@ -5,8 +5,12 @@ Place this file at the repo root. Work ONE phase per agent session.
 ## Environment (VPS)
 
 - Development runs on the VPS (Ubuntu, Docker Compose), in a tmux session, as the non-root user `dev`.
-- Dev working copy: `~/work/gold-cockpit-dev`, branch `feature/evidence-pack`. No Gold Cockpit instance is currently running on the host (only the `stack` compose project: Ollama, Open WebUI; plus Portainer). Never modify `/opt/stack`.
-- Dev stack: compose project `gold-cockpit-dev`, frontend 3677, API 8887, Postgres on 127.0.0.1:5433, separate volume and database. Never point dev code at the production database.
+- Dev working copy: `~/work/gold-cockpit-dev`, branch `feature/evidence-pack`.
+- A LIVE Gold Cockpit instance runs on the host as root, outside Docker: `/root/apps/Gold_cockbit` (Vite frontend + `node server/index.mjs`). It uses the native PostgreSQL 16 service on 127.0.0.1:5433, database `gold_cockpit_dev`. Never touch `/root/apps`, its processes, or database `gold_cockpit_dev`.
+- Dev database: `gold_cockpit_speed` on the same native instance (5433), role `gc_speed`, restored from a copy of the live data. Credentials are in `.env.dev`; never print them. No Dockerized Postgres for dev.
+- Before choosing dev ports, check the live instance's ports (`ss -tln`) and avoid them.
+- Also never modify `/opt/stack` (Ollama, Open WebUI) or Portainer.
+- Dev runtime: API runs directly on the host (Node) against `gold_cockpit_speed`; the Docker app image is blocked (see NOTES) and must be fixed before Phase 8.
 - Host RAM is shared with Ollama, a Playwright scraper and other apps. Keep builds and test runs light; do not start extra containers without need.
 - Ollama is reachable at 127.0.0.1:11434 from the host.
 - Stack: Node.js. Use libraries already in `package.json` first. A new dependency (e.g. JSON-schema validator such as Ajv, RSS parser, HTML sanitizer, cron scheduler) is added only after it is listed with its purpose in NOTES. If no test runner exists, use Node's built-in `node:test`.
@@ -198,9 +202,4 @@ Check current provider docs for: native JSON-schema/structured-output support an
 
 ## NOTES
 
-**Phase 0 — recon.** Prompt/LLM call sites: `server/standardAnalysis.mjs` (standard tier, scheduled) and `server/routes/analyze.mjs` (personalized tier, on-demand), both through `server/runAnalysisV3.mjs`. Adapter: `server/providers/dispatch.mjs` (+ `claude.mjs`, `openaiCompatible.mjs`); per-provider keys live in the `llm_providers` DB table, not env, except the shared tier (`SHARED_AI_API_KEY`). DB/migrations: raw `pg` Client (`db/connection.mjs`), no ORM; plain SQL files in `migrations/` run by `db/migrate-runner.mjs` (`npm run migrate`). Scheduler: in-process 60s tick, `server/analysisScheduler.mjs` (not n8n/cron — `n8n/` is only an unrelated software-review workflow). DATA_SNAPSHOT: `server/marketSnapshot.mjs` (standard) / `src/lib/analysisSnapshot.ts` mirrored client-side (personalized), aligned via `shared/analystContract.mjs`. Tests: vitest, `npm test` = `vitest run`. Live evidence collection to remove in Phase 6: `server/evidence.mjs`. Node v24.21.0, npm 11.19.0, ESM (`"type":"module"`).
-
-**Phase 0 — dev stack.** Added `docker-compose.dev.yml` (ports 3677/8887, Postgres 5433, db name `gold_cockpit_dev`, volume `db_data_dev`; no `container_name` in the base file to override) and a blank `.env.dev` (gitignored). Required `.env.dev` vars for the human to fill: `POSTGRES_PASSWORD` (dev-only, any value), `SHARED_AI_API_KEY`, `SERPAPI_API_KEY`.
-
-**Phase 0 — BLOCKED before start/baseline.** `docker compose ... build` fails: `resolve : lstat /home/dev/work/gold-cockpit: no such file or directory`. Root cause: the base `docker-compose.yml`/`Dockerfile` hardcode a sibling checkout literally named `gold-cockpit` plus a sibling repo `AI_settings_card` one level up (see Dockerfile header comment) for the `file:../AI_settings_card/...` dependency; this checkout is `gold-cockpit-dev` and no `AI_settings_card` exists anywhere on this host. `npm install` itself does succeed (ai-settings-ui resolves to a dangling symlink); server code never imports it, only `src/App.tsx`/`src/lib/aiSettingsAdapter.ts` (frontend) do, so the API can run without it.
-QUESTION: how to get a dev app process given this? (1) provide `AI_settings_card` at `~/work/AI_settings_card` and extend `docker-compose.dev.yml` with a `build.dockerfile`/context override for the `-dev` folder name, (2) skip the app Docker image for dev — run `node db/migrate.mjs` + `node server/index.mjs` on the host (env vars pointed at the dockerized `db` service on 127.0.0.1:5433) — frontend not required for the API or baseline, (3) other. Stopped here per Agent rule 6; stack not started, no baseline recorded, Phase 0 not ticked.
+(Agent writes paths, questions and measurements here. Max 3 lines per phase.)

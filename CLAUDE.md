@@ -6,5 +6,6 @@ Active work: `GOLD_COCKPIT_SPEED_PLAN.md`. Read its rules, Environment and PROGR
 
 - Work only in `~/work/gold-cockpit-dev` on branch `feature/evidence-pack`.
 - Never modify `/opt/stack` or other projects' containers.
+- A live instance runs from `/root/apps/Gold_cockbit` on database `gold_cockpit_dev` (port 5433). Never touch either. Dev uses database `gold_cockpit_speed` only.
 - One phase per session; commit, then stop. Never push or merge.
 - Minimal diffs; do not re-print existing code.
