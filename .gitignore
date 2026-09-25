@@ -2,6 +2,7 @@ node_modules/
 dist/
 .env
 .env.dev
+.dev-api.pid
 *.tsbuildinfo
 vite.config.js
 vite.config.d.ts

@@ -215,4 +215,17 @@ describe('startAnalysisScheduler', () => {
     stop();
     spy.mockRestore();
   });
+
+  it('never starts the timer when DISABLE_SCHEDULER is set, regardless of the stored schedule', () => {
+    const spy = vi.spyOn(globalThis, 'setInterval');
+    process.env.DISABLE_SCHEDULER = '1';
+    try {
+      const stop = startAnalysisScheduler({ db: { query: vi.fn() }, adminId: admin.id, deps: makeDeps(), intervalMs: 1000 });
+      expect(spy).not.toHaveBeenCalled();
+      expect(() => stop()).not.toThrow();
+    } finally {
+      delete process.env.DISABLE_SCHEDULER;
+      spy.mockRestore();
+    }
+  });
 });

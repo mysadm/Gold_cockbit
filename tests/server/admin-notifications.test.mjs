@@ -69,4 +69,14 @@ describe('admin notifications', () => {
     await raiseNotification(client, { kind: 'b', message: 'B' });
     expect((await listOpen(client)).map((n) => n.kind)).toEqual(['b', 'a']);
   });
+
+  it('raiseNotification is a no-op when DISABLE_NOTIFICATIONS is set', async () => {
+    process.env.DISABLE_NOTIFICATIONS = '1';
+    try {
+      await raiseNotification(client, { kind: 'a', message: 'A' });
+    } finally {
+      delete process.env.DISABLE_NOTIFICATIONS;
+    }
+    expect(await total()).toBe(0);
+  });
 });
