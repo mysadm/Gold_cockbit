@@ -153,6 +153,37 @@ describe('analyst output v4 validator', () => {
         o.dca_read.text = 'Deploy 100,000 EGP into this tranche now.';
         expect(validateAnalystOutput(o, { evidenceIds: [EV1, EV2], tier: 'personalized' }).ok).toBe(true);
       });
+
+      // A limit of 5000 makes each case's pass/fail unambiguous: 10000 (Arabic-Indic + separator,
+      // and "10k") is clearly over; 4000 ("ج.م") is clearly under. Exercises the same currency/
+      // multiplier formats tests/server/extract-egp-amounts.test.mjs checks in isolation, but here
+      // through the real validator path with a real cap, not just the raw extraction function.
+      describe('at a 5000 EGP limit, across currency/multiplier formats', () => {
+        const rejects = (text) => {
+          const o = validPersonalized();
+          o.dca_read.text = text;
+          const result = validateAnalystOutput(o, { evidenceIds: [EV1, EV2], tier: 'personalized', dcaLimitEgp: 5000 });
+          expect(result.ok).toBe(false);
+          expect(result.errors).toContain('dca_read: amount exceeds current installment limit');
+        };
+        const accepts = (text) => {
+          const o = validPersonalized();
+          o.dca_read.text = text;
+          expect(validateAnalystOutput(o, { evidenceIds: [EV1, EV2], tier: 'personalized', dcaLimitEgp: 5000 }).ok).toBe(true);
+        };
+
+        it('rejects Arabic-Indic "١٠٬٠٠٠ جنيه" (10,000 > 5000)', () => {
+          rejects('استثمر ١٠٬٠٠٠ جنيه الآن.');
+        });
+
+        it('rejects "10k LE" (10,000 > 5000)', () => {
+          rejects('Deploy 10k LE into this tranche now.');
+        });
+
+        it('accepts "4,000 ج.م" (4,000 <= 5000)', () => {
+          accepts('Deploy 4,000 ج.م into this tranche now.');
+        });
+      });
     });
   });
 });
