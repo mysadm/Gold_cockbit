@@ -124,6 +124,36 @@ describe('analyst output v4 validator', () => {
     it('does not require dca_read on the standard tier', () => {
       expect(check(valid(), [EV1, EV2], 'standard').ok).toBe(true);
     });
+
+    describe('DCA installment-limit safety check (restores v3\'s dropped check)', () => {
+      it('rejects an EGP amount in dca_read.text above the current installment limit', () => {
+        const o = validPersonalized();
+        o.dca_read.text = 'Deploy 100,000 EGP into this tranche now.';
+        const result = validateAnalystOutput(o, { evidenceIds: [EV1, EV2], tier: 'personalized', dcaLimitEgp: 40000 });
+        expect(result.ok).toBe(false);
+        expect(result.errors).toContain('dca_read: amount exceeds current installment limit');
+      });
+
+      it('accepts an EGP amount at or below the limit', () => {
+        const o = validPersonalized();
+        o.dca_read.text = 'Deploy up to 40000 EGP into this tranche now.';
+        expect(validateAnalystOutput(o, { evidenceIds: [EV1, EV2], tier: 'personalized', dcaLimitEgp: 40000 }).ok).toBe(true);
+      });
+
+      it('reads Arabic-Indic digits and جنيه the same way', () => {
+        const o = validPersonalized();
+        o.dca_read.text = 'استثمر ١٠٠٬٠٠٠ جنيه الآن.';
+        const result = validateAnalystOutput(o, { evidenceIds: [EV1, EV2], tier: 'personalized', dcaLimitEgp: 40000 });
+        expect(result.ok).toBe(false);
+        expect(result.errors).toContain('dca_read: amount exceeds current installment limit');
+      });
+
+      it('does not check the amount when no limit is supplied (e.g. no active DCA plan)', () => {
+        const o = validPersonalized();
+        o.dca_read.text = 'Deploy 100,000 EGP into this tranche now.';
+        expect(validateAnalystOutput(o, { evidenceIds: [EV1, EV2], tier: 'personalized' }).ok).toBe(true);
+      });
+    });
   });
 });
 

@@ -38,7 +38,12 @@ export async function runAnalysisV4(provider, input, runProvider, { signal, evid
   const rawEvidence = await evidenceCollector(provider);
   const searchMs = Date.now() - started;
   const evidence = remapEvidenceIds(rawEvidence, evidenceBuiltAt);
-  const evidenceAgeHours = Math.max(0, (Date.now() - evidenceBuiltAt.getTime()) / 3600000);
+  // A query that timed out and fell back to a stale cached result (server/webSearch.mjs) means
+  // the evidence is really as old as that fallback's original fetch, not "now" — surfaced so
+  // PROMPT_V2's "if evidence_age_hours is high, flag stale evidence" has real data to act on.
+  const staleFallbackAt = rawEvidence.searchMetrics?.staleFallbackAt;
+  const effectiveEvidenceBuiltAt = Number.isFinite(staleFallbackAt) ? new Date(staleFallbackAt) : evidenceBuiltAt;
+  const evidenceAgeHours = Math.max(0, (Date.now() - effectiveEvidenceBuiltAt.getTime()) / 3600000);
 
   const precomputed = {
     prior_state_eligible: computePriorStateEligible({
@@ -46,7 +51,7 @@ export async function runAnalysisV4(provider, input, runProvider, { signal, evid
       currentWeights: snapshotWeights(snapshot),
       generatedAt: snapshot.generated_at,
     }),
-    evidence_built_at: evidenceBuiltAt.toISOString(),
+    evidence_built_at: effectiveEvidenceBuiltAt.toISOString(),
     evidence_age_hours: Math.round(evidenceAgeHours * 100) / 100,
     // Phases 3-4 assign a real evidence_packs.pack_id; there is no persisted pack yet.
     evidence_pack_id: null,
@@ -58,6 +63,7 @@ export async function runAnalysisV4(provider, input, runProvider, { signal, evid
   const modelStarted = Date.now();
   const outcome = await runValidatedAnalysis({
     provider, prompt, runProvider, tier, scenarioKeys, evidenceIds: evidence.evidenceIds, onRawAnswer,
+    dcaLimitEgp: snapshot.dca?.current_installment_limit_egp,
     options: { system: PROMPT_V2, expectJson: false, compact: 'v4', signal },
   });
   const modelMs = Date.now() - modelStarted;
@@ -71,8 +77,12 @@ export async function runAnalysisV4(provider, input, runProvider, { signal, evid
     // otherMs covers precompute/prompt-assembly/id-remap between the two measured phases — near
     // zero in this synchronous pipeline, kept explicit rather than assumed.
     searchMs, modelMs, otherMs: totalMs - searchMs - modelMs, totalMs, retries: outcome.retries,
+    staleFallbackUsed: Number.isFinite(staleFallbackAt),
     // Per attempt, not summed across retries — see runValidatedAnalysis.
-    attempts: outcome.attempts.map((a) => ({ outputTokens: a.usage?.output_tokens ?? null, inputTokens: a.usage?.input_tokens ?? null, truncated: a.truncated, errors: a.errors.slice(0, 6) })),
+    attempts: outcome.attempts.map((a) => ({
+      outputTokens: a.usage?.output_tokens ?? null, inputTokens: a.usage?.input_tokens ?? null, truncated: a.truncated,
+      errors: a.errors.slice(0, 6), repaired: a.repaired, repairedFields: a.repairedFields,
+    })),
     validationOk: validation.ok, validationErrors: validation.errors.slice(0, 6),
   };
   console.info('[analyst-v4-metrics]', JSON.stringify(metrics));

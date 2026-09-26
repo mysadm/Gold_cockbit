@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
+import { extractEgpAmounts } from './analystContract.mjs';
 
 // Hand-rolled to match the existing analystContract.mjs style (no schema-validator
 // dependency in package.json). The .schema.json files remain the source of truth for
@@ -20,6 +21,15 @@ export const EV_ID_PATTERN = /^EV-\d{8}-\d{4}-\d{2}$/;
 // reads/assumptions/missing_inputs), so these are a conservative ceiling, tunable down in
 // Phase 7 once the real V4 prompt is live.
 export const MAX_TOKENS = { standard: 1400, personalized: 2550 };
+// Single source of truth for each object's allowed keys — used by both the validator's
+// unknown-field checks below and server/providers/formatRepair.mjs's unknown-field stripping,
+// so the two can never silently drift apart.
+export const FIELDS = {
+  response: ['status', 'confidence', 'headline', 'data_flags', 'evidence', 'scenario_weights', 'weight_changes', 'action', 'next_trigger', 'invalidation'],
+  evidence_item: ['ev_id', 'implication'],
+  weight_change: ['scenario', 'ev_ids', 'reason'],
+  dca_read: ['text', 'ev_ids'],
+};
 
 const schemaPath = (name) => fileURLToPath(new URL(`../schemas/${name}`, import.meta.url));
 export const BASE_SCHEMA = JSON.parse(readFileSync(schemaPath('analyst_output.schema.json'), 'utf8'));
@@ -34,8 +44,7 @@ function validateBase(output, { scenarioKeys = SCENARIO_KEYS, evidenceIds = [], 
   const fail = (m) => errors.push(m);
   if (!object(output)) return ['output must be a JSON object'];
 
-  const allowed = ['status', 'confidence', 'headline', 'data_flags', 'evidence', 'scenario_weights', 'weight_changes', 'action', 'next_trigger', 'invalidation'];
-  if (tier === 'personalized') allowed.push('dca_read');
+  const allowed = tier === 'personalized' ? [...FIELDS.response, 'dca_read'] : FIELDS.response;
   const extra = Object.keys(output).filter((k) => !allowed.includes(k));
   if (extra.length) fail(`unknown fields: ${extra.join(', ')}`);
 
@@ -52,7 +61,7 @@ function validateBase(output, { scenarioKeys = SCENARIO_KEYS, evidenceIds = [], 
     fail('evidence must have 0–3 items');
   } else {
     for (const e of output.evidence) {
-      if (!object(e) || Object.keys(e).some((k) => !['ev_id', 'implication'].includes(k))) fail('evidence item: unknown fields');
+      if (!object(e) || Object.keys(e).some((k) => !FIELDS.evidence_item.includes(k))) fail('evidence item: unknown fields');
       if (!EV_ID_PATTERN.test(e?.ev_id) || !known.has(e?.ev_id)) fail(`evidence item: unknown EV-ID ${e?.ev_id ?? ''}`.trim());
       if (!str(e?.implication, 200)) fail('evidence item: implication must be a nonempty string up to 200 characters');
     }
@@ -74,7 +83,7 @@ function validateBase(output, { scenarioKeys = SCENARIO_KEYS, evidenceIds = [], 
     fail(`weight_changes must have 0–${scenarioKeys.length} items`);
   } else {
     for (const c of output.weight_changes) {
-      if (!object(c) || Object.keys(c).some((k) => !['scenario', 'ev_ids', 'reason'].includes(k))) fail('weight change: unknown fields');
+      if (!object(c) || Object.keys(c).some((k) => !FIELDS.weight_change.includes(k))) fail('weight change: unknown fields');
       if (!scenarioKeys.includes(c?.scenario)) fail('weight change: invalid scenario key');
       if (!Array.isArray(c?.ev_ids) || !c.ev_ids.length || !c.ev_ids.every((id) => known.has(id))) fail('weight change: needs at least one known EV-ID');
       if (!str(c?.reason, 200)) fail('weight change: reason must be a nonempty string up to 200 characters');
@@ -92,26 +101,34 @@ function validateBase(output, { scenarioKeys = SCENARIO_KEYS, evidenceIds = [], 
 // reads.dca prose, rendered client-side as a ClaimField {text, evidence_ids}) — same shape,
 // just renamed to V4's ev_ids convention. See GOLD_COCKPIT_SPEED_PLAN.md NOTES "Phase 1 fix
 // — DCA verdict shape" for the src/App.tsx / analyst.ts call sites this was checked against.
-function validateDcaRead(output, { evidenceIds = [] } = {}) {
+function validateDcaRead(output, { evidenceIds = [], dcaLimitEgp } = {}) {
   const errors = [];
   const d = output.dca_read;
   const known = new Set(evidenceIds);
   if (!object(d)) {
     errors.push('dca_read required on the personalized tier');
-  } else if (Object.keys(d).some((k) => !['text', 'ev_ids'].includes(k))) {
+  } else if (Object.keys(d).some((k) => !FIELDS.dca_read.includes(k))) {
     errors.push('dca_read: unknown fields');
   } else {
     if (!str(d.text, 200)) errors.push('dca_read: text must be a nonempty string up to 200 characters');
     if (!Array.isArray(d.ev_ids) || d.ev_ids.length > 3 || !d.ev_ids.every((id) => known.has(id))) {
       errors.push('dca_read: ev_ids must be 0–3 known EV-IDs');
     }
+    // Restores the v3 safety check dropped from v4's schema (shared/analystContract.mjs's
+    // validateV3 has the identical check on reads.dca): dca_read.text is free prose the user
+    // reads directly, so any EGP amount it states is checked against the real cap regardless of
+    // what the model may or may not have declared elsewhere. Semantic (a wrong number needs a
+    // real correction, not a text edit) — never auto-repaired, see formatRepair.mjs.
+    if (Number.isFinite(dcaLimitEgp) && typeof d.text === 'string' && extractEgpAmounts(d.text).some((n) => n > dcaLimitEgp)) {
+      errors.push('dca_read: amount exceeds current installment limit');
+    }
   }
   return errors;
 }
 
-export function validateAnalystOutput(output, { tier = 'standard', scenarioKeys, evidenceIds } = {}) {
+export function validateAnalystOutput(output, { tier = 'standard', scenarioKeys, evidenceIds, dcaLimitEgp } = {}) {
   const errors = validateBase(output, { scenarioKeys, evidenceIds, tier });
-  if (tier === 'personalized' && object(output)) errors.push(...validateDcaRead(output, { evidenceIds }));
+  if (tier === 'personalized' && object(output)) errors.push(...validateDcaRead(output, { evidenceIds, dcaLimitEgp }));
   return { ok: errors.length === 0, errors };
 }
 

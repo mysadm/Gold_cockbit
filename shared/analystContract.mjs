@@ -52,6 +52,14 @@ function installmentLimit(dca) {
   const pct=dca.tranche_split_pct?.[dca.active_tranche_index];
   return Number.isFinite(pct)?Math.round(dca.total_investment_egp*pct)/100:0;
 }
+// Every EGP amount mentioned in free-text DCA prose, normalizing Arabic-Indic digits and
+// thousands separators first. Shared by v3's reads.dca check above and v4's dca_read check
+// (shared/analystOutputV4.mjs) — kept in one place since a missed amount here is a real safety
+// gap (a user could be told to invest more than their current installment allows).
+export function extractEgpAmounts(text) {
+  const normalized=String(text??'').replace(/[٠-٩]/g,c=>'٠١٢٣٤٥٦٧٨٩'.indexOf(c)).replace(/[٬,]/g,'');
+  return [...normalized.matchAll(/(\d+(?:\.\d+)?)\s*(?:EGP|جنيه)|(?:EGP|جنيه)\s*(\d+(?:\.\d+)?)/gi)].map(m=>Number(m[1]??m[2]));
+}
 export function parseV3(text) {
   if(typeof text!=='string')return null;
   const a=text.indexOf('{'),b=text.lastIndexOf('}');
@@ -141,8 +149,7 @@ export function validateV3({parsed:r,snapshot,evidenceIds=[]}) {
     const dca=snapshot.dca;
     if(dca&&typeof r.reads.dca==='string') {
       const cap=installmentLimit(dca);
-      const normalized=r.reads.dca.replace(/[٠-٩]/g,c=>'٠١٢٣٤٥٦٧٨٩'.indexOf(c)).replace(/[٬,]/g,'');
-      const amounts=[...normalized.matchAll(/(\d+(?:\.\d+)?)\s*(?:EGP|جنيه)|(?:EGP|جنيه)\s*(\d+(?:\.\d+)?)/gi)].map(m=>Number(m[1]??m[2]));
+      const amounts=extractEgpAmounts(r.reads.dca);
       if(amounts.some(n=>n>cap))fail('DCA amount exceeds current installment limit');
     }
   }

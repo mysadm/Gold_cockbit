@@ -148,8 +148,8 @@ describe('runAnalysisV3 delegates to the v4 pipeline under ANALYST_V4=1', () => 
     expect(out.retries).toBe(1);
     expect(out.usage).toEqual({ input_tokens: 45, output_tokens: 12 });
     expect(out.metrics.attempts).toEqual([
-      { outputTokens: 10, inputTokens: 40, truncated: false, errors: ['scenario_weights must sum to 100'] },
-      { outputTokens: 12, inputTokens: 45, truncated: false, errors: [] },
+      { outputTokens: 10, inputTokens: 40, truncated: false, errors: ['scenario_weights must sum to 100'], repaired: false, repairedFields: [] },
+      { outputTokens: 12, inputTokens: 45, truncated: false, errors: [], repaired: false, repairedFields: [] },
     ]);
     expect(runProvider).toHaveBeenCalledTimes(2);
   });
