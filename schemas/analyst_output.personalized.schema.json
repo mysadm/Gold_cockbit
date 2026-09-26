@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "analyst_output.personalized.schema.json",
+  "title": "Gold Cockpit analyst output (personalized tier, adds DCA verdict)",
+  "type": "object",
+  "allOf": [{ "$ref": "analyst_output.schema.json" }],
+  "required": ["dca"],
+  "properties": {
+    "dca": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "note"],
+      "properties": {
+        "status": { "type": "string", "enum": ["proceed", "pause", "not_applicable"] },
+        "note": { "type": "string", "minLength": 1, "maxLength": 200 }
+      }
+    }
+  },
+  "unevaluatedProperties": false
+}

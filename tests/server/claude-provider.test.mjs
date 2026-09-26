@@ -63,4 +63,26 @@ describe('callClaude', () => {
     expect(result.text).toBe('OK');
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
+
+  it('forces a tool call and reads the answer from tool_use.input when jsonSchema is given', async () => {
+    const schema = { type: 'object', properties: { status: { type: 'string' } } };
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      text: async () => JSON.stringify({ content: [{ type: 'tool_use', name: 'analyst_output', input: { status: 'material_change' } }] }),
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const result = await callClaude({
+      apiKey: 'sk-ant-test',
+      model: 'claude-sonnet-4-6',
+      prompt: 'analyze',
+      jsonSchema: { name: 'analyst_output', schema },
+    });
+
+    expect(result.text).toBe('{"status":"material_change"}');
+    const body = JSON.parse(fetchMock.mock.calls[0][1].body);
+    expect(body.tools).toEqual([{ name: 'analyst_output', description: expect.any(String), input_schema: schema }]);
+    expect(body.tool_choice).toEqual({ type: 'tool', name: 'analyst_output' });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
 });

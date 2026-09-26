@@ -177,4 +177,25 @@ describe('callOpenAICompatible', () => {
       callOpenAICompatible({ baseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai/', apiKey: 'bad', model: 'gemini-2.0-flash', prompt: 'x' })
     ).rejects.toThrow('HTTP 404');
   });
+
+  it('sends a non-strict response_format json_schema when jsonSchema is given', async () => {
+    const schema = { type: 'object', properties: { status: { type: 'string' } } };
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ choices: [{ message: { content: '{"status":"material_change"}' } }] }),
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const result = await callOpenAICompatible({
+      baseUrl: 'https://api.openai.com/v1',
+      apiKey: 'sk-test',
+      model: 'gpt-4o',
+      prompt: 'analyze',
+      jsonSchema: { name: 'analyst_output', schema },
+    });
+
+    expect(result.text).toBe('{"status":"material_change"}');
+    const body = JSON.parse(fetchMock.mock.calls[0][1].body);
+    expect(body.response_format).toEqual({ type: 'json_schema', json_schema: { name: 'analyst_output', schema, strict: false } });
+  });
 });

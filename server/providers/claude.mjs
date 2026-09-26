@@ -12,7 +12,7 @@ function extractText(content) {
     .trim();
 }
 
-async function callAnthropic({ apiKey, model, messages, temperature, maxTokens, system, compact, signal }) {
+async function callAnthropic({ apiKey, model, messages, temperature, maxTokens, system, compact, signal, jsonSchema }) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
   try {
@@ -20,6 +20,11 @@ async function callAnthropic({ apiKey, model, messages, temperature, maxTokens, 
     const body = { model, max_tokens: completionBudget(maxTokens, compact), messages };
     if (typeof temperature === 'number') body.temperature = temperature;
     if (system) body.system = system;
+    // Claude has no response_format field; native structured output is a forced tool call.
+    if (jsonSchema) {
+      body.tools = [{ name: jsonSchema.name, description: 'Return the analysis output matching the schema.', input_schema: jsonSchema.schema }];
+      body.tool_choice = { type: 'tool', name: jsonSchema.name };
+    }
 
     const response = await fetch(ANTHROPIC_ENDPOINT, {
       method: 'POST',
@@ -49,7 +54,7 @@ async function callAnthropic({ apiKey, model, messages, temperature, maxTokens, 
   }
 }
 
-export async function callClaude({ apiKey, model, prompt, temperature, maxTokens, expectJson = true, system, compact = false, signal }) {
+export async function callClaude({ apiKey, model, prompt, temperature, maxTokens, expectJson = true, system, compact = false, signal, jsonSchema }) {
   signal?.throwIfAborted();
   let messages = [{ role: 'user', content: prompt }];
   const usage = { input_tokens: 0, output_tokens: 0 };
@@ -61,8 +66,11 @@ export async function callClaude({ apiKey, model, prompt, temperature, maxTokens
     usage.output_tokens += measured.output_tokens;
   };
 
-  let data = await callAnthropic({ apiKey, model, messages, temperature, maxTokens, system, compact, signal });
+  let data = await callAnthropic({ apiKey, model, messages, temperature, maxTokens, system, compact, signal, jsonSchema });
   addUsage(data);
+
+  const toolUse = jsonSchema && Array.isArray(data?.content) ? data.content.find((b) => b.type === 'tool_use' && b.name === jsonSchema.name) : undefined;
+  if (toolUse) return { text: JSON.stringify(toolUse.input), usedWebSearch: false, usage: compact && !usageComplete ? null : usage };
 
   // A model can front-load commentary before its JSON regardless of whether
   // tools are involved, so this retry is independent of web search and

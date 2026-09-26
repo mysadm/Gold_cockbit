@@ -13,7 +13,7 @@ export const DEFAULT_BASE_URLS = {
 // provider row — the row exists only to hold the "shared" activation state.
 const SHARED_TIER_MODEL = 'claude-haiku-4-5';
 
-export async function runProviderAnalysis(providerRow, prompt, { expectJson = true, system = GOLD_MARKET_ANALYST_SYSTEM_PROMPT, compact = false, signal } = {}) {
+export async function runProviderAnalysis(providerRow, prompt, { expectJson = true, system = GOLD_MARKET_ANALYST_SYSTEM_PROMPT, compact = false, signal, jsonSchema } = {}) {
   const temperature = !providerRow.settings?.extra?.omitTemperature && typeof providerRow.settings?.temperature === 'number' ? providerRow.settings.temperature : undefined;
   // The adapter preserves legacy limits and clamps compact output independently.
   const maxTokens = typeof providerRow.settings?.maxTokens === 'number' ? providerRow.settings.maxTokens : undefined;
@@ -27,14 +27,14 @@ export async function runProviderAnalysis(providerRow, prompt, { expectJson = tr
       maxTokens,
       expectJson,
       system,
-      compact, signal,
+      compact, signal, jsonSchema,
     });
   }
 
   if (providerRow.provider_type === 'shared') {
     const apiKey = process.env.SHARED_AI_API_KEY;
     if (!apiKey) throw new Error('Shared AI tier is not configured on this server');
-    return callClaude({ apiKey, model: SHARED_TIER_MODEL, prompt, expectJson, system, compact, signal });
+    return callClaude({ apiKey, model: SHARED_TIER_MODEL, prompt, expectJson, system, compact, signal, jsonSchema });
   }
 
   const baseUrl = providerRow.base_url || DEFAULT_BASE_URLS[providerRow.provider_type];
@@ -48,7 +48,7 @@ export async function runProviderAnalysis(providerRow, prompt, { expectJson = tr
     maxTokens,
     expectJson,
     system,
-    compact, signal,
+    compact, signal, jsonSchema,
     tokenLimitParameter,
   });
 }

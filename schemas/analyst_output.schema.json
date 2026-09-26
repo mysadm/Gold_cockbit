@@ -1,0 +1,62 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "analyst_output.schema.json",
+  "title": "Gold Cockpit analyst output (standard tier)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["status", "confidence", "headline", "data_flags", "evidence", "scenario_weights", "weight_changes", "action", "next_trigger", "invalidation"],
+  "properties": {
+    "status": { "type": "string", "enum": ["material_change", "no_material_change", "insufficient_evidence"] },
+    "confidence": { "type": "string", "enum": ["low", "medium", "high"] },
+    "headline": { "type": "string", "minLength": 1, "maxLength": 120 },
+    "data_flags": {
+      "type": "array",
+      "maxItems": 5,
+      "items": { "type": "string", "minLength": 1, "maxLength": 100 }
+    },
+    "evidence": {
+      "type": "array",
+      "maxItems": 3,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["ev_id", "implication"],
+        "properties": {
+          "ev_id": { "type": "string", "pattern": "^EV-\\d{8}-\\d{4}-\\d{2}$" },
+          "implication": { "type": "string", "minLength": 1, "maxLength": 200 }
+        }
+      }
+    },
+    "scenario_weights": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["deesc", "base", "stag"],
+      "properties": {
+        "deesc": { "type": "number", "minimum": 0, "maximum": 100 },
+        "base": { "type": "number", "minimum": 0, "maximum": 100 },
+        "stag": { "type": "number", "minimum": 0, "maximum": 100 }
+      }
+    },
+    "weight_changes": {
+      "type": "array",
+      "maxItems": 3,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["scenario", "ev_ids", "reason"],
+        "properties": {
+          "scenario": { "type": "string", "enum": ["deesc", "base", "stag"] },
+          "ev_ids": {
+            "type": "array",
+            "minItems": 1,
+            "items": { "type": "string", "pattern": "^EV-\\d{8}-\\d{4}-\\d{2}$" }
+          },
+          "reason": { "type": "string", "minLength": 1, "maxLength": 200 }
+        }
+      }
+    },
+    "action": { "type": "string", "enum": ["buy", "hold", "wait", "reduce", "review", "insufficient_evidence"] },
+    "next_trigger": { "type": "string", "minLength": 1, "maxLength": 200 },
+    "invalidation": { "type": "string", "minLength": 1, "maxLength": 200 }
+  }
+}
