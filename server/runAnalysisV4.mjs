@@ -72,7 +72,7 @@ export async function runAnalysisV4(provider, input, runProvider, { signal, evid
     // zero in this synchronous pipeline, kept explicit rather than assumed.
     searchMs, modelMs, otherMs: totalMs - searchMs - modelMs, totalMs, retries: outcome.retries,
     // Per attempt, not summed across retries — see runValidatedAnalysis.
-    attempts: outcome.attempts.map((a) => ({ outputTokens: a.usage?.output_tokens ?? null, inputTokens: a.usage?.input_tokens ?? null, truncated: a.truncated })),
+    attempts: outcome.attempts.map((a) => ({ outputTokens: a.usage?.output_tokens ?? null, inputTokens: a.usage?.input_tokens ?? null, truncated: a.truncated, errors: a.errors.slice(0, 6) })),
     validationOk: validation.ok, validationErrors: validation.errors.slice(0, 6),
   };
   console.info('[analyst-v4-metrics]', JSON.stringify(metrics));

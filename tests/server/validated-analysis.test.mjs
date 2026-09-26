@@ -16,7 +16,7 @@ describe('runValidatedAnalysis', () => {
     const result = await runValidatedAnalysis({ provider: {}, prompt: 'p', runProvider, tier: 'standard', evidenceIds: [EV1] });
     expect(result).toEqual({
       ok: true, output: valid(), usage: { input_tokens: 1, output_tokens: 1 }, retries: 0,
-      attempts: [{ usage: { input_tokens: 1, output_tokens: 1 }, truncated: false }],
+      attempts: [{ usage: { input_tokens: 1, output_tokens: 1 }, truncated: false, errors: [] }],
     });
     expect(runProvider).toHaveBeenCalledTimes(1);
     const [, prompt, options] = runProvider.mock.calls[0];
@@ -42,7 +42,10 @@ describe('runValidatedAnalysis', () => {
     const result = await runValidatedAnalysis({ provider: {}, prompt: 'p', runProvider, tier: 'standard', evidenceIds: [EV1] });
     expect(result).toEqual({
       ok: true, output: valid(), usage: undefined, retries: 1,
-      attempts: [{ usage: undefined, truncated: false }, { usage: undefined, truncated: false }],
+      attempts: [
+        { usage: undefined, truncated: false, errors: ['scenario_weights must sum to 100'] },
+        { usage: undefined, truncated: false, errors: [] },
+      ],
     });
     expect(runProvider).toHaveBeenCalledTimes(2);
     expect(runProvider.mock.calls[1][1]).toContain('CORRECTION:');
@@ -58,6 +61,10 @@ describe('runValidatedAnalysis', () => {
     expect(result.errors).toContain('scenario_weights must sum to 100');
     expect(result.retries).toBe(1);
     expect(result.attempts).toHaveLength(2);
+    // Both attempts' own errors are recorded, not just the final one used for the correction
+    // prompt — needed to classify why a run retried, including runs that end up succeeding.
+    expect(result.attempts[0].errors).toContain('scenario_weights must sum to 100');
+    expect(result.attempts[1].errors).toContain('scenario_weights must sum to 100');
     expect(runProvider).toHaveBeenCalledTimes(2);
   });
 
@@ -66,7 +73,10 @@ describe('runValidatedAnalysis', () => {
     const result = await runValidatedAnalysis({ provider: {}, prompt: 'p', runProvider, tier: 'standard', evidenceIds: [EV1] });
     expect(result.ok).toBe(false);
     expect(result.errors).toContain('completion was truncated');
-    expect(result.attempts).toEqual([{ usage: undefined, truncated: true }, { usage: undefined, truncated: true }]);
+    expect(result.attempts).toEqual([
+      { usage: undefined, truncated: true, errors: ['completion was truncated'] },
+      { usage: undefined, truncated: true, errors: ['completion was truncated'] },
+    ]);
   });
 
   it('reports each attempt to onRawAnswer as it happens', async () => {
