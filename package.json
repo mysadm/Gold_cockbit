@@ -9,7 +9,8 @@
     "preview": "vite preview",
     "migrate": "node db/migrate.mjs",
     "server": "node server/index.mjs",
-    "test": "vitest run"
+    "test": "vitest run",
+    "test:dev": "set -a && . ./.env.dev && set +a && vitest run"
   },
   "dependencies": {
     "ai-settings-ui": "file:../AI_settings_card/packages/ai-settings-ui",

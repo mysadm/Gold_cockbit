@@ -18,7 +18,7 @@ describe('runValidatedAnalysis', () => {
     expect(runProvider).toHaveBeenCalledTimes(1);
     const [, prompt, options] = runProvider.mock.calls[0];
     expect(prompt).toBe('p');
-    expect(options.maxTokens).toBe(600);
+    expect(options.maxTokens).toBe(1400);
     expect(options.jsonSchema.schema.required).toContain('scenario_weights');
   });
 
@@ -27,7 +27,7 @@ describe('runValidatedAnalysis', () => {
     const runProvider = vi.fn().mockResolvedValue({ text: JSON.stringify(output) });
     const result = await runValidatedAnalysis({ provider: {}, prompt: 'p', runProvider, tier: 'personalized', evidenceIds: [EV1] });
     expect(result.ok).toBe(true);
-    expect(runProvider.mock.calls[0][2].maxTokens).toBe(900);
+    expect(runProvider.mock.calls[0][2].maxTokens).toBe(2550);
     expect(runProvider.mock.calls[0][2].jsonSchema.schema.required).toContain('dca');
   });
 

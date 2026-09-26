@@ -14,7 +14,12 @@ export const CONFIDENCES = ['low', 'medium', 'high'];
 // not introduce new action words, only a new output shape.
 export const ACTIONS = ['buy', 'hold', 'wait', 'reduce', 'review', 'insufficient_evidence'];
 export const EV_ID_PATTERN = /^EV-\d{8}-\d{4}-\d{2}$/;
-export const MAX_TOKENS = { standard: 600, personalized: 900 };
+// Derived from measured output tokens on the current (pre-Phase-2) contract, p95 × 1.3 —
+// see GOLD_COCKPIT_SPEED_PLAN.md NOTES "Phase 1 fix — max_tokens from data" for the raw
+// samples and formula. V4's output shape is smaller than what was measured (no free-form
+// reads/assumptions/missing_inputs), so these are a conservative ceiling, tunable down in
+// Phase 7 once the real V4 prompt is live.
+export const MAX_TOKENS = { standard: 1400, personalized: 2550 };
 
 const schemaPath = (name) => fileURLToPath(new URL(`../schemas/${name}`, import.meta.url));
 export const BASE_SCHEMA = JSON.parse(readFileSync(schemaPath('analyst_output.schema.json'), 'utf8'));
