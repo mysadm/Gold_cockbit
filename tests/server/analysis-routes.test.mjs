@@ -33,6 +33,9 @@ async function build(over, fullDeps) {
 let user;
 
 beforeEach(async () => {
+  // raiseNotification no-ops under DISABLE_NOTIFICATIONS=1 (set in .env.dev for the running dev
+  // API); the 'admin notifications' tests below exercise the real behavior regardless.
+  vi.stubEnv('DISABLE_NOTIFICATIONS', '');
   client = await resetAndMigrate(MIGRATIONS_DIR);
   admin = await createTestUser(client, { email: 'admin@x.com', role: 'admin' });
   await provisionUserDefaults(client, admin.id);
@@ -41,7 +44,7 @@ beforeEach(async () => {
   await client.query(`INSERT INTO llm_providers (user_id, provider_type, label, model, is_active) VALUES ($1, 'ollama', 'Prov', 'm', true)`, [admin.id]);
   await build();
 });
-afterEach(async () => { await client.end(); });
+afterEach(async () => { await client.end(); vi.unstubAllEnvs(); });
 
 const insertDone = (slot, { result, minsAgo = 5 } = {}) => client.query(
   `INSERT INTO shared_analysis_runs (slot_key, status, result, started_at, finished_at)

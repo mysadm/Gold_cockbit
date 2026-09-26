@@ -18,13 +18,17 @@ const SLOT_16 = '2026-09-20@16:00';
 let client, admin, clock;
 
 beforeEach(async () => {
+  // .env.dev sets DISABLE_SCHEDULER=1/DISABLE_NOTIFICATIONS=1 as kill switches for the running
+  // dev API; these tests exercise startAnalysisScheduler/raiseNotification's real behavior.
+  vi.stubEnv('DISABLE_SCHEDULER', '');
+  vi.stubEnv('DISABLE_NOTIFICATIONS', '');
   client = await resetAndMigrate(MIGRATIONS_DIR);
   admin = await createTestUser(client, { email: 'admin@x.com', role: 'admin' });
   await provisionUserDefaults(client, admin.id);
   await client.query(`INSERT INTO llm_providers (user_id, provider_type, label, model, is_active) VALUES ($1, 'ollama', 'P', 'm', true)`, [admin.id]);
   clock = AT_10;
 });
-afterEach(async () => { await client.end(); vi.useRealTimers(); });
+afterEach(async () => { await client.end(); vi.useRealTimers(); vi.unstubAllEnvs(); });
 
 const parsed = {
   schema_version: '3', status: 'insufficient_evidence',

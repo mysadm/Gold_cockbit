@@ -16,11 +16,14 @@ const SCHEDULE = { ...DEFAULT_SCHEDULE, enabled: true, language: 'en' };
 let client, admin;
 
 beforeEach(async () => {
+  // raiseNotification no-ops under DISABLE_NOTIFICATIONS=1 (set in .env.dev for the running dev
+  // API); these tests exercise the real behavior regardless of what the shell exports.
+  vi.stubEnv('DISABLE_NOTIFICATIONS', '');
   client = await resetAndMigrate(MIGRATIONS_DIR);
   admin = await createTestUser(client, { email: 'admin@x.com', role: 'admin' });
   await provisionUserDefaults(client, admin.id);
 });
-afterEach(async () => { await client.end(); vi.useRealTimers(); });
+afterEach(async () => { await client.end(); vi.useRealTimers(); vi.unstubAllEnvs(); });
 
 async function addProvider({ active = true, label = 'Test model' } = {}) {
   await client.query(
