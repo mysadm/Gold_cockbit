@@ -20,6 +20,7 @@ let client, admin, clock;
 beforeEach(async () => {
   // .env.dev sets DISABLE_SCHEDULER=1/DISABLE_NOTIFICATIONS=1 as kill switches for the running
   // dev API; these tests exercise startAnalysisScheduler/raiseNotification's real behavior.
+  // makeDeps() always stubs runAnalysis, so ANALYST_V4 does not need stubbing here.
   vi.stubEnv('DISABLE_SCHEDULER', '');
   vi.stubEnv('DISABLE_NOTIFICATIONS', '');
   client = await resetAndMigrate(MIGRATIONS_DIR);

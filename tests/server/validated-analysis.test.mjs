@@ -14,7 +14,10 @@ describe('runValidatedAnalysis', () => {
   it('returns ok on a valid first attempt, passing the schema and per-tier max_tokens to the provider', async () => {
     const runProvider = vi.fn().mockResolvedValue({ text: JSON.stringify(valid()), usage: { input_tokens: 1, output_tokens: 1 } });
     const result = await runValidatedAnalysis({ provider: {}, prompt: 'p', runProvider, tier: 'standard', evidenceIds: [EV1] });
-    expect(result).toEqual({ ok: true, output: valid(), usage: { input_tokens: 1, output_tokens: 1 }, retries: 0 });
+    expect(result).toEqual({
+      ok: true, output: valid(), usage: { input_tokens: 1, output_tokens: 1 }, retries: 0,
+      attempts: [{ usage: { input_tokens: 1, output_tokens: 1 }, truncated: false }],
+    });
     expect(runProvider).toHaveBeenCalledTimes(1);
     const [, prompt, options] = runProvider.mock.calls[0];
     expect(prompt).toBe('p');
@@ -37,7 +40,10 @@ describe('runValidatedAnalysis', () => {
       .mockResolvedValueOnce({ text: JSON.stringify(bad) })
       .mockResolvedValueOnce({ text: JSON.stringify(valid()) });
     const result = await runValidatedAnalysis({ provider: {}, prompt: 'p', runProvider, tier: 'standard', evidenceIds: [EV1] });
-    expect(result).toEqual({ ok: true, output: valid(), usage: undefined, retries: 1 });
+    expect(result).toEqual({
+      ok: true, output: valid(), usage: undefined, retries: 1,
+      attempts: [{ usage: undefined, truncated: false }, { usage: undefined, truncated: false }],
+    });
     expect(runProvider).toHaveBeenCalledTimes(2);
     expect(runProvider.mock.calls[1][1]).toContain('CORRECTION:');
     expect(runProvider.mock.calls[1][1]).toContain('scenario_weights must sum to 100');
@@ -50,6 +56,26 @@ describe('runValidatedAnalysis', () => {
     expect(result.ok).toBe(false);
     expect(result.error).toBe('validation_failed');
     expect(result.errors).toContain('scenario_weights must sum to 100');
+    expect(result.retries).toBe(1);
+    expect(result.attempts).toHaveLength(2);
     expect(runProvider).toHaveBeenCalledTimes(2);
+  });
+
+  it('treats a truncated completion as invalid even if the partial JSON happens to validate', async () => {
+    const runProvider = vi.fn().mockResolvedValue({ text: JSON.stringify(valid()), truncated: true });
+    const result = await runValidatedAnalysis({ provider: {}, prompt: 'p', runProvider, tier: 'standard', evidenceIds: [EV1] });
+    expect(result.ok).toBe(false);
+    expect(result.errors).toContain('completion was truncated');
+    expect(result.attempts).toEqual([{ usage: undefined, truncated: true }, { usage: undefined, truncated: true }]);
+  });
+
+  it('reports each attempt to onRawAnswer as it happens', async () => {
+    const bad = { ...valid(), scenario_weights: { deesc: 35, base: 45, stag: 30 } };
+    const runProvider = vi.fn()
+      .mockResolvedValueOnce({ text: JSON.stringify(bad) })
+      .mockResolvedValueOnce({ text: JSON.stringify(valid()) });
+    const seen = [];
+    await runValidatedAnalysis({ provider: {}, prompt: 'p', runProvider, tier: 'standard', evidenceIds: [EV1], onRawAnswer: (t) => seen.push(t) });
+    expect(seen).toEqual([JSON.stringify(bad), JSON.stringify(valid())]);
   });
 });

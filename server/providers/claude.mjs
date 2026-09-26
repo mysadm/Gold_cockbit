@@ -19,7 +19,13 @@ async function callAnthropic({ apiKey, model, messages, temperature, maxTokens, 
     // Legacy keeps its 16000 floor; compact uses the bounded v3 budget.
     const body = { model, max_tokens: completionBudget(maxTokens, compact), messages };
     if (typeof temperature === 'number') body.temperature = temperature;
-    if (system) body.system = system;
+    // V4's system prompt (PROMPT_V2) is static across every call, so it is marked cacheable;
+    // below Haiku's ~2k-token cache-eligible minimum this is silently ignored, not an error, but
+    // becomes a real saving once the prompt grows or a larger model is used (Appendix C, Phase 2).
+    if (system) body.system = compact === 'v4' ? [{ type: 'text', text: system, cache_control: { type: 'ephemeral' } }] : system;
+    // Extended thinking is opt-in only (a `thinking` field), never sent here, so it is already
+    // off/minimum for both v3 and v4 — nothing to configure to satisfy Phase 2's "disable
+    // reasoning" bullet.
     // Claude has no response_format field; native structured output is a forced tool call.
     if (jsonSchema) {
       body.tools = [{ name: jsonSchema.name, description: 'Return the analysis output matching the schema.', input_schema: jsonSchema.schema }];

@@ -24,6 +24,9 @@ let app;
 let userId;
 
 beforeEach(async () => {
+  // .env.dev sets ANALYST_V4=1 for the running dev API; the "compact (v3) analyses" tests below
+  // exercise the real (v3) runAnalysisV3 pipeline regardless of what the shell exports.
+  vi.stubEnv('ANALYST_V4', '');
   client = await resetAndMigrate(MIGRATIONS_DIR);
   userId = await ensureDefaultUser(client);
   app = express();
@@ -35,6 +38,7 @@ beforeEach(async () => {
 
 afterEach(async () => {
   await client.end();
+  vi.unstubAllEnvs();
 });
 
 describe('POST /api/analyze', () => {

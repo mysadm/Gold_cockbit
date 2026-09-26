@@ -34,8 +34,10 @@ let user;
 
 beforeEach(async () => {
   // raiseNotification no-ops under DISABLE_NOTIFICATIONS=1 (set in .env.dev for the running dev
-  // API); the 'admin notifications' tests below exercise the real behavior regardless.
+  // API); the 'admin notifications' tests below exercise the real behavior regardless. Likewise
+  // ANALYST_V4=1 would silently reroute the "real runAnalysisV3" test below to the v4 pipeline.
   vi.stubEnv('DISABLE_NOTIFICATIONS', '');
+  vi.stubEnv('ANALYST_V4', '');
   client = await resetAndMigrate(MIGRATIONS_DIR);
   admin = await createTestUser(client, { email: 'admin@x.com', role: 'admin' });
   await provisionUserDefaults(client, admin.id);

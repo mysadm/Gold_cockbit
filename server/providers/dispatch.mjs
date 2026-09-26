@@ -13,10 +13,11 @@ export const DEFAULT_BASE_URLS = {
 // provider row — the row exists only to hold the "shared" activation state.
 const SHARED_TIER_MODEL = 'claude-haiku-4-5';
 
-export async function runProviderAnalysis(providerRow, prompt, { expectJson = true, system = GOLD_MARKET_ANALYST_SYSTEM_PROMPT, compact = false, signal, jsonSchema } = {}) {
+export async function runProviderAnalysis(providerRow, prompt, { expectJson = true, system = GOLD_MARKET_ANALYST_SYSTEM_PROMPT, compact = false, signal, jsonSchema, maxTokens: maxTokensOverride } = {}) {
   const temperature = !providerRow.settings?.extra?.omitTemperature && typeof providerRow.settings?.temperature === 'number' ? providerRow.settings.temperature : undefined;
-  // The adapter preserves legacy limits and clamps compact output independently.
-  const maxTokens = typeof providerRow.settings?.maxTokens === 'number' ? providerRow.settings.maxTokens : undefined;
+  // The adapter preserves legacy limits and clamps compact output independently. An explicit
+  // override (V4's measured per-tier cap) takes precedence over whatever the provider row stores.
+  const maxTokens = typeof maxTokensOverride === 'number' ? maxTokensOverride : (typeof providerRow.settings?.maxTokens === 'number' ? providerRow.settings.maxTokens : undefined);
 
   if (providerRow.provider_type === 'claude') {
     return callClaude({

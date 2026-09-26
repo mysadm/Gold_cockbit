@@ -85,4 +85,19 @@ describe('callClaude', () => {
     expect(body.tool_choice).toEqual({ type: 'tool', name: 'analyst_output' });
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
+
+  it('marks the system prompt cacheable only for the v4 (compact:"v4") pipeline', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      text: async () => JSON.stringify({ content: [{ type: 'text', text: '{}' }] }),
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    await callClaude({ apiKey: 'sk-ant-test', model: 'm', prompt: 'p', system: 'STATIC', compact: 'v4' });
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body).system).toEqual([{ type: 'text', text: 'STATIC', cache_control: { type: 'ephemeral' } }]);
+
+    fetchMock.mockClear();
+    await callClaude({ apiKey: 'sk-ant-test', model: 'm', prompt: 'p', system: 'STATIC', compact: true });
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body).system).toBe('STATIC');
+  });
 });

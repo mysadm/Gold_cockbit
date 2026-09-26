@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { validateAnalystOutput, EV_ID_PATTERN } from '../../shared/analystOutputV4.mjs';
+import { validateAnalystOutput, EV_ID_PATTERN, computePriorStateEligible } from '../../shared/analystOutputV4.mjs';
 
 const EV1 = 'EV-20260101-0800-01';
 const EV2 = 'EV-20260101-0800-02';
@@ -124,5 +124,29 @@ describe('analyst output v4 validator', () => {
     it('does not require dca_read on the standard tier', () => {
       expect(check(valid(), [EV1, EV2], 'standard').ok).toBe(true);
     });
+  });
+});
+
+describe('computePriorStateEligible', () => {
+  const currentWeights = { deesc: 35, base: 45, stag: 20 };
+  const generatedAt = '2026-09-20T10:00:00.000Z';
+
+  it('is eligible: a recent prior decision suggested exactly the current weights', () => {
+    const previousAnalysis = { generated_at: '2026-09-20T02:00:00.000Z', action: 'wait', confidence: 'medium', suggested_weights: currentWeights };
+    expect(computePriorStateEligible({ previousAnalysis, currentWeights, generatedAt })).toBe(true);
+  });
+
+  it('is not eligible when the prior suggested weights differ from the current ones', () => {
+    const previousAnalysis = { generated_at: '2026-09-20T02:00:00.000Z', action: 'wait', confidence: 'medium', suggested_weights: { deesc: 30, base: 50, stag: 20 } };
+    expect(computePriorStateEligible({ previousAnalysis, currentWeights, generatedAt })).toBe(false);
+  });
+
+  it('is not eligible when there is no previous run', () => {
+    expect(computePriorStateEligible({ previousAnalysis: null, currentWeights, generatedAt })).toBe(false);
+  });
+
+  it('is not eligible once the prior decision falls outside the recency window', () => {
+    const previousAnalysis = { generated_at: '2026-09-18T09:00:00.000Z', action: 'wait', confidence: 'medium', suggested_weights: currentWeights };
+    expect(computePriorStateEligible({ previousAnalysis, currentWeights, generatedAt })).toBe(false);
   });
 });

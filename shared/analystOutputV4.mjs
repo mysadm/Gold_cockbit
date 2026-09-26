@@ -114,3 +114,21 @@ export function validateAnalystOutput(output, { tier = 'standard', scenarioKeys,
   if (tier === 'personalized' && object(output)) errors.push(...validateDcaRead(output, { evidenceIds }));
   return { ok: errors.length === 0, errors };
 }
+
+// Same recency window as the v3 contract's no_material_change rule (shared/analystContract.mjs) —
+// a prior decision older than this can no longer be reused as-is.
+export const PRIOR_STATE_RECENCY_MS = 24 * 60 * 60 * 1000;
+
+// prior_state_eligible (PROMPT_V2/DATA_SNAPSHOT precompute, GOLD_COCKPIT_SPEED_PLAN.md Phase 2):
+// true only when a usable prior decision exists, is recent enough, and suggested exactly the
+// weights already in effect — i.e. there is nothing left to re-litigate, so the model may answer
+// no_material_change. `previousAnalysis` is the snapshot's existing `previous_analysis` field
+// (populated from shared_analysis_runs for the standard tier; client-supplied for personalized).
+export function computePriorStateEligible({ previousAnalysis, currentWeights, generatedAt }) {
+  if (!object(previousAnalysis) || !object(currentWeights)) return false;
+  const age = Date.parse(generatedAt) - Date.parse(previousAnalysis.generated_at);
+  if (!Number.isFinite(age) || age < 0 || age > PRIOR_STATE_RECENCY_MS) return false;
+  const prevWeights = previousAnalysis.suggested_weights;
+  if (!object(prevWeights)) return false;
+  return SCENARIO_KEYS.every((k) => prevWeights[k] === currentWeights[k]);
+}

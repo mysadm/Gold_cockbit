@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import fixture from '../fixtures/analyst-request-v2.json';
 import { correctionHints } from '../../server/prompts/correctionHints.mjs';
 import { collectEvidence } from '../../server/evidence.mjs';
@@ -52,8 +52,12 @@ describe('correctionHints', () => {
 describe('the retry prompt', () => {
   beforeEach(() => {
     vi.resetAllMocks();
+    // .env.dev sets ANALYST_V4=1 for the running dev API; this test exercises the real (v3)
+    // correctionHints pipeline regardless of what the shell exports.
+    vi.stubEnv('ANALYST_V4', '');
     collectEvidence.mockResolvedValue(structuredClone(pack));
   });
+  afterEach(() => vi.unstubAllEnvs());
 
   it('carries the hint for the error the first answer produced', async () => {
     const badWeights = { ...OUTPUT_EXAMPLE, suggested_weights: { deesc: 35, base: 45, stag: 25 } };
