@@ -74,7 +74,26 @@ Done when: unit tests cover valid output, bad weight sum, unknown EV-ID, extra f
 
 Done when: both tiers run end-to-end on the old evidence source with the new prompt and pass the validator.
 
-## Phase 3 — Database
+## Phase 2b — Retry repair, DCA safety restore, search timeout (added after Phase 2 review)
+
+- Deterministic in-code repair for formatting-only validation failures (over-length strings, excess
+  array items, unknown fields, empty entries) before any retry — a retry is used only for what
+  repair could not fix (weight math, unknown EV-ID, invalid enum, a DCA amount over the limit, a
+  truncated completion). Every attempt logs whether it was repaired and which fields.
+- Restored the v3 DCA installment-limit safety check Phase 2's schema redesign had dropped: reject
+  any EGP amount stated in `dca_read.text` above `current_installment_limit_egp` — text-scanning
+  (v3's proven approach, shared via `extractEgpAmounts()`), not a separate structured amount field,
+  since a separate field would only guard itself, not what the user actually reads. Always semantic:
+  never repaired, always a retry on violation.
+- Evidence search timeout lowered 8s → 3s (real cold search measured at 100-200ms; the old 8s is
+  what produced this repo's one unexplained ~8000ms outlier), with a stale-result (≤24h) fallback
+  instead of failing the facet outright; `evidence_built_at` reflects the fallback's real fetch time
+  when used, so the analyst's own "flag stale evidence" instruction has real data to act on.
+
+Done when: `npm run test:dev` passes (only the known `ai-settings-ui` failure), and a fresh
+measurement shows the retry rate actually drop with the fixes applied — both true, see NOTES.
+
+## Phase 3 — Database (evidence pack) — PAUSED, see NOTES "Phases 3-5 paused"
 
 Migrations:
 - `evidence_packs`: `pack_id` (PK), `built_at`, `valid_until`, `status` (ok|partial|failed|stale), `trigger` (schedule|event|price|manual), `content_hash`, `item_count`
@@ -86,7 +105,7 @@ Do not store full article text.
 
 Done when: migrations run up and down cleanly.
 
-## Phase 4 — Evidence pipeline (code job)
+## Phase 4 — Evidence pipeline (code job) — PAUSED, see NOTES "Phases 3-5 paused"
 
 Module `evidence/` with separate functions:
 1. `fetch()` — sources from config file `evidence_sources.yaml` (name, type rss|api|page, url, enabled). No hardcoded URLs.
@@ -99,7 +118,7 @@ Module `evidence/` with separate functions:
 
 Done when: a manual run produces a stored pack with 5–8 items; tests cover dedup, sanitize, failed-build fallback.
 
-## Phase 5 — Scheduling & triggers
+## Phase 5 — Scheduling & triggers — PAUSED, see NOTES "Phases 3-5 paused"
 
 - Base schedule, Africa/Cairo timezone (use the tz name, not a fixed offset): 08:00, 13:00, 17:30, 22:30.
 - Event triggers: `event_calendar.yaml` (datetime + label, e.g. US CPI, NFP, FOMC, CBE MPC); run a build ~30 min after each entry. Maintained manually.
@@ -108,7 +127,11 @@ Done when: a manual run produces a stored pack with 5–8 items; tests cover ded
 
 Done when: scheduler logs show planned runs; price trigger test fires once and debounces.
 
-## Phase 6 — Analysis integration + cache skip
+## Phase 6 — Analysis integration + cache skip — split, see NOTES "Phases 3-5 paused"
+
+The DB-backed pack-read half below is paused with Phases 3-5 (it reads `evidence_packs`, which
+does not exist while those are paused). Its cache-skip half does not depend on the evidence-pack
+tables and is promoted to its own phase, **Response caching**, below — see the revised order.
 
 - Analyst reads the latest pack with status ok/partial (or last ok marked stale) from DB. No live collection in the request path.
 - Web-search collection remains only as a fallback when no usable pack exists, behind a config flag.
@@ -117,7 +140,11 @@ Done when: scheduler logs show planned runs; price trigger test fires once and d
 
 Done when: a second identical request returns in <200 ms with no LLM call.
 
-## Phase 7 — Measurement & tuning
+## Phase 7 — Measurement & tuning — split, see NOTES "Phases 3-5 paused"
+
+The before/after logging below still needs Phase 3's `analyses` table columns and stays paused
+with Phases 3-5. The tuning bullet does not, and is promoted to its own phase, **Output trimming**,
+below — see the revised order.
 
 - Log `latency_ms`, input/output token counts, model, cache-hit flag per analysis.
 - Compare p50/p95 latency before vs after on ≥20 runs per tier. Record under NOTES.
@@ -125,7 +152,7 @@ Done when: a second identical request returns in <200 ms with no LLM call.
 
 Done when: before/after numbers recorded.
 
-## Phase 8 — Deploy the test instance (human-run; agent only prepares)
+## Phase 8 — Deploy the test instance (human-run; agent only prepares) — NEXT UP, see the revised order below
 
 Agent writes `ROLLOUT.md` with the exact commands for:
 1. Merging `feature/evidence-pack` into main (done by the human).
@@ -136,6 +163,38 @@ Agent writes `ROLLOUT.md` with the exact commands for:
 6. Rollback: redeploy the previous commit and restore the latest dump.
 
 Done when: ROLLOUT.md exists and was reviewed by the human.
+
+## Output trimming (revised order, was Phase 7's tuning bullet — promoted, see NOTES "Phases 3-5 paused")
+
+- Log `latency_ms`, input/output token counts, model per analysis (Phase 7's logging bullet, minus
+  the cache-hit flag — that part is Response caching, below).
+- Compare p50/p95 latency before vs after on ≥20 runs per tier, alongside the smaller before/after
+  samples already recorded in Phase 2/2b's NOTES. Record under NOTES.
+- Tune `max_tokens` down further from Phase 1's conservative caps now that PROMPT_V2 + repair are
+  live and real per-attempt token data exists; test a smaller model on the standard tier and keep
+  it only if validator pass rate stays ≥95%.
+
+Done when: before/after numbers recorded on the deployed (Phase 8) instance.
+
+## Response caching (revised order, was Phase 6's cache-skip bullet — promoted, see NOTES "Phases 3-5 paused")
+
+- Cache skip: if an analysis exists with the same `tier` and `snapshot_hash`, return it without
+  calling the LLM. Phase 6's original condition also matched on `pack_id`; without a persisted
+  evidence pack (Phases 3-5 paused), match on `tier` + `snapshot_hash` alone, or add a minimal
+  `analyses` table (just the columns this needs, not the full Phase 3 schema) — decide which when
+  this phase starts.
+- `snapshot_hash` = hash of the normalized DATA_SNAPSHOT fields that affect the output (exclude
+  timestamps that change every request).
+
+Done when: a second identical request returns in <200 ms with no LLM call.
+
+## Streaming (revised order, new — not in the original plan)
+
+Stream the model's output to the client as it generates, so perceived latency drops even where
+total generation time does not — orthogonal to every other phase here, which all target actual
+generation time or the request path around it. Scope, provider streaming support per adapter, and
+how a schema-validated (jsonSchema/tool-use) response streams incrementally are not yet designed;
+write a proper phase spec (mirroring Phase 0-8's format above) when this phase starts.
 
 ---
 
@@ -190,15 +249,24 @@ Check current provider docs for: native JSON-schema/structured-output support an
 
 ## PROGRESS
 
+Revised order after Phase 2b (2026-09-26) — see NOTES "Phases 3-5 paused" for why, and "Revised
+order" for the full reasoning. Read this list top to bottom for what's actually next; original
+Phase numbers are kept for traceability (NOTES entries refer to them throughout) but no longer
+indicate execution order below Phase 2b.
+
 - [x] Phase 0 — Recon
 - [x] Phase 1 — Output schema + validation
 - [x] Phase 2 — Prompt + backend precomputes
-- [ ] Phase 3 — Database
-- [ ] Phase 4 — Evidence pipeline
-- [ ] Phase 5 — Scheduling & triggers
-- [ ] Phase 6 — Analysis integration + cache skip
-- [ ] Phase 7 — Measurement & tuning
-- [ ] Phase 8 — Rollout prepared (ROLLOUT.md)
+- [x] Phase 2b — Retry repair, DCA safety restore, search timeout
+- [ ] Phase 3 — Database (evidence pack) — PAUSED
+- [ ] Phase 4 — Evidence pipeline — PAUSED
+- [ ] Phase 5 — Scheduling & triggers — PAUSED
+- [ ] **Phase 8 — Deploy the test instance, with `ANALYST_V4=1` — NEXT**
+- [ ] **Output trimming** (was Phase 7's tuning bullet)
+- [ ] **Response caching** (was Phase 6's cache-skip bullet)
+- [ ] **Streaming** (new)
+- [ ] Phase 6 remainder — DB-backed pack read — paused with Phases 3-5
+- [ ] Phase 7 remainder — before/after logging — paused with Phases 3-5
 
 ## NOTES
 
@@ -342,6 +410,12 @@ Effective output rate (output tokens ÷ modelMs, this round's cold runs, where `
 
 p50 latency roughly halved for both tiers (standard −54%, personalized −43%), p95 fell by more (standard −61%, personalized −52%) — directly attributable to eliminating the retries that a third of these exact runs would very likely have needed under the old (pre-repair) pipeline, since the errors that did occur are precisely the length-based kind the repair targets and the prior rounds' `en/expert` retry rate was 50-56%. Search stayed a small, inconsistent fraction of total time (28ms-2.1s, one cold outlier on the very first call of the script's process — consistent with the known in-process query cache); it is not what changed here.
 
-**Phase 2 — tests.** `npm run test:dev` (final, after the retry-investigation fixes above): 90/91 files, 877/877 tests pass (only the known pre-existing `ai-settings-ui` failure remains, per Step 0). Latest additions: `tests/server/format-repair.test.mjs` (18 cases) and new cases in `validated-analysis.test.mjs`/`analyst-output-v4.test.mjs`/`web-search.test.mjs` for the repair/DCA-limit/stale-fallback work above. Earlier in Phase 2: `tests/server/run-analysis-v4.test.mjs` (both tiers end-to-end on the old evidence source, PROMPT_V2/jsonSchema/maxTokens wiring, DCA trimming, precomputes, EV-ID pattern remap, per-attempt usage/retries, truncation, admin-prompt-override-is-ignored, and PROMPT_V2's `data_flags` limit text per item 4 above). Extended: `tests/server/analyst-output-v4.test.mjs` (`computePriorStateEligible`, 4 cases), `tests/server/validated-analysis.test.mjs` (`attempts`/truncation/`onRawAnswer`), `tests/server/compact-provider.test.mjs` (v4 budget, no 4096 floor), `tests/server/claude-provider.test.mjs` (cache_control only under `compact:'v4'`), `tests/server/dispatch.test.mjs` (`maxTokens` override). Updated to stub `ANALYST_V4` off (mirroring Step 0's `DISABLE_NOTIFICATIONS`/`DISABLE_SCHEDULER` fix, since `.env.dev` now sets it): `run-analysis-v3.test.mjs`, `analyze-route.test.mjs`, `correction-hints.test.mjs`, `analysis-routes.test.mjs` — each exercises the real v3 pipeline and would otherwise be silently rerouted to v4 under `npm run test:dev`.
+**Phase 2 — tests.** `npm run test:dev` (final, Phase 2b closeout): 91/92 files, 891/891 tests pass (only the known pre-existing `ai-settings-ui` failure remains, per Step 0). Latest additions: `tests/server/extract-egp-amounts.test.mjs` (14 cases, see "Phase 2b closeout" above), `tests/server/format-repair.test.mjs` (18 cases) and new cases in `validated-analysis.test.mjs`/`analyst-output-v4.test.mjs`/`web-search.test.mjs` for the repair/DCA-limit/stale-fallback work. Earlier in Phase 2: `tests/server/run-analysis-v4.test.mjs` (both tiers end-to-end on the old evidence source, PROMPT_V2/jsonSchema/maxTokens wiring, DCA trimming, precomputes, EV-ID pattern remap, per-attempt usage/retries, truncation, admin-prompt-override-is-ignored, and PROMPT_V2's `data_flags` limit text per item 4 above). Extended: `tests/server/analyst-output-v4.test.mjs` (`computePriorStateEligible`, 4 cases), `tests/server/validated-analysis.test.mjs` (`attempts`/truncation/`onRawAnswer`), `tests/server/compact-provider.test.mjs` (v4 budget, no 4096 floor), `tests/server/claude-provider.test.mjs` (cache_control only under `compact:'v4'`), `tests/server/dispatch.test.mjs` (`maxTokens` override). Updated to stub `ANALYST_V4` off (mirroring Step 0's `DISABLE_NOTIFICATIONS`/`DISABLE_SCHEDULER` fix, since `.env.dev` now sets it): `run-analysis-v3.test.mjs`, `analyze-route.test.mjs`, `correction-hints.test.mjs`, `analysis-routes.test.mjs` — each exercises the real v3 pipeline and would otherwise be silently rerouted to v4 under `npm run test:dev`.
+
+**Phase 2b closeout — extractEgpAmounts() Arabic/format coverage, 2026-09-26.** Added `tests/server/extract-egp-amounts.test.mjs` (14 cases) covering every format asked for: Arabic-Indic digits with the Arabic thousands separator (`١٠٬٠٠٠`), `جنيه` as prefix or suffix, `ج.م`, `EGP`, `LE`, Western thousands separators, a mixed Arabic-separator-with-Western-digits case, `"10k"`/`"40K"`, and the Arabic thousand-multiplier `"10 ألف"`. All 14 passed against the existing regex on the first run — **no regex fix was needed** — but two correctness risks were addressed proactively while adding `LE`/`ج.م`/the multiplier support (`shared/analystContract.mjs`): (1) `LE` and `EGP` are now `\b`-bounded so neither matches inside an unrelated word (e.g. "future, like" never matches `LE`) — Arabic currency words (`جنيه`, `ج.م`) are deliberately left unbounded, because JS's `\b` treats Arabic letters as non-word characters, so a boundary assertion placed right after them would silently stop matching text preceded by whitespace (verified this would have been a regression by reasoning through JS's ASCII-only `\w`, not by trial and error); (2) an optional `(k|ألف)` multiplier group now scales the parsed number ×1000. Existing v3 (`analyst-v3.test.mjs`) and v4 (`analyst-output-v4.test.mjs`, `validated-analysis.test.mjs`) DCA-amount tests still pass unchanged — confirms the extended regex is backward compatible with the exact cases those already covered (Arabic-Indic + separator, EGP prefix/suffix, at-cap vs over-cap).
+
+**Phases 3-5 paused — decision recorded, 2026-09-26.** Phase 2's own cold-cache measurement (NOTES above) found evidence search at 1.6%/0.7% of p50 latency for standard/personalized — even in the worst realistic case (a just-restarted process, guaranteed-cold query cache), search is nowhere near the latency bottleneck; model generation time is. Phases 3-5 (the persisted `evidence_packs`/`evidence_items` database, the fetch/filter/sanitize/extract/rank/assemble pipeline, and its scheduler) exist to move evidence collection out of the request path — a **speed** argument that this measurement does not support. **They remain valid work, just not for the reason originally given**: a persisted, versioned evidence pack is still worth having for (a) **evidence quality** — dedup, driver-coverage balancing, and a cheap extraction pass the current raw SerpAPI snippets don't get; (b) **cost** — one shared pack serves every personalized request instead of every request paying its own SerpAPI query cost; (c) **auditability** — a stored pack with stable EV-IDs lets a past analysis be explained/reproduced after the fact, which live, ephemeral search results cannot. Paused, not cancelled: resume when one of those three becomes the active priority, not speed.
+
+**Revised order (this session's decision).** With Phases 3-5 paused, remaining phases were re-sequenced by what each still delivers without them: **Phase 8** (deploy the test instance with `ANALYST_V4=1`) is next — it needs nothing from Phases 3-5, and nothing else here can be measured for real without a deployed instance. Then **Output trimming** (promoted from Phase 7's tuning bullet — shrink V4's output further, now that real per-attempt token/retry data exists post-Phase 2b) and **Response caching** (promoted from Phase 6's cache-skip bullet — `snapshot_hash` match skips the LLM call entirely; does not need a persisted evidence pack, just a `tier`+`snapshot_hash` match, so it does not need Phases 3-5 either). Then **Streaming** (new — not in the original plan; stream the model's output to the client to cut perceived latency, independent of every other phase here). Phase 6's DB-backed pack-read half and Phase 7's before/after-logging half stay paused alongside Phases 3-5 (both genuinely need the paused schema/pipeline). See PROGRESS above for the checklist form of this order, and each promoted phase's own section (after Phase 8) for scope.
 
 **Phase 8 — nginx/systemd/ufw (reported by the operator; not verified or acted on this session).** `/etc/nginx/sites-enabled/gold-cockpit` listens on port 3001, serves a static build from `/var/www/gold-cockpit` (built 2026-09-22 13:43), and proxies `/api/` to `localhost:8788`; the live API actually started on 8787 about 13 minutes later, so that nginx route is broken by a port mismatch and users currently rely on the Vite dev server on 3577 instead. Phase 8 should: align the API port with nginx (or vice versa), run the API under systemd, deploy a real build to `/var/www/gold-cockpit`, and retire the 3577 Vite dev server. `ufw` allows inbound only on `tailscale0` plus OpenSSH — any new port must bind to `127.0.0.1` or the Tailscale IP, never `0.0.0.0`.

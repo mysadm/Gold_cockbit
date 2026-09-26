@@ -56,9 +56,24 @@ function installmentLimit(dca) {
 // thousands separators first. Shared by v3's reads.dca check above and v4's dca_read check
 // (shared/analystOutputV4.mjs) — kept in one place since a missed amount here is a real safety
 // gap (a user could be told to invest more than their current installment allows).
+// Currency labels: EGP, LE (both Latin script — bounded with \b so e.g. "EGPeter" or a stray "le"
+// inside another word never matches) and جنيه / ج.م (Arabic script — JS's \b treats Arabic letters
+// as non-word characters, so a boundary assertion there would silently stop matching text preceded
+// by whitespace; left unbounded and relying on the \s* structure instead, as before).
+// "k"/"ألف" (thousand) are recognized as an optional multiplier on the number, e.g. "10k EGP" or
+// "10 ألف جنيه" both extract 10000.
 export function extractEgpAmounts(text) {
   const normalized=String(text??'').replace(/[٠-٩]/g,c=>'٠١٢٣٤٥٦٧٨٩'.indexOf(c)).replace(/[٬,]/g,'');
-  return [...normalized.matchAll(/(\d+(?:\.\d+)?)\s*(?:EGP|جنيه)|(?:EGP|جنيه)\s*(\d+(?:\.\d+)?)/gi)].map(m=>Number(m[1]??m[2]));
+  const num='(\\d+(?:\\.\\d+)?)';
+  const mult='(k|ألف)?';
+  const currency='(?:EGP\\b|\\bLE\\b|جنيه|ج\\.م)';
+  const pattern=new RegExp(`${num}\\s*${mult}\\s*${currency}|${currency}\\s*${num}\\s*${mult}`,'gi');
+  const amounts=[];
+  for(const m of normalized.matchAll(pattern)) {
+    const n=Number(m[1]??m[3]);
+    if(Number.isFinite(n))amounts.push((m[2]??m[4])?n*1000:n);
+  }
+  return amounts;
 }
 export function parseV3(text) {
   if(typeof text!=='string')return null;
