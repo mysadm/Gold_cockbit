@@ -35,7 +35,7 @@ function validateBase(output, { scenarioKeys = SCENARIO_KEYS, evidenceIds = [], 
   if (!object(output)) return ['output must be a JSON object'];
 
   const allowed = ['status', 'confidence', 'headline', 'data_flags', 'evidence', 'scenario_weights', 'weight_changes', 'action', 'next_trigger', 'invalidation'];
-  if (tier === 'personalized') allowed.push('dca');
+  if (tier === 'personalized') allowed.push('dca_read');
   const extra = Object.keys(output).filter((k) => !allowed.includes(k));
   if (extra.length) fail(`unknown fields: ${extra.join(', ')}`);
 
@@ -88,22 +88,29 @@ function validateBase(output, { scenarioKeys = SCENARIO_KEYS, evidenceIds = [], 
   return errors;
 }
 
-function validateDca(output) {
+// Matches the only DCA output that exists today (shared/analystContract.mjs's optional
+// reads.dca prose, rendered client-side as a ClaimField {text, evidence_ids}) — same shape,
+// just renamed to V4's ev_ids convention. See GOLD_COCKPIT_SPEED_PLAN.md NOTES "Phase 1 fix
+// — DCA verdict shape" for the src/App.tsx / analyst.ts call sites this was checked against.
+function validateDcaRead(output, { evidenceIds = [] } = {}) {
   const errors = [];
-  const d = output.dca;
+  const d = output.dca_read;
+  const known = new Set(evidenceIds);
   if (!object(d)) {
-    errors.push('dca required on the personalized tier');
-  } else if (Object.keys(d).some((k) => !['status', 'note'].includes(k))) {
-    errors.push('dca: unknown fields');
+    errors.push('dca_read required on the personalized tier');
+  } else if (Object.keys(d).some((k) => !['text', 'ev_ids'].includes(k))) {
+    errors.push('dca_read: unknown fields');
   } else {
-    if (!['proceed', 'pause', 'not_applicable'].includes(d.status)) errors.push('dca: invalid status');
-    if (!str(d.note, 200)) errors.push('dca: note must be a nonempty string up to 200 characters');
+    if (!str(d.text, 200)) errors.push('dca_read: text must be a nonempty string up to 200 characters');
+    if (!Array.isArray(d.ev_ids) || d.ev_ids.length > 3 || !d.ev_ids.every((id) => known.has(id))) {
+      errors.push('dca_read: ev_ids must be 0–3 known EV-IDs');
+    }
   }
   return errors;
 }
 
 export function validateAnalystOutput(output, { tier = 'standard', scenarioKeys, evidenceIds } = {}) {
   const errors = validateBase(output, { scenarioKeys, evidenceIds, tier });
-  if (tier === 'personalized' && object(output)) errors.push(...validateDca(output));
+  if (tier === 'personalized' && object(output)) errors.push(...validateDcaRead(output, { evidenceIds }));
   return { ok: errors.length === 0, errors };
 }

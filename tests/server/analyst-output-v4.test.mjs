@@ -105,23 +105,23 @@ describe('analyst output v4 validator', () => {
   });
 
   describe('personalized tier', () => {
-    const validPersonalized = () => ({ ...valid(), dca: { status: 'proceed', note: 'Within the current tranche limit.' } });
+    const validPersonalized = () => ({ ...valid(), dca_read: { text: 'Within the current tranche limit.', ev_ids: [EV1] } });
 
     it('accepts a well-formed personalized-tier output', () => {
       expect(check(validPersonalized(), [EV1, EV2], 'personalized')).toEqual({ ok: true, errors: [] });
     });
 
-    it('requires the dca field on the personalized tier', () => {
+    it('requires the dca_read field on the personalized tier', () => {
       expect(check(valid(), [EV1, EV2], 'personalized').ok).toBe(false);
     });
 
-    it('rejects an invalid dca status', () => {
+    it('rejects an unknown EV-ID in dca_read.ev_ids', () => {
       const o = validPersonalized();
-      o.dca.status = 'go';
+      o.dca_read.ev_ids = ['EV-20260101-0800-99'];
       expect(check(o, [EV1, EV2], 'personalized').ok).toBe(false);
     });
 
-    it('does not require dca on the standard tier', () => {
+    it('does not require dca_read on the standard tier', () => {
       expect(check(valid(), [EV1, EV2], 'standard').ok).toBe(true);
     });
   });

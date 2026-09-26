@@ -1,11 +1,11 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "analyst_output.personalized.schema.json",
-  "$comment": "Deliberately self-contained rather than $ref/allOf-extending analyst_output.schema.json: that schema is additionalProperties:false, so an allOf composition would reject the added 'dca' field regardless of unevaluatedProperties (a real bug caught while adding the schema/validator agreement test — see NOTES). It is also what both Claude's native structured-output mode and OpenAI's strict json_schema mode require (no external $ref, no allOf+$ref, no unevaluatedProperties) — keep the two files' shared fields in sync by hand; the agreement test in tests/server/analyst-output-schema-agreement.test.mjs fails if they drift. The 'dca' field's shape below is a PLACEHOLDER pending human approval (see NOTES 'Phase 1 fix — DCA verdict shape'); do not treat it as final.",
+  "$comment": "Deliberately self-contained rather than $ref/allOf-extending analyst_output.schema.json: that schema is additionalProperties:false, so an allOf composition would reject the added 'dca_read' field regardless of unevaluatedProperties (a real bug caught while adding the schema/validator agreement test — see NOTES). It is also what both Claude's native structured-output mode and OpenAI's strict json_schema mode require (no external $ref, no allOf+$ref, no unevaluatedProperties) — keep the two files' shared fields in sync by hand; the agreement test in tests/server/analyst-output-schema-agreement.test.mjs fails if they drift. 'dca_read' matches the only DCA output that exists today (shared/analystContract.mjs's optional reads.dca prose, rendered client-side as a ClaimField) — see NOTES 'Phase 1 fix — DCA verdict shape' for the approved proposal.",
   "title": "Gold Cockpit analyst output (personalized tier, adds DCA verdict)",
   "type": "object",
   "additionalProperties": false,
-  "required": ["status", "confidence", "headline", "data_flags", "evidence", "scenario_weights", "weight_changes", "action", "next_trigger", "invalidation", "dca"],
+  "required": ["status", "confidence", "headline", "data_flags", "evidence", "scenario_weights", "weight_changes", "action", "next_trigger", "invalidation", "dca_read"],
   "properties": {
     "status": { "type": "string", "enum": ["material_change", "no_material_change", "insufficient_evidence"] },
     "confidence": { "type": "string", "enum": ["low", "medium", "high"] },
@@ -59,13 +59,17 @@
     "action": { "type": "string", "enum": ["buy", "hold", "wait", "reduce", "review", "insufficient_evidence"] },
     "next_trigger": { "type": "string", "minLength": 1, "maxLength": 200 },
     "invalidation": { "type": "string", "minLength": 1, "maxLength": 200 },
-    "dca": {
+    "dca_read": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["status", "note"],
+      "required": ["text", "ev_ids"],
       "properties": {
-        "status": { "type": "string", "enum": ["proceed", "pause", "not_applicable"] },
-        "note": { "type": "string", "minLength": 1, "maxLength": 200 }
+        "text": { "type": "string", "minLength": 1, "maxLength": 200 },
+        "ev_ids": {
+          "type": "array",
+          "maxItems": 3,
+          "items": { "type": "string", "pattern": "^EV-\\d{8}-\\d{4}-\\d{2}$" }
+        }
       }
     }
   }

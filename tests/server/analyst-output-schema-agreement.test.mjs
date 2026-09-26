@@ -55,29 +55,29 @@ describe('analyst output schema/validator agreement', () => {
   });
 
   describe('personalized tier', () => {
-    const validPersonalized = () => ({ ...valid(), dca: { status: 'proceed', note: 'n' } });
+    const validPersonalized = () => ({ ...valid(), dca_read: { text: 'n', ev_ids: [EV1] } });
 
     it('agree on the valid case', () => {
       expect(matchesSchema(validPersonalized(), PERSONALIZED_SCHEMA)).toBe(true);
       expect(validateAnalystOutput(validPersonalized(), { tier: 'personalized', evidenceIds: [EV1] }).ok).toBe(true);
     });
 
-    it('agree that a missing dca is invalid', () => {
+    it('agree that a missing dca_read is invalid', () => {
       const o = valid();
       expect(matchesSchema(o, PERSONALIZED_SCHEMA)).toBe(false);
       expect(validateAnalystOutput(o, { tier: 'personalized', evidenceIds: [EV1] }).ok).toBe(false);
     });
 
-    it('agree that an extra field on dca is invalid', () => {
+    it('agree that an extra field on dca_read is invalid', () => {
       const o = validPersonalized();
-      o.dca.amount_egp = 1000;
+      o.dca_read.amount_egp = 1000;
       expect(matchesSchema(o, PERSONALIZED_SCHEMA)).toBe(false);
       expect(validateAnalystOutput(o, { tier: 'personalized', evidenceIds: [EV1] }).ok).toBe(false);
     });
 
-    it('agree that an invalid dca status is invalid', () => {
+    it('agree that a malformed ev_id in dca_read is invalid', () => {
       const o = validPersonalized();
-      o.dca.status = 'go';
+      o.dca_read.ev_ids = ['not-an-id'];
       expect(matchesSchema(o, PERSONALIZED_SCHEMA)).toBe(false);
       expect(validateAnalystOutput(o, { tier: 'personalized', evidenceIds: [EV1] }).ok).toBe(false);
     });

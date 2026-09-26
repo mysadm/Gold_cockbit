@@ -23,12 +23,12 @@ describe('runValidatedAnalysis', () => {
   });
 
   it('uses the personalized max_tokens budget and schema for the personalized tier', async () => {
-    const output = { ...valid(), dca: { status: 'proceed', note: 'n' } };
+    const output = { ...valid(), dca_read: { text: 'n', ev_ids: [EV1] } };
     const runProvider = vi.fn().mockResolvedValue({ text: JSON.stringify(output) });
     const result = await runValidatedAnalysis({ provider: {}, prompt: 'p', runProvider, tier: 'personalized', evidenceIds: [EV1] });
     expect(result.ok).toBe(true);
     expect(runProvider.mock.calls[0][2].maxTokens).toBe(2550);
-    expect(runProvider.mock.calls[0][2].jsonSchema.schema.required).toContain('dca');
+    expect(runProvider.mock.calls[0][2].jsonSchema.schema.required).toContain('dca_read');
   });
 
   it('retries once with the validation error appended, then succeeds', async () => {
