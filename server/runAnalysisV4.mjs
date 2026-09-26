@@ -55,17 +55,22 @@ export async function runAnalysisV4(provider, input, runProvider, { signal, evid
   const scenarioKeys = snapshot.scenarios.map((s) => s.key);
 
   signal?.throwIfAborted();
+  const modelStarted = Date.now();
   const outcome = await runValidatedAnalysis({
     provider, prompt, runProvider, tier, scenarioKeys, evidenceIds: evidence.evidenceIds, onRawAnswer,
     options: { system: PROMPT_V2, expectJson: false, compact: 'v4', signal },
   });
+  const modelMs = Date.now() - modelStarted;
   signal?.throwIfAborted();
 
   const parsed = outcome.ok ? outcome.output : null;
   const validation = outcome.ok ? { ok: true, errors: [] } : { ok: false, errors: outcome.errors };
+  const totalMs = Date.now() - started;
   const metrics = {
     contract: '4', tier, providerType: provider.provider_type,
-    searchMs, totalMs: Date.now() - started, retries: outcome.retries,
+    // otherMs covers precompute/prompt-assembly/id-remap between the two measured phases — near
+    // zero in this synchronous pipeline, kept explicit rather than assumed.
+    searchMs, modelMs, otherMs: totalMs - searchMs - modelMs, totalMs, retries: outcome.retries,
     // Per attempt, not summed across retries — see runValidatedAnalysis.
     attempts: outcome.attempts.map((a) => ({ outputTokens: a.usage?.output_tokens ?? null, inputTokens: a.usage?.input_tokens ?? null, truncated: a.truncated })),
     validationOk: validation.ok, validationErrors: validation.errors.slice(0, 6),

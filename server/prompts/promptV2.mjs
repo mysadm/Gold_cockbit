@@ -1,4 +1,8 @@
-// Verbatim from GOLD_COCKPIT_SPEED_PLAN.md Appendix A. Used only by the V4 pipeline
+// From GOLD_COCKPIT_SPEED_PLAN.md Appendix A, with one deviation from the literal text (see
+// NOTES "Phase 2 accepted-fixes — data_flags"): the STYLE line's blanket "other text ≤200 chars"
+// contradicted data_flags' schema/validator limit of ≤100 chars each — the model was never told
+// its shorter limit, which caused an observed validation failure. Flagged here per CLAUDE.md's
+// "report any conflict with the plan in NOTES" rule. Used only by the V4 pipeline
 // (server/runAnalysisV4.mjs, gated by ANALYST_V4=1) — never admin-editable, unlike the v3
 // prompts in server/analystPrompts.mjs, since V4's output shape is schema-enforced, not
 // format-text-enforced.
@@ -27,4 +31,4 @@ ACTION
 
 STYLE
 - Values in requested locale. Beginner: simple Egyptian Arabic or English; expert: technical terms allowed.
-- headline ≤120 chars; other text ≤200 chars. No URLs, no extra fields.`;
+- headline ≤120 chars; other text ≤200 chars, except data_flags: up to 5 items, each ≤100 chars. No URLs, no extra fields.`;

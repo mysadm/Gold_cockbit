@@ -47,6 +47,15 @@ beforeEach(() => {
 });
 afterEach(() => vi.unstubAllEnvs());
 
+describe('PROMPT_V2', () => {
+  it('states data_flags\' stricter 100-char/5-item limit, not just the general 200-char rule', () => {
+    // Regression: the blanket "other text <=200 chars" line previously left data_flags' real
+    // (schema-enforced) 100-char-per-item limit unstated, which a live run caught as a
+    // validation failure the model's own correction retry did not fix either.
+    expect(PROMPT_V2).toMatch(/data_flags[^.]*(?:up to 5|5 items)[^.]*100 chars|data_flags[^.]*100 chars[^.]*(?:up to 5|5 items)/);
+  });
+});
+
 describe('runAnalysisV3 delegates to the v4 pipeline under ANALYST_V4=1', () => {
   it('runs the standard tier end-to-end on the old evidence source and passes the validator', async () => {
     const runProvider = vi.fn(async (_p, prompt) => answer(validOutput(idsFromPrompt(prompt)[0]), { input_tokens: 50, output_tokens: 30 }));
