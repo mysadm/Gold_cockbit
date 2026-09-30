@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { getCached, setCached } from './searchCache.mjs';
+import { getCached, setCached, getStale } from './searchCache.mjs';
 const SERPAPI_URL = 'https://serpapi.com/search.json';
 const MAX_RESULTS = 5;
 
@@ -18,7 +18,10 @@ const RECENCY_FILTER = 'qdr:d';
 // back to IPv4) can stall the entire analysis well past the frontend's
 // request timeout. Each caller already treats a thrown/rejected query as "no
 // results from this query" via .catch(() => []), so timing out here is safe.
-const SEARCH_TIMEOUT_MS = 8000;
+// Measured cold (real) search latency is 100-200ms per query (GOLD_COCKPIT_SPEED_PLAN.md
+// NOTES) — 3s leaves 15-30x headroom over normal operation while bounding a slow/unreachable
+// SerpAPI far tighter than the old 8s (which is what produced this repo's one ~8000ms outlier).
+const SEARCH_TIMEOUT_MS = 3000;
 
 export async function searchWeb(query, apiKey, metrics) {
   const key = `${RECENCY_FILTER}:${createHash('sha256').update(apiKey).digest('hex')}:${query}`;
@@ -28,25 +31,34 @@ export async function searchWeb(query, apiKey, metrics) {
   const url = `${SERPAPI_URL}?engine=google&num=${MAX_RESULTS}&q=${encodeURIComponent(query)}&tbs=${RECENCY_FILTER}&api_key=${encodeURIComponent(apiKey)}`;
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), SEARCH_TIMEOUT_MS);
-  let response, data;
   try {
-    response = await fetch(url, { signal: controller.signal });
-    data = await response.json();
-  } finally {
-    clearTimeout(timeout);
-  }
+    let response, data;
+    try {
+      response = await fetch(url, { signal: controller.signal });
+      data = await response.json();
+    } finally {
+      clearTimeout(timeout);
+    }
+    if (!response.ok) throw new Error(data?.error || `HTTP ${response.status}`);
 
-  if (!response.ok) {
-    throw new Error(data?.error || `HTTP ${response.status}`);
+    const results = data?.organic_results || [];
+    const normalized = results.slice(0, MAX_RESULTS).map((r) => ({
+      title: r.title || '',
+      snippet: r.snippet || '',
+      link: r.link || '',
+      date: r.date || '',
+    }));
+    setCached(key, normalized);
+    return normalized;
+  } catch (err) {
+    // A timeout or any other fetch/API failure falls back to the last successful results for
+    // this exact query (up to 24h old, see searchCache.mjs's getStale) rather than surfacing no
+    // evidence at all — the caller (evidence.mjs) already tolerates this as a normal facet.
+    const stale = getStale(key);
+    if (stale) {
+      if (metrics) metrics.staleFallbackAt = Math.min(metrics.staleFallbackAt ?? Infinity, stale.fetchedAt);
+      return stale.value;
+    }
+    throw err;
   }
-
-  const results = data?.organic_results || [];
-  const normalized = results.slice(0, MAX_RESULTS).map((r) => ({
-    title: r.title || '',
-    snippet: r.snippet || '',
-    link: r.link || '',
-    date: r.date || '',
-  }));
-  setCached(key, normalized);
-  return normalized;
 }

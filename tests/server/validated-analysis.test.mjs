@@ -1,0 +1,140 @@
+import { describe, it, expect, vi } from 'vitest';
+import { runValidatedAnalysis } from '../../server/providers/validatedAnalysis.mjs';
+
+const EV1 = 'EV-20260101-0800-01';
+const valid = () => ({
+  status: 'material_change', confidence: 'medium', headline: 'h', data_flags: [],
+  evidence: [{ ev_id: EV1, implication: 'x' }],
+  scenario_weights: { deesc: 35, base: 45, stag: 20 },
+  weight_changes: [{ scenario: 'deesc', ev_ids: [EV1], reason: 'x' }],
+  action: 'hold', next_trigger: 't', invalidation: 'i',
+});
+
+describe('runValidatedAnalysis', () => {
+  it('returns ok on a valid first attempt, passing the schema and per-tier max_tokens to the provider', async () => {
+    const runProvider = vi.fn().mockResolvedValue({ text: JSON.stringify(valid()), usage: { input_tokens: 1, output_tokens: 1 } });
+    const result = await runValidatedAnalysis({ provider: {}, prompt: 'p', runProvider, tier: 'standard', evidenceIds: [EV1] });
+    expect(result).toEqual({
+      ok: true, output: valid(), usage: { input_tokens: 1, output_tokens: 1 }, retries: 0,
+      attempts: [{ usage: { input_tokens: 1, output_tokens: 1 }, truncated: false, errors: [], repaired: false, repairedFields: [] }],
+    });
+    expect(runProvider).toHaveBeenCalledTimes(1);
+    const [, prompt, options] = runProvider.mock.calls[0];
+    expect(prompt).toBe('p');
+    expect(options.maxTokens).toBe(1400);
+    expect(options.jsonSchema.schema.required).toContain('scenario_weights');
+  });
+
+  it('uses the personalized max_tokens budget and schema for the personalized tier', async () => {
+    const output = { ...valid(), dca_read: { text: 'n', ev_ids: [EV1] } };
+    const runProvider = vi.fn().mockResolvedValue({ text: JSON.stringify(output) });
+    const result = await runValidatedAnalysis({ provider: {}, prompt: 'p', runProvider, tier: 'personalized', evidenceIds: [EV1] });
+    expect(result.ok).toBe(true);
+    expect(runProvider.mock.calls[0][2].maxTokens).toBe(2550);
+    expect(runProvider.mock.calls[0][2].jsonSchema.schema.required).toContain('dca_read');
+  });
+
+  it('retries once with the validation error appended, then succeeds', async () => {
+    const bad = { ...valid(), scenario_weights: { deesc: 35, base: 45, stag: 30 } };
+    const runProvider = vi.fn()
+      .mockResolvedValueOnce({ text: JSON.stringify(bad) })
+      .mockResolvedValueOnce({ text: JSON.stringify(valid()) });
+    const result = await runValidatedAnalysis({ provider: {}, prompt: 'p', runProvider, tier: 'standard', evidenceIds: [EV1] });
+    expect(result).toEqual({
+      ok: true, output: valid(), usage: undefined, retries: 1,
+      attempts: [
+        { usage: undefined, truncated: false, errors: ['scenario_weights must sum to 100'], repaired: false, repairedFields: [] },
+        { usage: undefined, truncated: false, errors: [], repaired: false, repairedFields: [] },
+      ],
+    });
+    expect(runProvider).toHaveBeenCalledTimes(2);
+    expect(runProvider.mock.calls[1][1]).toContain('CORRECTION:');
+    expect(runProvider.mock.calls[1][1]).toContain('scenario_weights must sum to 100');
+  });
+
+  it('returns a controlled error after the retry still fails', async () => {
+    const bad = { ...valid(), scenario_weights: { deesc: 35, base: 45, stag: 30 } };
+    const runProvider = vi.fn().mockResolvedValue({ text: JSON.stringify(bad) });
+    const result = await runValidatedAnalysis({ provider: {}, prompt: 'p', runProvider, tier: 'standard', evidenceIds: [EV1] });
+    expect(result.ok).toBe(false);
+    expect(result.error).toBe('validation_failed');
+    expect(result.errors).toContain('scenario_weights must sum to 100');
+    expect(result.retries).toBe(1);
+    expect(result.attempts).toHaveLength(2);
+    // Both attempts' own errors are recorded, not just the final one used for the correction
+    // prompt — needed to classify why a run retried, including runs that end up succeeding.
+    expect(result.attempts[0].errors).toContain('scenario_weights must sum to 100');
+    expect(result.attempts[1].errors).toContain('scenario_weights must sum to 100');
+    expect(runProvider).toHaveBeenCalledTimes(2);
+  });
+
+  it('treats a truncated completion as invalid even if the partial JSON happens to validate', async () => {
+    const runProvider = vi.fn().mockResolvedValue({ text: JSON.stringify(valid()), truncated: true });
+    const result = await runValidatedAnalysis({ provider: {}, prompt: 'p', runProvider, tier: 'standard', evidenceIds: [EV1] });
+    expect(result.ok).toBe(false);
+    expect(result.errors).toContain('completion was truncated');
+    expect(result.attempts).toEqual([
+      { usage: undefined, truncated: true, errors: ['completion was truncated'], repaired: false, repairedFields: [] },
+      { usage: undefined, truncated: true, errors: ['completion was truncated'], repaired: false, repairedFields: [] },
+    ]);
+  });
+
+  it('repairs a formatting-only failure in-code and never makes a second provider call', async () => {
+    const tooManyFlags = { ...valid(), data_flags: ['a', 'b', 'c', 'd', 'e', 'f'] };
+    const runProvider = vi.fn().mockResolvedValue({ text: JSON.stringify(tooManyFlags), usage: { input_tokens: 10, output_tokens: 5 } });
+    const result = await runValidatedAnalysis({ provider: {}, prompt: 'p', runProvider, tier: 'standard', evidenceIds: [EV1] });
+    expect(result.ok).toBe(true);
+    expect(result.retries).toBe(0);
+    expect(runProvider).toHaveBeenCalledTimes(1);
+    expect(result.output.data_flags).toEqual(['a', 'b', 'c', 'd', 'e']);
+    expect(result.attempts[0]).toMatchObject({ repaired: true, repairedFields: ['data_flags (capped to 5)'] });
+  });
+
+  it('repairs formatting but still retries when a semantic error remains alongside it', async () => {
+    const mixed = { ...valid(), data_flags: ['a', 'b', 'c', 'd', 'e', 'f'], scenario_weights: { deesc: 35, base: 45, stag: 30 } };
+    const runProvider = vi.fn()
+      .mockResolvedValueOnce({ text: JSON.stringify(mixed) })
+      .mockResolvedValueOnce({ text: JSON.stringify(valid()) });
+    const result = await runValidatedAnalysis({ provider: {}, prompt: 'p', runProvider, tier: 'standard', evidenceIds: [EV1] });
+    expect(result.ok).toBe(true);
+    expect(result.retries).toBe(1);
+    expect(runProvider).toHaveBeenCalledTimes(2);
+    expect(result.attempts[0].repaired).toBe(true);
+    // The repair already fixed data_flags, so the correction prompt only mentions what's left.
+    expect(result.attempts[0].errors).toEqual(['scenario_weights must sum to 100']);
+    expect(runProvider.mock.calls[1][1]).toContain('scenario_weights must sum to 100');
+    expect(runProvider.mock.calls[1][1]).not.toContain('data_flags');
+  });
+
+  it('never repairs a truncated completion (stays a retry)', async () => {
+    const tooManyFlags = { ...valid(), data_flags: ['a', 'b', 'c', 'd', 'e', 'f'] };
+    const runProvider = vi.fn().mockResolvedValue({ text: JSON.stringify(tooManyFlags), truncated: true });
+    const result = await runValidatedAnalysis({ provider: {}, prompt: 'p', runProvider, tier: 'standard', evidenceIds: [EV1] });
+    expect(result.ok).toBe(false);
+    expect(result.attempts.every((a) => a.repaired === false)).toBe(true);
+    expect(runProvider).toHaveBeenCalledTimes(2);
+  });
+
+  it('treats a DCA amount over the limit as semantic: never repaired, always a retry', async () => {
+    const overLimit = { ...valid(), dca_read: { text: 'Deploy 100,000 EGP into this tranche now.', ev_ids: [] } };
+    const ok = { ...valid(), dca_read: { text: 'Within the current tranche limit.', ev_ids: [] } };
+    const runProvider = vi.fn()
+      .mockResolvedValueOnce({ text: JSON.stringify(overLimit) })
+      .mockResolvedValueOnce({ text: JSON.stringify(ok) });
+    const result = await runValidatedAnalysis({ provider: {}, prompt: 'p', runProvider, tier: 'personalized', evidenceIds: [EV1], dcaLimitEgp: 40000 });
+    expect(result.retries).toBe(1);
+    expect(result.attempts[0].repaired).toBe(false);
+    expect(result.attempts[0].errors).toContain('dca_read: amount exceeds current installment limit');
+    expect(runProvider.mock.calls[1][1]).toContain('amount exceeds current installment limit');
+  });
+
+  it('reports each attempt to onRawAnswer as it happens', async () => {
+    const bad = { ...valid(), scenario_weights: { deesc: 35, base: 45, stag: 30 } };
+    const runProvider = vi.fn()
+      .mockResolvedValueOnce({ text: JSON.stringify(bad) })
+      .mockResolvedValueOnce({ text: JSON.stringify(valid()) });
+    const seen = [];
+    await runValidatedAnalysis({ provider: {}, prompt: 'p', runProvider, tier: 'standard', evidenceIds: [EV1], onRawAnswer: (t) => seen.push(t) });
+    expect(seen).toEqual([JSON.stringify(bad), JSON.stringify(valid())]);
+  });
+});

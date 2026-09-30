@@ -18,13 +18,18 @@ const SLOT_16 = '2026-09-20@16:00';
 let client, admin, clock;
 
 beforeEach(async () => {
+  // .env.dev sets DISABLE_SCHEDULER=1/DISABLE_NOTIFICATIONS=1 as kill switches for the running
+  // dev API; these tests exercise startAnalysisScheduler/raiseNotification's real behavior.
+  // makeDeps() always stubs runAnalysis, so ANALYST_V4 does not need stubbing here.
+  vi.stubEnv('DISABLE_SCHEDULER', '');
+  vi.stubEnv('DISABLE_NOTIFICATIONS', '');
   client = await resetAndMigrate(MIGRATIONS_DIR);
   admin = await createTestUser(client, { email: 'admin@x.com', role: 'admin' });
   await provisionUserDefaults(client, admin.id);
   await client.query(`INSERT INTO llm_providers (user_id, provider_type, label, model, is_active) VALUES ($1, 'ollama', 'P', 'm', true)`, [admin.id]);
   clock = AT_10;
 });
-afterEach(async () => { await client.end(); vi.useRealTimers(); });
+afterEach(async () => { await client.end(); vi.useRealTimers(); vi.unstubAllEnvs(); });
 
 const parsed = {
   schema_version: '3', status: 'insufficient_evidence',
@@ -214,5 +219,18 @@ describe('startAnalysisScheduler', () => {
     expect(timer.hasRef()).toBe(false);
     stop();
     spy.mockRestore();
+  });
+
+  it('never starts the timer when DISABLE_SCHEDULER is set, regardless of the stored schedule', () => {
+    const spy = vi.spyOn(globalThis, 'setInterval');
+    process.env.DISABLE_SCHEDULER = '1';
+    try {
+      const stop = startAnalysisScheduler({ db: { query: vi.fn() }, adminId: admin.id, deps: makeDeps(), intervalMs: 1000 });
+      expect(spy).not.toHaveBeenCalled();
+      expect(() => stop()).not.toThrow();
+    } finally {
+      delete process.env.DISABLE_SCHEDULER;
+      spy.mockRestore();
+    }
   });
 });

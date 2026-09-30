@@ -5,6 +5,7 @@ import { neutralizeLegacyApiKey } from './legacyApiKey.mjs';
 import { fetchMarketPrices } from './marketPrices.mjs';
 import { fetchEgyptGoldPrices } from './isaghaPrices.mjs';
 import { startAnalysisScheduler } from './analysisScheduler.mjs';
+import { listenArgs } from './listenAddress.mjs';
 
 neutralizeLegacyApiKey();
 
@@ -22,7 +23,7 @@ if (rows.length === 0) {
 const analysisDeps = { fetchPrices: fetchMarketPrices, fetchEgypt: fetchEgyptGoldPrices };
 const app = createApp(pool, { adminId: rows[0].id, analysisDeps });
 
-const server = app.listen(PORT, () => {
+const server = app.listen(...listenArgs(PORT), () => {
   console.log(`Gold Cockpit API server listening on http://localhost:${PORT}`);
 });
 

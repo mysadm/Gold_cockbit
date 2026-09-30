@@ -4,6 +4,7 @@ import {buildAnalysisPrompt} from './prompts/buildAnalysisPrompt.mjs';
 import {GOLD_MARKET_ANALYST_SYSTEM_PROMPT} from './prompts/goldMarketAnalyst.mjs';
 import {computeConfidence} from './routes/validateAnalysis.mjs';
 import {correctionHints} from './prompts/correctionHints.mjs';
+import {runAnalysisV4} from './runAnalysisV4.mjs';
 
 const object=v=>v!==null&&typeof v==='object'&&!Array.isArray(v);
 const NO_CHANGE_ERRORS=new Set([
@@ -16,7 +17,14 @@ const DCA_OMITTED_NOTE={
   ar:'تم حذف ملاحظة خطة الشراء لأنها ذكرت مبلغًا أعلى من حد الشريحة الحالية.',
 };
 
-export async function runAnalysisV3(provider, input, runProvider, {signal,evidenceCollector=collectEvidence,prompts={},onRawAnswer}={}) {
+// Both call sites (server/standardAnalysis.mjs, server/routes/analyze.mjs) go through this one
+// function; ANALYST_V4=1 (default off, .env.dev only) swaps the whole pipeline for the new
+// PROMPT_V2 + schema-validated one in runAnalysisV4.mjs, so the live instance is unchanged after
+// merge and rollback is one setting. V4 has no admin-prompt/format layer, so `prompts` is ignored
+// there — see GOLD_COCKPIT_SPEED_PLAN.md NOTES, Phase 2.
+export async function runAnalysisV3(provider, input, runProvider, opts={}) {
+  if(['1','true'].includes(process.env.ANALYST_V4))return runAnalysisV4(provider,input,runProvider,opts);
+  const {signal,evidenceCollector=collectEvidence,prompts={},onRawAnswer}=opts;
   const started=Date.now();
   const snapshot=alignSnapshot(input);
   const evidence=await evidenceCollector(provider);

@@ -36,6 +36,9 @@ export async function runDueAnalysis({ db, adminId, now, deps = {} }) {
 }
 
 export function startAnalysisScheduler({ db, adminId, deps = {}, intervalMs = 60_000 }) {
+  // Hard kill switch, independent of the DB-stored schedule (which a copied dev database
+  // may carry over as enabled from the live instance) — defaults to off (scheduler runs).
+  if (['1', 'true'].includes(process.env.DISABLE_SCHEDULER)) return () => {};
   let inFlight = false;
   const timer = setInterval(() => {
     if (inFlight) return;

@@ -13,6 +13,7 @@ function present(row) {
 }
 
 export async function raiseNotification(db, { kind, message, detail = null }) {
+  if (['1', 'true'].includes(process.env.DISABLE_NOTIFICATIONS)) return;
   await db.query(
     `INSERT INTO admin_notifications (kind, message, detail)
      VALUES ($1, $2, $3::jsonb)

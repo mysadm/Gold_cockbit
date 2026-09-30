@@ -168,6 +168,18 @@ describe('runProviderAnalysis', () => {
     expect(callOpenAICompatible).toHaveBeenCalledWith(expect.objectContaining({ system: null }));
   });
 
+  it('lets an explicit maxTokens option override the stored provider setting (V4 per-tier cap)', async () => {
+    callClaude.mockResolvedValue({ text: '{}', usedWebSearch: false });
+
+    await runProviderAnalysis(
+      { provider_type: 'claude', api_key: 'sk-ant', model: 'm', base_url: null, settings: { maxTokens: 4096 } },
+      'prompt text',
+      { maxTokens: 1400 }
+    );
+
+    expect(callClaude).toHaveBeenCalledWith(expect.objectContaining({ maxTokens: 1400 }));
+  });
+
   it('prefers a stored base_url over the default for openai/ollama when present', async () => {
     callOpenAICompatible.mockResolvedValue({ text: 'x', usedWebSearch: false });
 

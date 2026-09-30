@@ -14,6 +14,9 @@ const provider = { provider_type: 'custom', settings: {} };
 const pack = { searchStatus: 'ok', usedWebSearch: true, evidenceIds: ['EV-001'], evidenceSources: [{ id: 'EV-001', title: 'Synthetic', date: '', link: 'https://example.com' }], evidencePack: [{ id: 'EV-001', title: 'Synthetic', date: '', snippet: 'Fixture only' }] };
 beforeEach(() => {
   vi.resetAllMocks(); vi.unstubAllEnvs();
+  // .env.dev sets ANALYST_V4=1 for the running dev API; this whole file exercises the real (v3)
+  // pipeline regardless of what the shell exports — see tests/server/run-analysis-v4.test.mjs.
+  vi.stubEnv('ANALYST_V4', '');
   collectEvidence.mockResolvedValue(structuredClone(pack));
   runProviderAnalysis.mockResolvedValue({ text: JSON.stringify(OUTPUT_EXAMPLE), usage: { input_tokens: 100, output_tokens: 50 } });
 });

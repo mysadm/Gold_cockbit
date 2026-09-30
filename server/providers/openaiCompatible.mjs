@@ -77,10 +77,15 @@ function extractErrorMessage(data) {
   return data?.error?.message;
 }
 
-async function postChatCompletion(baseUrl, headers, model, messages, signal, temperature, maxTokens, compact, tokenLimitParameter) {
+async function postChatCompletion(baseUrl, headers, model, messages, signal, temperature, maxTokens, compact, tokenLimitParameter, jsonSchema) {
   // Legacy keeps its 16000 floor; compact uses the bounded v3 budget.
   const body = { model, messages, [tokenLimitParameter]: completionBudget(maxTokens, compact) };
   if (typeof temperature === 'number') body.temperature = temperature;
+  // strict:false sidesteps the extra flattening rules (all-required, no external $ref)
+  // OpenAI's strict json_schema mode imposes; the code validator is the real backstop
+  // regardless, and not every OpenAI-compatible backend (Ollama, OpenRouter, ...) has
+  // verified strict-mode support (see GOLD_COCKPIT_SPEED_PLAN.md Appendix C).
+  if (jsonSchema) body.response_format = { type: 'json_schema', json_schema: { name: jsonSchema.name, schema: jsonSchema.schema, strict: false } };
   const response = await fetch(`${baseUrl}/chat/completions`, {
     method: 'POST',
     signal,
@@ -102,7 +107,7 @@ async function postChatCompletion(baseUrl, headers, model, messages, signal, tem
     truncated: ['length', 'content_filter'].includes(data?.choices?.[0]?.finish_reason) };
 }
 
-export async function callOpenAICompatible({ baseUrl, apiKey, model, prompt, temperature, maxTokens, expectJson = true, system, compact = false, signal, tokenLimitParameter = 'max_tokens' }) {
+export async function callOpenAICompatible({ baseUrl, apiKey, model, prompt, temperature, maxTokens, expectJson = true, system, compact = false, signal, tokenLimitParameter = 'max_tokens', jsonSchema }) {
   signal?.throwIfAborted();
   if (!['max_tokens', 'max_completion_tokens'].includes(tokenLimitParameter)) throw new Error('Unsupported completion limit parameter');
   const controller = new AbortController();
@@ -116,7 +121,7 @@ export async function callOpenAICompatible({ baseUrl, apiKey, model, prompt, tem
     let messages = system
       ? [{ role: 'system', content: system }, { role: 'user', content: prompt }]
       : [{ role: 'user', content: prompt }];
-    let result = await postChatCompletion(safeBaseUrl, headers, model, messages, requestSignal, temperature, maxTokens, compact, tokenLimitParameter);
+    let result = await postChatCompletion(safeBaseUrl, headers, model, messages, requestSignal, temperature, maxTokens, compact, tokenLimitParameter, jsonSchema);
     let { text, usage } = result;
 
     if (expectJson && !text.includes('{')) {
@@ -125,7 +130,7 @@ export async function callOpenAICompatible({ baseUrl, apiKey, model, prompt, tem
         { role: 'assistant', content: text },
         { role: 'user', content: 'Output ONLY the final JSON object now.' },
       ];
-      result = await postChatCompletion(safeBaseUrl, headers, model, messages, requestSignal, temperature, maxTokens, compact, tokenLimitParameter);
+      result = await postChatCompletion(safeBaseUrl, headers, model, messages, requestSignal, temperature, maxTokens, compact, tokenLimitParameter, jsonSchema);
       text = result.text;
       usage = usage && result.usage ? { input_tokens: usage.input_tokens + result.usage.input_tokens, output_tokens: usage.output_tokens + result.usage.output_tokens } : null;
     }

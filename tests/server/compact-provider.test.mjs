@@ -7,6 +7,9 @@ it.each([[undefined,4096],[0,4096],[128,4096],[1024,4096],[3000,4096],[5000,5000
   expect(completionBudget(input,true)).toBe(expected);
   expect(completionBudget(1024,false)).toBe(16000);
 });
+it.each([[undefined,1400],[0,1],[1,1],[1400,1400],[2550,2550],[100000,8192],[NaN,1400]])('does not floor the v4 completion budget %s to %s (below v3\'s 4096 compact floor)', (input,expected) => {
+  expect(completionBudget(input,'v4')).toBe(expected);
+});
 it('Claude uses the compact budget and exposes truncation/usage', async () => {
   const fetchMock = vi.fn().mockResolvedValue({ok:true,text:async()=>JSON.stringify({content:[{type:'text',text:'{}'}],stop_reason:'max_tokens',usage:{input_tokens:500,output_tokens:100}})});
   vi.stubGlobal('fetch',fetchMock);

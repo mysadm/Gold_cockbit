@@ -1,12 +1,14 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { resetAndMigrate } from '../helpers/test-db.mjs';
 import { raiseNotification, resolveNotifications, listOpen, dismiss } from '../../server/adminNotifications.mjs';
 
 const MIGRATIONS_DIR = new URL('../../migrations/', import.meta.url);
 let client;
 
-beforeEach(async () => { client = await resetAndMigrate(MIGRATIONS_DIR); });
-afterEach(async () => { await client.end(); });
+// raiseNotification no-ops under DISABLE_NOTIFICATIONS=1 (set in .env.dev for the running dev
+// API); these tests exercise the real behavior regardless of what the shell exports.
+beforeEach(async () => { vi.stubEnv('DISABLE_NOTIFICATIONS', ''); client = await resetAndMigrate(MIGRATIONS_DIR); });
+afterEach(async () => { await client.end(); vi.unstubAllEnvs(); });
 
 const total = async () => Number((await client.query('SELECT count(*) FROM admin_notifications')).rows[0].count);
 
@@ -68,5 +70,15 @@ describe('admin notifications', () => {
     await raiseNotification(client, { kind: 'a', message: 'A' });
     await raiseNotification(client, { kind: 'b', message: 'B' });
     expect((await listOpen(client)).map((n) => n.kind)).toEqual(['b', 'a']);
+  });
+
+  it('raiseNotification is a no-op when DISABLE_NOTIFICATIONS is set', async () => {
+    process.env.DISABLE_NOTIFICATIONS = '1';
+    try {
+      await raiseNotification(client, { kind: 'a', message: 'A' });
+    } finally {
+      delete process.env.DISABLE_NOTIFICATIONS;
+    }
+    expect(await total()).toBe(0);
   });
 });
